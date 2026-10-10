@@ -5,7 +5,7 @@
 //! the caller, so a busy program cannot flood the UI with tiny events.
 
 use std::io::{Read, Write};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -16,6 +16,16 @@ use quay_core::{Error, Result, Session, TermSize};
 const BATCH_WINDOW: Duration = Duration::from_millis(8);
 /// Flush immediately once a batch reaches this size.
 const BATCH_MAX: usize = 64 * 1024;
+/// How often the child process is polled for exit.
+const EXIT_POLL: Duration = Duration::from_millis(50);
+/// Time given to trailing output after the child exits.
+const EXIT_GRACE: Duration = Duration::from_millis(150);
+
+enum Msg {
+    Data(Vec<u8>),
+    /// The session ended (EOF on the PTY or the child exited).
+    End,
+}
 
 /// How to start a local session.
 #[derive(Debug, Clone)]
@@ -57,7 +67,7 @@ fn other<E: std::fmt::Display>(e: E) -> Error {
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
     closed: bool,
 }
 
@@ -89,19 +99,38 @@ impl PtySession {
         let mut reader = pair.master.try_clone_reader().map_err(other)?;
         let writer = pair.master.take_writer().map_err(other)?;
 
-        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        let child = Arc::new(Mutex::new(child));
+        let (tx, rx) = mpsc::channel::<Msg>();
+        let reader_tx = tx.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 8192];
             loop {
                 match reader.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
+                    Ok(0) | Err(_) => {
+                        let _ = reader_tx.send(Msg::End);
+                        break;
+                    }
                     Ok(n) => {
-                        if tx.send(buf[..n].to_vec()).is_err() {
+                        if reader_tx.send(Msg::Data(buf[..n].to_vec())).is_err() {
                             break;
                         }
                     }
                 }
             }
+        });
+        // Windows ConPTY keeps the output pipe open after the child exits, so
+        // the reader never sees EOF there. Watch the process directly too.
+        let watched = child.clone();
+        thread::spawn(move || {
+            loop {
+                let exited = !matches!(watched.lock().unwrap().try_wait(), Ok(None));
+                if exited {
+                    break;
+                }
+                thread::sleep(EXIT_POLL);
+            }
+            thread::sleep(EXIT_GRACE);
+            let _ = tx.send(Msg::End);
         });
         thread::spawn(move || {
             batch_output(rx, on_output);
@@ -127,15 +156,15 @@ impl PtySession {
 
 /// Coalesce chunks arriving within [`BATCH_WINDOW`] into one callback.
 /// Returns when the sender is dropped (reader hit EOF).
-fn batch_output(rx: mpsc::Receiver<Vec<u8>>, mut emit: impl FnMut(Vec<u8>)) {
-    while let Ok(mut batch) = rx.recv() {
+fn batch_output(rx: mpsc::Receiver<Msg>, mut emit: impl FnMut(Vec<u8>)) {
+    while let Ok(Msg::Data(mut batch)) = rx.recv() {
         let deadline = Instant::now() + BATCH_WINDOW;
         while batch.len() < BATCH_MAX {
             let left = deadline.saturating_duration_since(Instant::now());
             match rx.recv_timeout(left) {
-                Ok(more) => batch.extend_from_slice(&more),
+                Ok(Msg::Data(more)) => batch.extend_from_slice(&more),
                 Err(mpsc::RecvTimeoutError::Timeout) => break,
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Ok(Msg::End) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                     emit(batch);
                     return;
                 }
@@ -162,7 +191,7 @@ impl Session for PtySession {
         if !self.closed {
             self.closed = true;
             // Already-exited children make kill fail; that is fine.
-            let _ = self.child.kill();
+            let _ = self.child.lock().unwrap().kill();
         }
         Ok(())
     }
@@ -213,7 +242,7 @@ mod tests {
     fn batches_coalesce_and_flush_on_disconnect() {
         let (tx, rx) = mpsc::channel();
         for part in [&b"ab"[..], b"cd", b"ef"] {
-            tx.send(part.to_vec()).unwrap();
+            tx.send(Msg::Data(part.to_vec())).unwrap();
         }
         drop(tx);
         let mut batches = Vec::new();
