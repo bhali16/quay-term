@@ -1,0 +1,31 @@
+[package]
+name = "quay-app"
+description = "quay-term desktop app (Tauri)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+quay-core.workspace = true
+quay-pty.workspace = true
+quay-ssh.workspace = true
+quay-sftp.workspace = true
+quay-vault.workspace = true
+quay-sessions.workspace = true
+quay-config.workspace = true
+
+[lib]
+name = "quay_app"
+crate-type = ["staticlib", "cdylib", "rlib"]

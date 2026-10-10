@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/quay-core",
+    "crates/quay-pty",
+    "crates/quay-ssh",
+    "crates/quay-sftp",
+    "crates/quay-vault",
+    "crates/quay-sessions",
+    "crates/quay-config",
+    "app/src-tauri",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-only"
+repository = "https://github.com/bhali16/quay-term"
+rust-version = "1.80"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ts-rs = "12"
+quay-core = { path = "crates/quay-core" }
+quay-pty = { path = "crates/quay-pty" }
+quay-ssh = { path = "crates/quay-ssh" }
+quay-sftp = { path = "crates/quay-sftp" }
+quay-vault = { path = "crates/quay-vault" }
+quay-sessions = { path = "crates/quay-sessions" }
+quay-config = { path = "crates/quay-config" }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
