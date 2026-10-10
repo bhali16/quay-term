@@ -225,7 +225,8 @@ mod tests {
         let out = Arc::new(Mutex::new(Vec::new()));
         let (done_tx, done_rx) = mpsc::channel();
         let sink = out.clone();
-        let _session = PtySession::spawn(
+        #[cfg_attr(not(windows), allow(unused_mut))]
+        let mut session = PtySession::spawn(
             echo_opts(),
             move |chunk| sink.lock().unwrap().extend(chunk),
             move || {
@@ -233,7 +234,16 @@ mod tests {
             },
         )
         .unwrap();
-        done_rx.recv_timeout(Duration::from_secs(10)).expect("exit");
+        // Windows ConPTY asks the terminal for the cursor position at startup
+        // and stalls until it gets an answer. xterm.js answers in the app; the
+        // test has to play the terminal.
+        #[cfg(windows)]
+        session.write(b"\x1b[1;1R").unwrap();
+        if done_rx.recv_timeout(Duration::from_secs(10)).is_err() {
+            let got = String::from_utf8_lossy(&out.lock().unwrap()).to_string();
+            panic!("no exit within 10s; output so far: {got:?}");
+        }
+        drop(session);
         let text = String::from_utf8_lossy(&out.lock().unwrap()).to_string();
         assert!(text.contains("quay-hello"), "got: {text:?}");
     }
