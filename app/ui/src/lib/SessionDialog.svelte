@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import KeyFileField from "./KeyFileField.svelte";
   import { focus } from "./focus";
   import type { AuthKind } from "./bindings/AuthKind";
   import type { Folder } from "./bindings/Folder";
@@ -111,7 +112,7 @@
       </select>
     </label>
     {#if auth === "key"}
-      <label>Key file <input bind:value={keyPath} /></label>
+      <KeyFileField bind:value={keyPath} />
     {/if}
     {#if auth !== "agent"}
       <label>

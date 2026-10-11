@@ -1,4 +1,5 @@
 <script lang="ts">
+  import KeyFileField from "./KeyFileField.svelte";
   import { focus } from "./focus";
   import type { SshTarget } from "./bindings/SshTarget";
 
@@ -48,7 +49,7 @@
     {#if method === "password"}
       <label>Password <input type="password" bind:value={password} autocomplete="current-password" /></label>
     {:else if method === "key"}
-      <label>Key file <input bind:value={keyPath} /></label>
+      <KeyFileField bind:value={keyPath} />
       <label>Passphrase (if any) <input type="password" bind:value={passphrase} /></label>
     {/if}
     <div class="actions">
