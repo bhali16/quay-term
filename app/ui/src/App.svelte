@@ -25,6 +25,9 @@
   import FilePanel from "./lib/FilePanel.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
   import TrustDialog from "./lib/TrustDialog.svelte";
+  import SettingsDialog from "./lib/SettingsDialog.svelte";
+  import { settings } from "./lib/settings.svelte";
+  import { actionFor, type Action } from "./lib/keys";
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
   import type { SshTarget } from "./lib/bindings/SshTarget";
@@ -39,6 +42,7 @@
   let editing = $state<number | null>(null);
   let connecting = $state(false);
   let trustPrompt = $state<HostKeyPrompt | null>(null);
+  let showSettings = $state(false);
 
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
     const key = ++counter;
@@ -157,7 +161,38 @@
     if (tabs.length === 0) newTab();
   }
 
+  function runAction(a: Action) {
+    const i = tabs.findIndex((t) => t.key === activeKey);
+    switch (a) {
+      case "new_tab": return newTab();
+      case "close_tab": return closeTab(activeKey);
+      case "next_tab": return (activeKey = tabs[(i + 1) % tabs.length].key);
+      case "prev_tab": return (activeKey = tabs[(i - 1 + tabs.length) % tabs.length].key);
+      case "toggle_sidebar": return toggleSidebar();
+      case "toggle_files":
+        if (activeTab && (activeTab.ssh || activeTab.saved)) activeTab.files = !activeTab.files;
+        return;
+      case "settings": return (showSettings = !showSettings);
+      case "zoom_in": return zoom(1);
+      case "zoom_out": return zoom(-1);
+      case "zoom_reset": return settings.update({ ...settings.value, font_size: 14 });
+    }
+  }
+  function zoom(d: number) {
+    const size = Math.min(36, Math.max(8, settings.value.font_size + d));
+    return settings.update({ ...settings.value, font_size: size });
+  }
+  function onkeydown(e: KeyboardEvent) {
+    if (showSettings) return; // the dialog records shortcuts itself
+    const a = actionFor(e, settings.bindings);
+    if (a) {
+      e.preventDefault();
+      runAction(a);
+    }
+  }
+
   onMount(() => {
+    settings.load();
     getAppInfo().then((i) => (info = i));
     newTab();
     refresh();
@@ -173,6 +208,8 @@
     };
   });
 </script>
+
+<svelte:window {onkeydown} />
 
 <main>
   <nav>
@@ -200,6 +237,7 @@
     {#if activeTab && (activeTab.ssh || activeTab.saved)}
       <button class="add ssh" class:on={activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>Files</button>
     {/if}
+    <button class="add" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}>⚙</button>
     <span class="ver">{info ? `${info.name} v${info.version}` : ""}</span>
   </nav>
   <div class="body">
@@ -265,6 +303,9 @@
   {#if connecting}
     <ConnectDialog onconnect={connectSsh} oncancel={() => (connecting = false)} />
   {/if}
+  {#if showSettings}
+    <SettingsDialog onclose={() => (showSettings = false)} />
+  {/if}
   {#if trustPrompt}
     <TrustDialog prompt={trustPrompt} onanswer={answerTrust} />
   {/if}
@@ -281,17 +322,17 @@
     align-items: center;
     gap: 2px;
     padding: 4px 6px 0;
-    background: #16171b;
+    background: var(--bg-deep);
     font-size: 13px;
   }
   .tab {
     display: flex;
     align-items: center;
     border-radius: 6px 6px 0 0;
-    background: #202127;
+    background: var(--bg-alt);
   }
   .tab.active {
-    background: #2b2d36;
+    background: var(--surface);
   }
   button,
   input {
@@ -308,7 +349,7 @@
     width: 90px;
     margin: 4px 4px 4px 8px;
     padding: 2px 4px;
-    background: #111;
+    background: var(--input);
   }
   .close,
   .add {
@@ -323,8 +364,10 @@
   .ssh {
     font-size: 12px;
   }
-  .ver {
+  .add[aria-label="Settings"] {
     margin-left: auto;
+  }
+  .ver {
     padding-right: 6px;
     opacity: 0.5;
   }
@@ -349,7 +392,7 @@
   }
   .ssh.on {
     opacity: 1;
-    background: #2b2d36;
+    background: var(--surface);
     border-radius: 4px 4px 0 0;
   }
   .panes {

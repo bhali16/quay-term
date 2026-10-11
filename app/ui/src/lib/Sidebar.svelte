@@ -247,8 +247,8 @@
     flex-direction: column;
     width: 250px;
     flex: none;
-    background: #1a1b20;
-    border-right: 1px solid #2b2d36;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--surface);
     font-size: 13px;
     min-height: 0;
   }
@@ -263,9 +263,9 @@
     padding: 5px 8px;
     font: inherit;
     color: inherit;
-    border: 1px solid #33353e;
+    border: 1px solid var(--hover);
     border-radius: 5px;
-    background: #111216;
+    background: var(--bg-deep);
   }
   button {
     font: inherit;
@@ -298,7 +298,7 @@
     border-radius: 4px;
   }
   .item:hover {
-    background: #25262d;
+    background: var(--bg-alt);
   }
   .main {
     flex: 1;
@@ -324,7 +324,7 @@
     flex: none;
     padding: 0 5px;
     border-radius: 8px;
-    background: #33353e;
+    background: var(--hover);
     font-size: 11px;
     opacity: 0.8;
   }
@@ -354,8 +354,8 @@
     padding: 2px 4px;
     font: inherit;
     color: inherit;
-    border: 1px solid #44464f;
-    background: #111;
+    border: 1px solid var(--border);
+    background: var(--input);
   }
   aside.dragging {
     user-select: none;
@@ -367,7 +367,7 @@
   .item.drop,
   .children.drop {
     background: rgba(59, 111, 216, 0.25);
-    outline: 1px solid #3b6fd8;
+    outline: 1px solid var(--accent);
   }
   .list.drop {
     background: rgba(59, 111, 216, 0.12);
@@ -377,7 +377,7 @@
     z-index: 30;
     padding: 3px 8px;
     border-radius: 5px;
-    background: #3b6fd8;
+    background: var(--accent);
     font-size: 12px;
     pointer-events: none;
     opacity: 0.9;

@@ -74,7 +74,7 @@
     width: 340px;
     padding: 18px;
     border-radius: 10px;
-    background: #2b2d36;
+    background: var(--surface);
     font-size: 13px;
   }
   h2 {
@@ -101,9 +101,9 @@
     font: inherit;
     color: inherit;
     padding: 6px 8px;
-    border: 1px solid #44464f;
+    border: 1px solid var(--border);
     border-radius: 5px;
-    background: #1b1c21;
+    background: var(--bg-alt);
   }
   .actions {
     display: flex;
@@ -115,14 +115,14 @@
     font: inherit;
     color: inherit;
     padding: 6px 14px;
-    border: 1px solid #44464f;
+    border: 1px solid var(--border);
     border-radius: 5px;
     background: none;
     cursor: pointer;
   }
   .primary {
-    background: #3b6fd8;
-    border-color: #3b6fd8;
+    background: var(--accent);
+    border-color: var(--accent);
   }
   button:disabled {
     opacity: 0.5;

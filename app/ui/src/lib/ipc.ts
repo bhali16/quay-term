@@ -1,5 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { Settings } from "./bindings/Settings";
+import type { Diagnostics } from "./bindings/Diagnostics";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 import type { SessionExit } from "./bindings/SessionExit";
@@ -105,3 +107,8 @@ export const sftpCancel = (id: number, transfer: number) => invoke<void>("sftp_c
 export const sftpClose = (id: number) => invoke<void>("sftp_close", { id });
 export const onSftpTransfer = (cb: (t: SftpTransfer) => void) =>
   listen<SftpTransfer>("sftp-transfer", (e) => cb(e.payload));
+
+// ---- settings and diagnostics ----
+export const settingsLoad = () => invoke<Settings>("settings_load");
+export const settingsSave = (settings: Settings) => invoke<Settings>("settings_save", { settings });
+export const getDiagnostics = () => invoke<Diagnostics>("get_diagnostics");

@@ -32,7 +32,7 @@
     oncancel: () => void;
   } = $props();
 
-  const swatches = ["#3b6fd8", "#2f9e6b", "#d98e04", "#d9534f", "#8e5bd9", "#6b7280"];
+  const swatches = ["var(--accent)", "#2f9e6b", "#d98e04", "#d9534f", "#8e5bd9", "#6b7280"];
 
   // Fields start from the session being edited; the dialog is remounted per use.
   const s = untrackedSession();
@@ -172,7 +172,7 @@
   }
   .swatches .none {
     background: none;
-    border-color: #44464f;
+    border-color: var(--border);
   }
   .swatches .sel {
     border-color: #fff;
