@@ -168,7 +168,7 @@
       ondblclick={() => onconnect(s)}
       onkeydown={(e) => e.key === "Enter" && onconnect(s)}
     >
-      <span class="sicon" style:color={s.color ?? "inherit"}><Icon name="server" size={15} /></span>
+      <span class="sicon" style:--c={s.color ?? "var(--accent)"}><Icon name="terminal" size={13} /></span>
       <span class="name">{s.name}</span>
       {#each s.tags as t, i (i)}<span class="tag">{t}</span>{/each}
     </button>
@@ -197,7 +197,7 @@
           onclick={() => !justDragged && (collapsed[f.id] = !collapsed[f.id])}
         >
           <span class="caret"><Icon name={collapsed[f.id] ? "chevron-right" : "chevron-down"} size={13} /></span>
-          <span class="ficon"><Icon name={collapsed[f.id] ? "folder" : "folder-open"} size={16} /></span>
+          <span class="ficon"><Icon name={collapsed[f.id] ? "folder" : "folder-open"} size={17} tint /></span>
           <span class="name">{f.name}</span>
         </button>
         <span class="acts">
@@ -247,6 +247,7 @@
       {/each}
     {:else}
       {@render tree(null)}
+      {#if childrenOf(null).length > 0 && sessionsIn(null).length > 0}<div class="sep"></div>{/if}
       {#each sessionsIn(null) as s (s.id)}{@render sessionRow(s)}{/each}
       {#if library.sessions.length === 0 && library.folders.length === 0}
         <p class="empty">No saved sessions yet. Press + to add one, or import your ~/.ssh/config.</p>
@@ -322,10 +323,16 @@
     flex: none;
   }
   .ficon {
-    color: #e0b04a;
+    color: var(--accent);
   }
   .sicon {
-    opacity: 0.85;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    color: #fff;
+    background: var(--c);
   }
   .notice {
     margin: 0 8px 4px;
@@ -340,19 +347,27 @@
   .item {
     display: flex;
     align-items: center;
+    min-height: 30px;
+    margin: 1px 6px;
     padding-right: 4px;
-    border-radius: 4px;
+    border-radius: 6px;
   }
   .item:hover {
-    background: var(--bg-alt);
+    background: var(--hover);
+  }
+  .sep {
+    height: 1px;
+    margin: 8px 12px;
+    background: var(--border);
+    opacity: 0.6;
   }
   .main {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 4px;
+    gap: 8px;
+    padding: 5px 6px;
     text-align: left;
   }
   .name {
@@ -371,6 +386,7 @@
   .caret {
     display: flex;
     width: 13px;
+    margin-left: -2px;
     opacity: 0.6;
   }
   .acts {
@@ -404,7 +420,9 @@
     cursor: grabbing;
   }
   .children {
-    padding-left: 12px;
+    margin-left: 18px;
+    padding-left: 2px;
+    border-left: 1px solid var(--border);
   }
   .item.drop,
   .children.drop {
