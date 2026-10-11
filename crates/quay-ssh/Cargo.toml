@@ -14,3 +14,13 @@ workspace = true
 [dependencies]
 quay-core.workspace = true
 thiserror.workspace = true
+ssh2.workspace = true
+base64.workspace = true
+socket2 = { version = "0.5", features = ["all"] }
+
+# libssh2's default Windows backend (WinCNG) lacks ed25519; use OpenSSL there too.
+[target.'cfg(windows)'.dependencies]
+ssh2 = { workspace = true, features = ["openssl-on-win32"] }
+
+[dev-dependencies]
+tempfile.workspace = true

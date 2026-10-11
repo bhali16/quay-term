@@ -2,7 +2,7 @@
 //!
 //! This crate has no UI or I/O dependencies so it stays easy to test.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Errors shared across quay-term crates.
@@ -24,6 +24,71 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct TermSize {
     pub cols: u16,
     pub rows: u16,
+}
+
+/// How to authenticate an SSH connection.
+///
+/// Secrets live only in memory for the duration of a connect call; `Debug`
+/// never prints them.
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "method", rename_all = "snake_case")]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub enum SshAuth {
+    Password {
+        password: String,
+    },
+    /// A private key file, optionally protected by a passphrase.
+    Key {
+        path: String,
+        passphrase: Option<String>,
+    },
+    /// Keys held by the running ssh-agent (or Pageant on Windows).
+    Agent,
+}
+
+impl std::fmt::Debug for SshAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Password { .. } => f.write_str("Password(<redacted>)"),
+            Self::Key { path, passphrase } => f
+                .debug_struct("Key")
+                .field("path", path)
+                .field("passphrase", &passphrase.as_ref().map(|_| "<redacted>"))
+                .finish(),
+            Self::Agent => f.write_str("Agent"),
+        }
+    }
+}
+
+/// Where and as whom to connect over SSH.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub struct SshTarget {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub auth: SshAuth,
+}
+
+/// Sent to the UI when a server's host key is not yet trusted.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub struct HostKeyPrompt {
+    pub prompt_id: u32,
+    pub host: String,
+    pub port: u16,
+    /// e.g. "ssh-ed25519"
+    pub key_type: String,
+    /// "SHA256:..." as shown by OpenSSH.
+    pub fingerprint: String,
+}
+
+/// Sent to the UI when a session ends. `reason` is set when it ended abnormally.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub struct SessionExit {
+    pub id: u32,
+    pub reason: Option<String>,
 }
 
 /// A running terminal session, either a local PTY or an SSH channel.
