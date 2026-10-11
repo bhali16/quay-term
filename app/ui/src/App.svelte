@@ -214,7 +214,9 @@
 
 <main>
   <nav>
-    <button class="add" title="Toggle sessions sidebar" aria-label="Toggle sidebar" onclick={toggleSidebar}>☰</button>
+    {#if !sidebarOpen}
+      <button class="add" title="Show sessions sidebar" aria-label="Show sidebar" onclick={toggleSidebar}><Icon name="panel-left" size={17} /></button>
+    {/if}
     {#each tabs as tab (tab.key)}
       <div class="tab" class:active={tab.key === activeKey}>
         {#if editing === tab.key}
@@ -246,6 +248,7 @@
         {library}
         bind:query
         {notice}
+        oncollapse={toggleSidebar}
         version={info ? `${info.name} v${info.version}` : ""}
         onconnect={(s) => connectSaved(s)}
         onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}

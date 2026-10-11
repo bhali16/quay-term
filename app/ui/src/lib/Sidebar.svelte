@@ -10,6 +10,7 @@
     query = $bindable(""),
     notice = null,
     version = "",
+    oncollapse,
     onconnect,
     onedit,
     onnew,
@@ -25,6 +26,7 @@
     query: string;
     notice?: string | null;
     version?: string;
+    oncollapse: () => void;
     onconnect: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
     /** `folderId` preselects a folder in the editor. */
@@ -241,7 +243,10 @@
       {/if}
     {/if}
   </div>
-  {#if version}<div class="version">{version}</div>{/if}
+  <div class="footer">
+    <span class="version">{version}</span>
+    <button title="Hide sidebar" aria-label="Hide sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
+  </div>
 </aside>
 
 {#if drag}
@@ -408,11 +413,26 @@
     pointer-events: none;
     opacity: 0.9;
   }
-  .version {
-    padding: 6px 10px;
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 6px 4px 10px;
     border-top: 1px solid var(--surface);
+  }
+  .version {
     font-size: 11px;
     opacity: 0.5;
+  }
+  .footer button {
+    display: flex;
+    padding: 4px 6px;
+    border-radius: 5px;
+    opacity: 0.7;
+  }
+  .footer button:hover {
+    opacity: 1;
+    background: var(--hover);
   }
   .empty {
     margin: 12px;

@@ -103,3 +103,22 @@ body {
   opacity: 0.6;
   font-size: 12px;
 }
+
+/* One look for every dropdown: no native chrome, a plain chevron. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  background-size: 12px !important;
+  padding-right: 26px !important;
+  cursor: pointer;
+}
+select:hover {
+  border-color: var(--accent);
+}
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
