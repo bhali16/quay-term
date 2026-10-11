@@ -10,19 +10,33 @@ Thanks for your interest. The project is in early planning, so the best contribu
 
 ## Development setup
 
-Requirements (once the app skeleton lands):
+Requirements:
 
 - Rust (stable) via [rustup](https://rustup.rs)
-- Node.js LTS
+- Node.js LTS and npm
 - Tauri 2 platform prerequisites: https://tauri.app/start/prerequisites/
 
-Common commands (will be finalized in M0):
+```bash
+npm install            # frontend dependencies
+npm run tauri dev      # run the app with hot reload
+```
+
+Checks that CI runs:
 
 ```bash
-cargo fmt --all
+npm run check          # svelte-check
+npm run build          # frontend build (needed before compiling the app crate)
+cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+## Repository layout
+
+- `crates/quay-*`: Rust library crates (core, pty, ssh, sftp, vault, sessions, config). UI-free and unit-testable.
+- `app/src-tauri`: Tauri backend that exposes crate functionality as commands.
+- `app/ui`: Svelte + TypeScript frontend with xterm.js.
+- TypeScript types for IPC are generated from Rust by `ts-rs` into `app/ui/src/lib/bindings` when you run `cargo test`. Commit the generated files.
 
 ## Pull requests
 
