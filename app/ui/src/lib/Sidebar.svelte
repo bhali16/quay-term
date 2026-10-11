@@ -181,7 +181,7 @@
 {/snippet}
 
 {#snippet tree(parent: number | null)}
-  {#each childrenOf(parent) as f (f.id)}
+  {#each childrenOf(parent) as f, i (f.id)}
     <div class="item folder" class:drop={dropTarget === f.id} data-drop={f.id}>
       {#if renaming === f.id}
         <input
@@ -218,6 +218,7 @@
         {#each sessionsIn(f.id) as s (s.id)}{@render sessionRow(s)}{/each}
       </div>
     {/if}
+    {#if i < childrenOf(parent).length - 1}<div class="sep"></div>{/if}
   {/each}
 {/snippet}
 
@@ -358,9 +359,8 @@
   }
   .sep {
     height: 1px;
-    margin: 8px 12px;
+    margin: 6px 12px;
     background: var(--border);
-    opacity: 0.6;
   }
   .main {
     flex: 1;
