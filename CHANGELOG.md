@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-11
+
+### Fixed
+- macOS: the app bundle is now ad-hoc signed as a whole, so Apple Silicon no longer reports "Quay Term is damaged and can't be opened". The app is still not notarized; see the README for the first-launch steps.
+
 ## [0.1.0] - 2026-10-11
 
 ### Added

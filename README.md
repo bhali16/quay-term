@@ -2,7 +2,15 @@
 
 Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Windows. Built with Rust and Tauri.
 
-> **Status:** pre-0.1.0. Local terminals, SSH, saved sessions, SFTP, themes and shortcuts work; installers arrive with the first tagged release.
+> **Status:** early (0.1.x). Local terminals, SSH, saved sessions, SFTP, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are Apple silicon only.
+
+## Installing
+
+The installers are not code-signed or notarized yet, so your OS will warn on first launch.
+
+- **macOS:** drag Quay Term to Applications, then right-click it, choose Open and confirm. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine "/Applications/Quay Term.app"` and open it again.
+- **Windows:** SmartScreen may show "Windows protected your PC"; choose More info, then Run anyway.
+- **Linux:** make the `.AppImage` executable (`chmod +x`) or install the `.deb`/`.rpm`.
 
 ## Goals
 
