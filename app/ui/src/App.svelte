@@ -214,9 +214,6 @@
 
 <main>
   <nav>
-    {#if !sidebarOpen}
-      <button class="add" title="Show sessions sidebar" aria-label="Show sidebar" onclick={toggleSidebar}><Icon name="panel-left" size={17} /></button>
-    {/if}
     {#each tabs as tab (tab.key)}
       <div class="tab" class:active={tab.key === activeKey}>
         {#if editing === tab.key}
@@ -243,8 +240,8 @@
     <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} />Settings</button>
   </nav>
   <div class="body">
-    {#if sidebarOpen}
       <Sidebar
+        railOnly={!sidebarOpen}
         {library}
         bind:query
         {notice}
@@ -261,7 +258,6 @@
         onmovesession={(id, folderId) => folderAction(() => sessionMove(id, folderId))()}
         onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
       />
-    {/if}
     <div class="panes">
       {#each tabs as tab (tab.key)}
         <div class="tabview" class:hidden={tab.key !== activeKey}>

@@ -10,6 +10,7 @@
     query = $bindable(""),
     notice = null,
     version = "",
+    railOnly = false,
     oncollapse,
     onconnect,
     onedit,
@@ -26,6 +27,7 @@
     query: string;
     notice?: string | null;
     version?: string;
+    railOnly?: boolean;
     oncollapse: () => void;
     onconnect: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
@@ -219,6 +221,14 @@
   {/each}
 {/snippet}
 
+{#if railOnly}
+  <aside class="rail">
+    <div class="spacer"></div>
+    <div class="footer">
+      <button title="Show sidebar" aria-label="Show sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
+    </div>
+  </aside>
+{:else}
 <aside class:dragging={drag !== null}>
   <div class="bar">
     <input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" />
@@ -244,10 +254,11 @@
     {/if}
   </div>
   <div class="footer">
-    <span class="version">{version}</span>
     <button title="Hide sidebar" aria-label="Hide sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
+    <span class="version">{version}</span>
   </div>
 </aside>
+{/if}
 
 {#if drag}
   <div class="ghost" style:left={`${dragPos.x + 12}px`} style:top={`${dragPos.y + 12}px`}>{drag.label}</div>
@@ -416,9 +427,15 @@
   .footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 4px 6px 4px 10px;
+    gap: 8px;
+    padding: 4px 6px;
     border-top: 1px solid var(--surface);
+  }
+  aside.rail {
+    width: 40px;
+  }
+  .spacer {
+    flex: 1;
   }
   .version {
     font-size: 11px;
