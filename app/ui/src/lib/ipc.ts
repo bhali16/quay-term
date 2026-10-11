@@ -61,6 +61,10 @@ export const sessionDelete = (id: number) => invoke<void>("session_delete", { id
 export const folderCreate = (name: string, parentId: number | null = null) =>
   invoke<Folder>("folder_create", { name, parentId });
 export const folderRename = (id: number, name: string) => invoke<void>("folder_rename", { id, name });
+export const sessionMove = (id: number, folderId: number | null) =>
+  invoke<void>("session_move", { id, folderId });
+export const folderMove = (id: number, parentId: number | null) =>
+  invoke<void>("folder_move", { id, parentId });
 export const folderDelete = (id: number) => invoke<void>("folder_delete", { id });
 export const importSshConfig = () => invoke<ImportResult>("import_ssh_config");
 

@@ -10,7 +10,9 @@
   let remember = $state(true);
 </script>
 
-<div class="dlg-backdrop" role="presentation" onkeydown={(e) => e.key === "Escape" && oncancel()}>
+<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+
+<div class="dlg-backdrop" role="presentation">
   <form class="dlg" onsubmit={(e) => (e.preventDefault(), password && onsubmit(password, remember))} aria-label="Password">
     <h2>Password for {title}</h2>
     

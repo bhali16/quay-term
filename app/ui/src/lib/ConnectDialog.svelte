@@ -27,7 +27,9 @@
   }
 </script>
 
-<div class="backdrop" role="presentation" onkeydown={(e) => e.key === "Escape" && oncancel()}>
+<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+
+<div class="backdrop" role="presentation">
   <form class="dialog" onsubmit={submit} aria-label="New SSH connection">
     <h2>New SSH connection</h2>
     <div class="row">

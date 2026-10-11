@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { focus } from "./focus";
   import type { AuthKind } from "./bindings/AuthKind";
   import type { Folder } from "./bindings/Folder";
@@ -16,12 +17,15 @@
 
   let {
     session = null,
+    defaultFolderId = null,
     folders,
     error = null,
     onsubmit,
     oncancel,
   }: {
     session?: SavedSession | null;
+    /** Folder preselected for a new session. */
+    defaultFolderId?: number | null;
     folders: Folder[];
     error?: string | null;
     onsubmit: (r: Result) => void;
@@ -42,12 +46,25 @@
   let auth = $state<AuthKind>(s?.auth ?? "password");
   let keyPath = $state(s?.key_path ?? "~/.ssh/id_ed25519");
   let color = $state<string | null>(s?.color ?? null);
-  let folderId = $state<number | null>(s?.folder_id ?? null);
+  let folderId = $state<number | null>(s ? s.folder_id : untrack(() => defaultFolderId));
   let tags = $state((s?.tags ?? []).join(", "));
   let secret = $state("");
   let saveSecret = $state(true);
   let clearSecret = $state(false);
   const hadSecret = s?.has_secret ?? false;
+
+  /** Folders as an indented tree, in display order. */
+  const folderOptions = $derived.by(() => {
+    const out: { id: number; label: string }[] = [];
+    const walk = (parent: number | null, depth: number) => {
+      for (const f of folders.filter((x) => x.parent_id === parent)) {
+        out.push({ id: f.id, label: `${"\u00a0\u00a0".repeat(depth)}${depth ? "↳ " : ""}${f.name}` });
+        walk(f.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  });
 
   const secretLabel = $derived(auth === "password" ? "Password" : "Key passphrase (if any)");
   const valid = $derived(
@@ -74,7 +91,9 @@
   }
 </script>
 
-<div class="dlg-backdrop" role="presentation" onkeydown={(e) => e.key === "Escape" && oncancel()}>
+<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+
+<div class="dlg-backdrop" role="presentation">
   <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit(true))} aria-label="Session">
     <h2>{session ? "Edit session" : "New session"}</h2>
     <label>Name <input bind:value={name} placeholder="Optional, defaults to user@host" /></label>
@@ -114,8 +133,8 @@
         Folder
         <select bind:value={folderId}>
           <option value={null}>None</option>
-          {#each folders as f (f.id)}
-            <option value={f.id}>{f.name}</option>
+          {#each folderOptions as f (f.id)}
+            <option value={f.id}>{f.label}</option>
           {/each}
         </select>
       </label>

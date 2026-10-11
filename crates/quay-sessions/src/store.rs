@@ -256,6 +256,46 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Move a session into a folder (`None` = top level).
+    pub fn move_session(&mut self, id: i64, folder_id: Option<i64>) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE sessions SET folder_id = ?2 WHERE id = ?1",
+            params![id, folder_id],
+        )?;
+        if changed == 0 {
+            return Err(Error::Invalid("that saved session no longer exists".into()));
+        }
+        Ok(())
+    }
+
+    /// Move a folder under another (`None` = top level). A folder cannot go
+    /// inside itself or one of its own subfolders.
+    pub fn move_folder(&mut self, id: i64, parent_id: Option<i64>) -> Result<()> {
+        let mut cursor = parent_id;
+        while let Some(p) = cursor {
+            if p == id {
+                return Err(Error::Invalid(
+                    "A folder cannot be moved into itself or one of its subfolders.".into(),
+                ));
+            }
+            cursor = self
+                .conn
+                .query_row("SELECT parent_id FROM folders WHERE id = ?1", [p], |r| {
+                    r.get(0)
+                })
+                .optional()?
+                .flatten();
+        }
+        let changed = self.conn.execute(
+            "UPDATE folders SET parent_id = ?2 WHERE id = ?1",
+            params![id, parent_id],
+        )?;
+        if changed == 0 {
+            return Err(Error::Invalid("that folder no longer exists".into()));
+        }
+        Ok(())
+    }
+
     /// Delete a folder. Its sessions and subfolders move up to its parent
     /// rather than being deleted.
     pub fn delete_folder(&mut self, id: i64) -> Result<()> {
@@ -504,6 +544,59 @@ mod tests {
         s.rename_folder(top.id, " Office ").unwrap();
         assert!(s.list_folders().unwrap().iter().any(|f| f.name == "Office"));
         assert!(s.create_folder("  ", None).is_err());
+    }
+
+    #[test]
+    fn moving_sessions_and_folders() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let work = s.create_folder("Work", None).unwrap();
+        let prod = s.create_folder("Prod", Some(work.id)).unwrap();
+        let sess = s.create_session(&input("a", "h")).unwrap();
+
+        s.move_session(sess.id, Some(prod.id)).unwrap();
+        assert_eq!(
+            s.get_session(sess.id).unwrap().unwrap().input.folder_id,
+            Some(prod.id)
+        );
+        s.move_session(sess.id, None).unwrap();
+        assert_eq!(
+            s.get_session(sess.id).unwrap().unwrap().input.folder_id,
+            None
+        );
+        assert!(s.move_session(999, None).is_err());
+
+        // Re-parent, and back to the top level.
+        let other = s.create_folder("Other", None).unwrap();
+        s.move_folder(prod.id, Some(other.id)).unwrap();
+        let parent_of = |s: &SessionStore, id| {
+            s.list_folders()
+                .unwrap()
+                .into_iter()
+                .find(|f| f.id == id)
+                .unwrap()
+                .parent_id
+        };
+        assert_eq!(parent_of(&s, prod.id), Some(other.id));
+        s.move_folder(prod.id, None).unwrap();
+        assert_eq!(parent_of(&s, prod.id), None);
+    }
+
+    #[test]
+    fn folders_cannot_move_into_themselves_or_descendants() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let a = s.create_folder("A", None).unwrap();
+        let b = s.create_folder("B", Some(a.id)).unwrap();
+        let c = s.create_folder("C", Some(b.id)).unwrap();
+        assert!(s.move_folder(a.id, Some(a.id)).is_err());
+        assert!(s.move_folder(a.id, Some(c.id)).is_err());
+        assert!(s.move_folder(b.id, Some(c.id)).is_err());
+        // Nothing changed.
+        let folders = s.list_folders().unwrap();
+        assert_eq!(
+            folders.iter().find(|f| f.id == a.id).unwrap().parent_id,
+            None
+        );
+        assert!(s.move_folder(c.id, Some(a.id)).is_ok());
     }
 
     #[test]

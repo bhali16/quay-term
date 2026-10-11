@@ -3,6 +3,7 @@
   import {
     folderCreate,
     folderDelete,
+    folderMove,
     folderRename,
     getAppInfo,
     importSshConfig,
@@ -10,6 +11,7 @@
     onHostKeyPrompt,
     onSessionExit,
     sessionDelete,
+    sessionMove,
     sessionSave,
     sshTrustResponse,
   } from "./lib/ipc";
@@ -49,7 +51,7 @@
   let query = $state("");
   let notice = $state<string | null>(null);
   let sidebarOpen = $state(readSidebarPref());
-  let editing_session = $state<{ session: SavedSession | null } | null>(null);
+  let editing_session = $state<{ session: SavedSession | null; folderId: number | null } | null>(null);
   let dialogError = $state<string | null>(null);
   let passwordFor = $state<SavedSession | null>(null);
 
@@ -201,13 +203,15 @@
         bind:query
         {notice}
         onconnect={(s) => connectSaved(s)}
-        onedit={(s) => ((dialogError = null), (editing_session = { session: s }))}
-        onnew={() => ((dialogError = null), (editing_session = { session: null }))}
+        onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
+        onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
         ondelete={removeSession}
         onimport={doImport}
-        onnewfolder={(name) => folderAction(() => folderCreate(name))()}
+        onnewfolder={(name, parentId) => folderAction(() => folderCreate(name, parentId))()}
         onrenamefolder={(id, name) => folderAction(() => folderRename(id, name))()}
         ondeletefolder={(id) => folderAction(() => folderDelete(id))()}
+        onmovesession={(id, folderId) => folderAction(() => sessionMove(id, folderId))()}
+        onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
       />
     {/if}
     <div class="panes">
@@ -226,6 +230,7 @@
     {#key editing_session}
       <SessionDialog
         session={editing_session.session}
+        defaultFolderId={editing_session.folderId}
         folders={library.folders}
         error={dialogError}
         onsubmit={submitSession}

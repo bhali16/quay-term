@@ -192,6 +192,20 @@ fn folder_rename(library: State<'_, Library>, id: i64, name: String) -> Result<(
 }
 
 #[tauri::command]
+fn session_move(
+    library: State<'_, Library>,
+    id: i64,
+    folder_id: Option<i64>,
+) -> Result<(), String> {
+    library.move_session(id, folder_id)
+}
+
+#[tauri::command]
+fn folder_move(library: State<'_, Library>, id: i64, parent_id: Option<i64>) -> Result<(), String> {
+    library.move_folder(id, parent_id)
+}
+
+#[tauri::command]
 fn folder_delete(library: State<'_, Library>, id: i64) -> Result<(), String> {
     library.delete_folder(id)
 }
@@ -259,6 +273,8 @@ pub fn run() {
             folder_create,
             folder_rename,
             folder_delete,
+            session_move,
+            folder_move,
             import_ssh_config,
             session_write,
             session_resize,

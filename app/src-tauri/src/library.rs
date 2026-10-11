@@ -160,6 +160,22 @@ impl Library {
             .map_err(err)
     }
 
+    pub fn move_session(&self, id: i64, folder_id: Option<i64>) -> Result<(), String> {
+        self.store
+            .lock()
+            .unwrap()
+            .move_session(id, folder_id)
+            .map_err(err)
+    }
+
+    pub fn move_folder(&self, id: i64, parent_id: Option<i64>) -> Result<(), String> {
+        self.store
+            .lock()
+            .unwrap()
+            .move_folder(id, parent_id)
+            .map_err(err)
+    }
+
     pub fn delete_folder(&self, id: i64) -> Result<(), String> {
         self.store.lock().unwrap().delete_folder(id).map_err(err)
     }

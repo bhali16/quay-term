@@ -5,7 +5,9 @@
   let { prompt, onanswer }: { prompt: HostKeyPrompt; onanswer: (trust: boolean) => void } = $props();
 </script>
 
-<div class="backdrop" role="presentation" onkeydown={(e) => e.key === "Escape" && onanswer(false)}>
+<svelte:window onkeydown={(e) => e.key === "Escape" && onanswer(false)} />
+
+<div class="backdrop" role="presentation">
   <div class="dialog" role="alertdialog" aria-label="Unknown host key" tabindex="-1">
     <h2>Trust this host?</h2>
     <p>
