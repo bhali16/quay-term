@@ -22,6 +22,7 @@
   import type { LibraryView } from "./lib/bindings/LibraryView";
   import type { SavedSession } from "./lib/bindings/SavedSession";
   import TerminalPane from "./lib/TerminalPane.svelte";
+  import FilePanel from "./lib/FilePanel.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
   import TrustDialog from "./lib/TrustDialog.svelte";
   import type { AppInfo } from "./lib/bindings/AppInfo";
@@ -29,7 +30,7 @@
   import type { SshTarget } from "./lib/bindings/SshTarget";
 
   type Saved = { id: number; label: string; secret?: string | null; remember?: boolean };
-  type Tab = { key: number; title: string; ssh: SshTarget | null; saved: Saved | null; pane?: TerminalPane };
+  type Tab = { key: number; title: string; ssh: SshTarget | null; saved: Saved | null; files?: boolean; pane?: TerminalPane };
 
   let info = $state<AppInfo | null>(null);
   let tabs = $state<Tab[]>([]);
@@ -136,6 +137,8 @@
     }
   };
 
+  const activeTab = $derived(tabs.find((t) => t.key === activeKey));
+
   function connectSsh(target: SshTarget) {
     connecting = false;
     newTab(target);
@@ -194,6 +197,9 @@
     {/each}
     <button class="add" aria-label="New local tab" title="New local shell" onclick={() => newTab()}>+</button>
     <button class="add ssh" title="New SSH connection" onclick={() => (connecting = true)}>SSH</button>
+    {#if activeTab && (activeTab.ssh || activeTab.saved)}
+      <button class="add ssh" class:on={activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>Files</button>
+    {/if}
     <span class="ver">{info ? `${info.name} v${info.version}` : ""}</span>
   </nav>
   <div class="body">
@@ -216,13 +222,20 @@
     {/if}
     <div class="panes">
       {#each tabs as tab (tab.key)}
-        <TerminalPane
-          bind:this={tab.pane}
-          active={tab.key === activeKey}
-          ssh={tab.ssh}
-          saved={tab.saved}
-          onconnected={tab.saved?.remember ? refresh : undefined}
-        />
+        <div class="tabview" class:hidden={tab.key !== activeKey}>
+          <div class="term">
+            <TerminalPane
+              bind:this={tab.pane}
+              active={tab.key === activeKey}
+              ssh={tab.ssh}
+              saved={tab.saved}
+              onconnected={tab.saved?.remember ? refresh : undefined}
+            />
+          </div>
+          {#if tab.files}
+            <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey} onclose={() => (tab.files = false)} />
+          {/if}
+        </div>
       {/each}
     </div>
   </div>
@@ -319,6 +332,25 @@
     display: flex;
     flex: 1;
     min-height: 0;
+  }
+  .tabview {
+    position: absolute;
+    inset: 0;
+    display: flex;
+  }
+  .tabview.hidden {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .term {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+  .ssh.on {
+    opacity: 1;
+    background: #2b2d36;
+    border-radius: 4px 4px 0 0;
   }
   .panes {
     position: relative;

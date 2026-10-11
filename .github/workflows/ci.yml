@@ -66,4 +66,4 @@ jobs:
           scripts/ssh-test-server.sh start | sed 's/^export //' >> "$GITHUB_ENV"
           echo "QUAY_TEST_SSH_CONTAINER=quay-test-sshd" >> "$GITHUB_ENV"
       - name: Integration tests
-        run: cargo test -p quay-ssh --test openssh -- --nocapture
+        run: cargo test -p quay-ssh --test openssh -p quay-sftp --test openssh -- --nocapture

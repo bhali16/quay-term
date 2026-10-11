@@ -14,6 +14,16 @@ pub use connect::ConnectOptions;
 pub use error::SshError;
 pub use known_hosts::{HostKeyInfo, HostKeyStatus};
 pub use session::SshSession;
+pub use ssh2::Session as RawSession;
+
+/// Connect, verify the host key and authenticate, returning the raw libssh2
+/// session (blocking mode). Used by SFTP, which opens its own connection.
+pub fn connect_raw(
+    opts: &ConnectOptions,
+    verify: &mut dyn FnMut(&HostKeyInfo) -> bool,
+) -> Result<RawSession, SshError> {
+    connect::connect(opts, verify)
+}
 
 #[cfg(test)]
 mod tests {
