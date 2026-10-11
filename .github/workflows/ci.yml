@@ -53,3 +53,17 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+
+  ssh-integration:
+    name: SSH integration (OpenSSH in Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Start OpenSSH server
+        run: |
+          scripts/ssh-test-server.sh start | sed 's/^export //' >> "$GITHUB_ENV"
+          echo "QUAY_TEST_SSH_CONTAINER=quay-test-sshd" >> "$GITHUB_ENV"
+      - name: Integration tests
+        run: cargo test -p quay-ssh --test openssh -- --nocapture

@@ -1,21 +1,37 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getAppInfo, onSessionExit } from "./lib/ipc";
+  import { getAppInfo, onHostKeyPrompt, onSessionExit, sshTrustResponse } from "./lib/ipc";
   import TerminalPane from "./lib/TerminalPane.svelte";
+  import ConnectDialog from "./lib/ConnectDialog.svelte";
+  import TrustDialog from "./lib/TrustDialog.svelte";
   import type { AppInfo } from "./lib/bindings/AppInfo";
+  import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
+  import type { SshTarget } from "./lib/bindings/SshTarget";
 
-  type Tab = { key: number; title: string; pane?: TerminalPane };
+  type Tab = { key: number; title: string; ssh: SshTarget | null; pane?: TerminalPane };
 
   let info = $state<AppInfo | null>(null);
   let tabs = $state<Tab[]>([]);
   let activeKey = $state(0);
   let counter = 0;
   let editing = $state<number | null>(null);
+  let connecting = $state(false);
+  let trustPrompt = $state<HostKeyPrompt | null>(null);
 
-  function newTab() {
+  function newTab(ssh: SshTarget | null = null) {
     const key = ++counter;
-    tabs.push({ key, title: `Shell ${key}` });
+    tabs.push({ key, title: ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`, ssh });
     activeKey = key;
+  }
+
+  function connectSsh(target: SshTarget) {
+    connecting = false;
+    newTab(target);
+  }
+
+  function answerTrust(trust: boolean) {
+    if (trustPrompt) sshTrustResponse(trustPrompt.prompt_id, trust);
+    trustPrompt = null;
   }
 
   function closeTab(key: number) {
@@ -29,12 +45,15 @@
   onMount(() => {
     getAppInfo().then((i) => (info = i));
     newTab();
-    const unlisten = onSessionExit((sid) => {
-      const tab = tabs.find((t) => t.pane?.sessionId() === sid);
-      tab?.pane?.notifyExited();
-    });
+    const unlisten = [
+      onSessionExit(({ id, reason }) => {
+        const tab = tabs.find((t) => t.pane?.sessionId() === id);
+        tab?.pane?.notifyExited(reason);
+      }),
+      onHostKeyPrompt((p) => (trustPrompt = p)),
+    ];
     return () => {
-      unlisten.then((f) => f());
+      unlisten.forEach((u) => u.then((f) => f()));
     };
   });
 </script>
@@ -59,14 +78,21 @@
         <button class="close" aria-label="Close tab" onclick={() => closeTab(tab.key)}>×</button>
       </div>
     {/each}
-    <button class="add" aria-label="New tab" onclick={newTab}>+</button>
+    <button class="add" aria-label="New local tab" title="New local shell" onclick={() => newTab()}>+</button>
+    <button class="add ssh" title="New SSH connection" onclick={() => (connecting = true)}>SSH</button>
     <span class="ver">{info ? `${info.name} v${info.version}` : ""}</span>
   </nav>
   <div class="panes">
     {#each tabs as tab (tab.key)}
-      <TerminalPane bind:this={tab.pane} active={tab.key === activeKey} onexit={() => closeTab(tab.key)} />
+      <TerminalPane bind:this={tab.pane} active={tab.key === activeKey} ssh={tab.ssh} />
     {/each}
   </div>
+  {#if connecting}
+    <ConnectDialog onconnect={connectSsh} oncancel={() => (connecting = false)} />
+  {/if}
+  {#if trustPrompt}
+    <TrustDialog prompt={trustPrompt} onanswer={answerTrust} />
+  {/if}
 </main>
 
 <style>
@@ -118,6 +144,9 @@
   .close:hover,
   .add:hover {
     opacity: 1;
+  }
+  .ssh {
+    font-size: 12px;
   }
   .ver {
     margin-left: auto;
