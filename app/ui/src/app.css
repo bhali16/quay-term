@@ -14,3 +14,93 @@ body {
   background: #1e1f24;
   color: #e6e6e6;
 }
+
+/* Shared by the dialogs */
+.dlg-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+.dlg {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 360px;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 10px;
+  background: #2b2d36;
+  font-size: 13px;
+}
+.dlg h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.dlg label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dlg label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.dlg .row {
+  display: flex;
+  gap: 8px;
+}
+.dlg .grow {
+  flex: 1;
+}
+.dlg .narrow {
+  width: 80px;
+}
+.dlg input,
+.dlg select {
+  font: inherit;
+  color: inherit;
+  padding: 6px 8px;
+  border: 1px solid #44464f;
+  border-radius: 5px;
+  background: #1b1c21;
+}
+.dlg input[type="checkbox"] {
+  padding: 0;
+}
+.dlg .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.dlg .actions button {
+  font: inherit;
+  color: inherit;
+  padding: 6px 14px;
+  border: 1px solid #44464f;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+.dlg .actions .primary {
+  background: #3b6fd8;
+  border-color: #3b6fd8;
+}
+.dlg .actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dlg .error {
+  margin: 0;
+  color: #ff8b8b;
+}
+.dlg .hint {
+  margin: 0;
+  opacity: 0.6;
+  font-size: 12px;
+}

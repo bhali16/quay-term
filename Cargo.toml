@@ -27,6 +27,7 @@ portable-pty = "0.9"
 ssh2 = { version = "0.9", features = ["vendored-openssl"] }
 base64 = "0.22"
 tempfile = "3"
+rusqlite = { version = "0.32", features = ["bundled"] }
 quay-core = { path = "crates/quay-core" }
 quay-pty = { path = "crates/quay-pty" }
 quay-ssh = { path = "crates/quay-ssh" }

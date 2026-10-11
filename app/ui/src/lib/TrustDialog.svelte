@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { focus } from "./focus";
   import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 
   let { prompt, onanswer }: { prompt: HostKeyPrompt; onanswer: (trust: boolean) => void } = $props();
 </script>
 
-<div class="backdrop" role="presentation" onkeydown={(e) => e.key === "Escape" && onanswer(false)}>
+<svelte:window onkeydown={(e) => e.key === "Escape" && onanswer(false)} />
+
+<div class="backdrop" role="presentation">
   <div class="dialog" role="alertdialog" aria-label="Unknown host key" tabindex="-1">
     <h2>Trust this host?</h2>
     <p>
@@ -19,8 +22,8 @@
     </dl>
     <p class="hint">Compare the fingerprint with one from the server's owner. Trusting saves it to known_hosts.</p>
     <div class="actions">
-      <!-- svelte-ignore a11y_autofocus -->
-      <button autofocus onclick={() => onanswer(false)}>Cancel</button>
+      
+      <button use:focus onclick={() => onanswer(false)}>Cancel</button>
       <button class="primary" onclick={() => onanswer(true)}>Trust and connect</button>
     </div>
   </div>

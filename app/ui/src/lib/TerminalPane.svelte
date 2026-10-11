@@ -3,11 +3,26 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import "@xterm/xterm/css/xterm.css";
-  import { openLocalSession, openSshSession, sessionWrite, sessionResize, sessionClose } from "./ipc";
+  import {
+    openLocalSession,
+    openSavedSession,
+    openSshSession,
+    sessionWrite,
+    sessionResize,
+    sessionClose,
+  } from "./ipc";
   import type { SshTarget } from "./bindings/SshTarget";
 
   // `ssh` is kept in memory so Enter can reconnect after a drop; nothing is persisted.
-  let { active, ssh = null }: { active: boolean; ssh?: SshTarget | null } = $props();
+  // A saved session connects by id; its stored secret never leaves Rust.
+  type Saved = { id: number; label: string; secret?: string | null; remember?: boolean };
+  let {
+    active,
+    ssh = null,
+    saved = null,
+    onconnected,
+  }: { active: boolean; ssh?: SshTarget | null; saved?: Saved | null; onconnected?: () => void } = $props();
+  const remote = $derived(ssh !== null || saved !== null);
 
   let host: HTMLDivElement;
   let term: Terminal;
@@ -22,19 +37,28 @@
     ended = true;
     id = null;
     if (reason) term?.writeln(`\r\n\x1b[31m${reason}\x1b[0m`);
-    term?.writeln(ssh ? "\r\n[connection closed - press Enter to reconnect]" : "\r\n[process exited]");
+    term?.writeln(remote ? "\r\n[connection closed - press Enter to reconnect]" : "\r\n[process exited]");
   }
 
   function start() {
     ended = false;
     const out = (bytes: Uint8Array) => term.write(bytes);
     if (ssh) term.writeln(`Connecting to ${ssh.user}@${ssh.host}:${ssh.port}...`);
-    (ssh ? openSshSession(ssh, term.cols, term.rows, out) : openLocalSession(term.cols, term.rows, out))
-      .then((sid) => (id = sid))
+    if (saved) term.writeln(`Connecting to ${saved.label}...`);
+    const opening = saved
+      ? openSavedSession(saved.id, saved.secret ?? null, saved.remember ?? false, term.cols, term.rows, out)
+      : ssh
+        ? openSshSession(ssh, term.cols, term.rows, out)
+        : openLocalSession(term.cols, term.rows, out);
+    opening
+      .then((sid) => {
+        id = sid;
+        onconnected?.();
+      })
       .catch((e) => {
         ended = true;
         term.writeln(`\r\n\x1b[31m${e}\x1b[0m`);
-        if (ssh) term.writeln("\r\n[press Enter to try again]");
+        if (remote) term.writeln("\r\n[press Enter to try again]");
       });
   }
 
@@ -58,7 +82,7 @@
     const encoder = new TextEncoder();
     term.onData((d) => {
       if (id !== null) sessionWrite(id, encoder.encode(d));
-      else if (ssh && ended && d === "\r") start();
+      else if (remote && ended && d === "\r") start();
     });
     term.onBinary((d) => id !== null && sessionWrite(id, Uint8Array.from(d, (c) => c.charCodeAt(0))));
     term.onResize(({ cols, rows }) => id !== null && sessionResize(id, cols, rows));

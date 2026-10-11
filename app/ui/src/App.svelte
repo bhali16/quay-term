@@ -1,6 +1,26 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getAppInfo, onHostKeyPrompt, onSessionExit, sshTrustResponse } from "./lib/ipc";
+  import {
+    folderCreate,
+    folderDelete,
+    folderMove,
+    folderRename,
+    getAppInfo,
+    importSshConfig,
+    libraryLoad,
+    onHostKeyPrompt,
+    onSessionExit,
+    sessionDelete,
+    sessionMove,
+    sessionSave,
+    sshTrustResponse,
+  } from "./lib/ipc";
+  import Sidebar from "./lib/Sidebar.svelte";
+  import SessionDialog from "./lib/SessionDialog.svelte";
+  import type { Result as SessionResult } from "./lib/SessionDialog.svelte";
+  import PasswordPrompt from "./lib/PasswordPrompt.svelte";
+  import type { LibraryView } from "./lib/bindings/LibraryView";
+  import type { SavedSession } from "./lib/bindings/SavedSession";
   import TerminalPane from "./lib/TerminalPane.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
   import TrustDialog from "./lib/TrustDialog.svelte";
@@ -8,7 +28,8 @@
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
   import type { SshTarget } from "./lib/bindings/SshTarget";
 
-  type Tab = { key: number; title: string; ssh: SshTarget | null; pane?: TerminalPane };
+  type Saved = { id: number; label: string; secret?: string | null; remember?: boolean };
+  type Tab = { key: number; title: string; ssh: SshTarget | null; saved: Saved | null; pane?: TerminalPane };
 
   let info = $state<AppInfo | null>(null);
   let tabs = $state<Tab[]>([]);
@@ -18,11 +39,102 @@
   let connecting = $state(false);
   let trustPrompt = $state<HostKeyPrompt | null>(null);
 
-  function newTab(ssh: SshTarget | null = null) {
+  function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
     const key = ++counter;
-    tabs.push({ key, title: ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`, ssh });
+    const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
+    tabs.push({ key, title, ssh, saved });
     activeKey = key;
   }
+
+  // ---- saved sessions ----
+  let library = $state<LibraryView>({ folders: [], sessions: [] });
+  let query = $state("");
+  let notice = $state<string | null>(null);
+  let sidebarOpen = $state(readSidebarPref());
+  let editing_session = $state<{ session: SavedSession | null; folderId: number | null } | null>(null);
+  let dialogError = $state<string | null>(null);
+  let passwordFor = $state<SavedSession | null>(null);
+
+  function readSidebarPref() {
+    try {
+      return localStorage.getItem("quay.sidebar") !== "closed";
+    } catch {
+      return true;
+    }
+  }
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    try {
+      localStorage.setItem("quay.sidebar", sidebarOpen ? "open" : "closed");
+    } catch {
+      /* preference is optional */
+    }
+  }
+  function say(msg: string) {
+    notice = msg;
+    setTimeout(() => notice === msg && (notice = null), 6000);
+  }
+  async function refresh() {
+    try {
+      library = await libraryLoad(query.trim() || undefined);
+    } catch (e) {
+      say(`${e}`);
+    }
+  }
+  // Re-run the search shortly after typing stops.
+  let searchTimer: ReturnType<typeof setTimeout>;
+  $effect(() => {
+    query;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(refresh, 150);
+    return () => clearTimeout(searchTimer);
+  });
+
+  function connectSaved(s: SavedSession, secret: string | null = null, remember = false) {
+    if (s.auth === "password" && !s.has_secret && secret === null) {
+      passwordFor = s;
+      return;
+    }
+    newTab(null, { id: s.id, label: s.name, secret, remember });
+  }
+
+  async function submitSession(r: SessionResult) {
+    dialogError = null;
+    try {
+      const saved = await sessionSave(editing_session?.session?.id ?? null, r.input, r.secret);
+      editing_session = null;
+      await refresh();
+      if (r.connect) connectSaved(saved, r.transient);
+    } catch (e) {
+      dialogError = `${e}`;
+      await refresh();
+    }
+  }
+  async function removeSession(s: SavedSession) {
+    try {
+      await sessionDelete(s.id);
+      await refresh();
+    } catch (e) {
+      say(`${e}`);
+    }
+  }
+  async function doImport() {
+    try {
+      const r = await importSshConfig();
+      say(r.added === 0 && r.skipped === 0 ? "No hosts found in ~/.ssh/config." : `Imported ${r.added} host(s), ${r.skipped} already saved.`);
+      await refresh();
+    } catch (e) {
+      say(`${e}`);
+    }
+  }
+  const folderAction = (run: () => Promise<unknown>) => async () => {
+    try {
+      await run();
+      await refresh();
+    } catch (e) {
+      say(`${e}`);
+    }
+  };
 
   function connectSsh(target: SshTarget) {
     connecting = false;
@@ -45,6 +157,7 @@
   onMount(() => {
     getAppInfo().then((i) => (info = i));
     newTab();
+    refresh();
     const unlisten = [
       onSessionExit(({ id, reason }) => {
         const tab = tabs.find((t) => t.pane?.sessionId() === id);
@@ -60,6 +173,7 @@
 
 <main>
   <nav>
+    <button class="add" title="Toggle sessions sidebar" aria-label="Toggle sidebar" onclick={toggleSidebar}>☰</button>
     {#each tabs as tab (tab.key)}
       <div class="tab" class:active={tab.key === activeKey}>
         {#if editing === tab.key}
@@ -82,11 +196,59 @@
     <button class="add ssh" title="New SSH connection" onclick={() => (connecting = true)}>SSH</button>
     <span class="ver">{info ? `${info.name} v${info.version}` : ""}</span>
   </nav>
-  <div class="panes">
-    {#each tabs as tab (tab.key)}
-      <TerminalPane bind:this={tab.pane} active={tab.key === activeKey} ssh={tab.ssh} />
-    {/each}
+  <div class="body">
+    {#if sidebarOpen}
+      <Sidebar
+        {library}
+        bind:query
+        {notice}
+        onconnect={(s) => connectSaved(s)}
+        onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
+        onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
+        ondelete={removeSession}
+        onimport={doImport}
+        onnewfolder={(name, parentId) => folderAction(() => folderCreate(name, parentId))()}
+        onrenamefolder={(id, name) => folderAction(() => folderRename(id, name))()}
+        ondeletefolder={(id) => folderAction(() => folderDelete(id))()}
+        onmovesession={(id, folderId) => folderAction(() => sessionMove(id, folderId))()}
+        onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
+      />
+    {/if}
+    <div class="panes">
+      {#each tabs as tab (tab.key)}
+        <TerminalPane
+          bind:this={tab.pane}
+          active={tab.key === activeKey}
+          ssh={tab.ssh}
+          saved={tab.saved}
+          onconnected={tab.saved?.remember ? refresh : undefined}
+        />
+      {/each}
+    </div>
   </div>
+  {#if editing_session}
+    {#key editing_session}
+      <SessionDialog
+        session={editing_session.session}
+        defaultFolderId={editing_session.folderId}
+        folders={library.folders}
+        error={dialogError}
+        onsubmit={submitSession}
+        oncancel={() => (editing_session = null)}
+      />
+    {/key}
+  {/if}
+  {#if passwordFor}
+    <PasswordPrompt
+      title={`${passwordFor.user}@${passwordFor.host}`}
+      oncancel={() => (passwordFor = null)}
+      onsubmit={(pw, remember) => {
+        const s = passwordFor!;
+        passwordFor = null;
+        connectSaved(s, pw, remember);
+      }}
+    />
+  {/if}
   {#if connecting}
     <ConnectDialog onconnect={connectSsh} oncancel={() => (connecting = false)} />
   {/if}
@@ -153,9 +315,15 @@
     padding-right: 6px;
     opacity: 0.5;
   }
+  .body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
   .panes {
     position: relative;
     flex: 1;
+    min-width: 0;
     min-height: 0;
   }
 </style>

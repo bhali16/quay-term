@@ -1,3 +1,5 @@
+mod library;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{mpsc, Mutex};
@@ -5,9 +7,13 @@ use std::time::Duration;
 
 use quay_core::{AppInfo, HostKeyPrompt, Session, SessionExit, SshTarget, TermSize};
 use quay_pty::{PtySession, SpawnOptions};
+use quay_sessions::{Folder, SavedSession, SessionInput};
 use quay_ssh::{ConnectOptions, SshSession};
+use quay_vault::KeychainStore;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use library::{ImportResult, Library, LibraryView, SecretUpdate};
 
 /// How long the user has to answer a host-key prompt.
 const TRUST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -77,6 +83,38 @@ async fn open_ssh_session(
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
+    start_ssh(app, &sessions, &prompts, target, cols, rows, on_output).await
+}
+
+/// Connect to a saved session. The stored secret is read from the keychain
+/// here and never reaches the webview; `secret` is one the user just typed.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn open_saved_session(
+    app: AppHandle,
+    sessions: State<'_, Sessions>,
+    prompts: State<'_, Prompts>,
+    library: State<'_, Library>,
+    id: i64,
+    secret: Option<String>,
+    remember: bool,
+    cols: u16,
+    rows: u16,
+    on_output: Channel<InvokeResponseBody>,
+) -> Result<u32, String> {
+    let target = library.target_for(id, secret, remember)?;
+    start_ssh(app, &sessions, &prompts, target, cols, rows, on_output).await
+}
+
+async fn start_ssh(
+    app: AppHandle,
+    sessions: &Sessions,
+    prompts: &Prompts,
+    target: SshTarget,
+    cols: u16,
+    rows: u16,
+    on_output: Channel<InvokeResponseBody>,
+) -> Result<u32, String> {
     let id = sessions.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let host = target.host.clone();
     let port = target.port;
@@ -119,6 +157,68 @@ async fn open_ssh_session(
     Ok(id)
 }
 
+#[tauri::command]
+fn library_load(library: State<'_, Library>, query: Option<String>) -> Result<LibraryView, String> {
+    library.load(query.as_deref().filter(|q| !q.trim().is_empty()))
+}
+
+#[tauri::command]
+fn session_save(
+    library: State<'_, Library>,
+    id: Option<i64>,
+    input: SessionInput,
+    secret: SecretUpdate,
+) -> Result<SavedSession, String> {
+    library.save(id, &input, secret)
+}
+
+#[tauri::command]
+fn session_delete(library: State<'_, Library>, id: i64) -> Result<(), String> {
+    library.delete(id)
+}
+
+#[tauri::command]
+fn folder_create(
+    library: State<'_, Library>,
+    name: String,
+    parent_id: Option<i64>,
+) -> Result<Folder, String> {
+    library.create_folder(&name, parent_id)
+}
+
+#[tauri::command]
+fn folder_rename(library: State<'_, Library>, id: i64, name: String) -> Result<(), String> {
+    library.rename_folder(id, &name)
+}
+
+#[tauri::command]
+fn session_move(
+    library: State<'_, Library>,
+    id: i64,
+    folder_id: Option<i64>,
+) -> Result<(), String> {
+    library.move_session(id, folder_id)
+}
+
+#[tauri::command]
+fn folder_move(library: State<'_, Library>, id: i64, parent_id: Option<i64>) -> Result<(), String> {
+    library.move_folder(id, parent_id)
+}
+
+#[tauri::command]
+fn folder_delete(library: State<'_, Library>, id: i64) -> Result<(), String> {
+    library.delete_folder(id)
+}
+
+/// Import hosts from `~/.ssh/config`.
+#[tauri::command]
+fn import_ssh_config(library: State<'_, Library>) -> Result<ImportResult, String> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .ok_or("Could not find your home directory.")?;
+    library.import_ssh_config(&std::path::Path::new(&home).join(".ssh").join("config"))
+}
+
 /// The user's answer to an `ssh-host-key-prompt` event.
 #[tauri::command]
 fn ssh_trust_response(prompts: State<'_, Prompts>, prompt_id: u32, trust: bool) {
@@ -155,11 +255,27 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Sessions::default())
         .manage(Prompts::default())
+        .setup(|app| {
+            let dir = app.path().app_data_dir()?;
+            let library = Library::open(&dir.join("sessions.db"), Box::new(KeychainStore::new()))?;
+            app.manage(library);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_app_info,
             open_local_session,
             open_ssh_session,
             ssh_trust_response,
+            open_saved_session,
+            library_load,
+            session_save,
+            session_delete,
+            folder_create,
+            folder_rename,
+            folder_delete,
+            session_move,
+            folder_move,
+            import_ssh_config,
             session_write,
             session_resize,
             session_close
