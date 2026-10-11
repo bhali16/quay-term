@@ -14,3 +14,4 @@ workspace = true
 [dependencies]
 quay-core.workspace = true
 thiserror.workspace = true
+portable-pty.workspace = true
