@@ -301,7 +301,8 @@
   .tools {
     display: flex;
     gap: 4px;
-    padding: 0 6px 6px;
+    padding: 0 6px 8px;
+    border-bottom: 1px solid var(--border);
   }
   .tools button {
     flex: 1;
@@ -342,7 +343,7 @@
   .list {
     flex: 1;
     overflow: auto;
-    padding-bottom: 8px;
+    padding: 6px 0 8px;
   }
   .item {
     display: flex;
