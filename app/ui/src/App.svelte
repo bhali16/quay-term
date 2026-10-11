@@ -237,7 +237,7 @@
     {#if activeTab && (activeTab.ssh || activeTab.saved)}
       <button class="add ssh" class:on={activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>Files</button>
     {/if}
-    <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} />Settings</button>
+    <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
   </nav>
   <div class="body">
       <Sidebar
@@ -367,14 +367,14 @@
   .settings {
     display: flex;
     align-items: center;
-    gap: 6px;
     margin: 0 6px 4px auto;
-    padding: 5px 10px;
-    border: 1px solid var(--border);
+    padding: 5px 8px;
     border-radius: 6px;
     cursor: pointer;
+    opacity: 0.55;
   }
   .settings:hover {
+    opacity: 1;
     background: var(--hover);
   }
   .body {
