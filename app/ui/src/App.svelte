@@ -28,7 +28,7 @@
   import Icon from "./lib/Icon.svelte";
   import SettingsDialog from "./lib/SettingsDialog.svelte";
   import { settings } from "./lib/settings.svelte";
-  import { actionFor, type Action } from "./lib/keys";
+  import { actionFor, isMac, type Action } from "./lib/keys";
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
   import type { SshTarget } from "./lib/bindings/SshTarget";
@@ -213,7 +213,7 @@
 <svelte:window {onkeydown} />
 
 <main>
-  <nav>
+  <nav data-tauri-drag-region class:mac={isMac}>
     {#each tabs as tab (tab.key)}
       <div class="tab" class:active={tab.key === activeKey}>
         {#if editing === tab.key}
@@ -246,6 +246,8 @@
         bind:query
         {notice}
         oncollapse={toggleSidebar}
+        openIds={tabs.flatMap((t) => (t.saved ? [t.saved.id] : []))}
+        activeId={activeTab?.saved?.id ?? null}
         version={info ? `${info.name} v${info.version}` : ""}
         onconnect={(s) => connectSaved(s)}
         onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
@@ -320,19 +322,29 @@
   nav {
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding: 4px 6px 0;
+    gap: 4px;
+    height: 40px;
+    padding: 0 8px;
     background: var(--bg-deep);
+    border-bottom: 1px solid var(--border);
     font-size: 13px;
+  }
+  /* macOS draws the traffic lights over the top-left of the window (overlay title bar). */
+  nav.mac {
+    padding-left: 82px;
   }
   .tab {
     display: flex;
     align-items: center;
-    border-radius: 6px 6px 0 0;
-    background: var(--bg-alt);
+    border-radius: 7px;
+    border: 1px solid transparent;
+  }
+  .tab:hover {
+    background: var(--hover);
   }
   .tab.active {
     background: var(--surface);
+    border-color: var(--border);
   }
   button,
   input {
@@ -367,7 +379,7 @@
   .settings {
     display: flex;
     align-items: center;
-    margin: 0 6px 4px auto;
+    margin: 0 0 0 auto;
     padding: 5px 8px;
     border-radius: 6px;
     cursor: pointer;

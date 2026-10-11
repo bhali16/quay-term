@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "title": "Quay Term", "label": "main", "width": 1100, "height": 720, "minWidth": 600, "minHeight": 400 }
+      { "title": "Quay Term", "label": "main", "titleBarStyle": "Overlay", "hiddenTitle": true, "width": 1100, "height": 720, "minWidth": 600, "minHeight": 400 }
     ],
     "security": { "csp": null }
   },

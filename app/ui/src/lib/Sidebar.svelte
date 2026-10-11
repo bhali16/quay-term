@@ -11,6 +11,8 @@
     notice = null,
     version = "",
     railOnly = false,
+    openIds = [],
+    activeId = null,
     oncollapse,
     onconnect,
     onedit,
@@ -28,6 +30,9 @@
     notice?: string | null;
     version?: string;
     railOnly?: boolean;
+    /** Saved-session ids that have a tab open, and the one in the front tab. */
+    openIds?: number[];
+    activeId?: number | null;
     oncollapse: () => void;
     onconnect: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
@@ -50,6 +55,9 @@
 
   const searching = $derived(query.trim() !== "");
   const childrenOf = (parent: number | null) => library.folders.filter((f) => f.parent_id === parent);
+  /** Sessions in a folder and all of its subfolders. */
+  const countIn = (folder: number): number =>
+    sessionsIn(folder).length + childrenOf(folder).reduce((n, f) => n + countIn(f.id), 0);
   const sessionsIn = (folder: number | null) => library.sessions.filter((s) => s.folder_id === folder);
 
   function startRename(id: number, current: string) {
@@ -160,7 +168,7 @@
 {/snippet}
 
 {#snippet sessionRow(s: SavedSession)}
-  <div class="item session" data-drop={s.folder_id ?? "root"}>
+  <div class="item session" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"}>
     <button
       class="main"
       title={`${s.user}@${s.host}:${s.port}`}
@@ -171,6 +179,7 @@
       <span class="sicon" style:--c={s.color ?? "var(--accent)"}><Icon name="terminal" size={13} /></span>
       <span class="name">{s.name}</span>
       {#each s.tags as t, i (i)}<span class="tag">{t}</span>{/each}
+      {#if openIds.includes(s.id)}<span class="live" title="Open in a tab"></span>{/if}
     </button>
     <span class="acts">
       <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
@@ -199,6 +208,7 @@
           <span class="caret"><Icon name={collapsed[f.id] ? "chevron-right" : "chevron-down"} size={13} /></span>
           <span class="ficon"><Icon name={collapsed[f.id] ? "folder" : "folder-open"} size={17} tint /></span>
           <span class="name">{f.name}</span>
+          <span class="count" title="Sessions in this folder">{countIn(f.id)}</span>
         </button>
         <span class="acts">
           <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
@@ -232,7 +242,7 @@
 {:else}
 <aside class:dragging={drag !== null}>
   <div class="bar">
-    <input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" />
+    <div class="searchbox"><Icon name="search" size={14} /><input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" /></div>
   </div>
   <div class="tools">
     <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={14} />Session</button>
@@ -282,15 +292,27 @@
     gap: 4px;
     padding: 6px;
   }
+  .searchbox {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-deep);
+    opacity: 0.9;
+  }
   .search {
     flex: 1;
     min-width: 0;
-    padding: 5px 8px;
+    padding: 6px 0;
     font: inherit;
     color: inherit;
-    border: 1px solid var(--hover);
-    border-radius: 5px;
-    background: var(--bg-deep);
+    border: 0;
+    outline: 0;
+    background: none;
   }
   button {
     font: inherit;
@@ -356,6 +378,30 @@
   }
   .item:hover {
     background: var(--hover);
+  }
+  .item.current {
+    background: var(--hover);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .live {
+    width: 7px;
+    height: 7px;
+    margin-left: auto;
+    flex: none;
+    border-radius: 50%;
+    background: #2f9e6b;
+  }
+  .count {
+    margin-left: auto;
+    padding: 0 6px;
+    border-radius: 5px;
+    background: var(--bg-deep);
+    font-size: 11px;
+    opacity: 0.7;
+  }
+  .item:hover .count,
+  .item:focus-within .count {
+    display: none;
   }
   .sep {
     height: 1px;
