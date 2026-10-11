@@ -279,8 +279,8 @@
     min-width: 280px;
     display: flex;
     flex-direction: column;
-    background: #1b1c21;
-    border-left: 1px solid #2b2d36;
+    background: var(--bg-alt);
+    border-left: 1px solid var(--surface);
     font-size: 12.5px;
   }
   aside.dropping {
@@ -306,7 +306,7 @@
     border-radius: 4px;
   }
   button:hover:not(:disabled) {
-    background: #2b2d36;
+    background: var(--surface);
   }
   button:disabled {
     opacity: 0.35;
@@ -321,13 +321,13 @@
   .name-input {
     flex: 1;
     min-width: 0;
-    background: #111;
-    border: 1px solid #2b2d36;
+    background: var(--input);
+    border: 1px solid var(--surface);
     border-radius: 4px;
     padding: 3px 6px;
   }
   .btn {
-    background: #2b2d36;
+    background: var(--surface);
   }
   .msg {
     margin: 8px 10px;
@@ -354,7 +354,7 @@
     padding: 2px 8px;
   }
   .row:hover {
-    background: #22232a;
+    background: var(--bg-alt);
   }
   .name {
     flex: 1;
@@ -389,7 +389,7 @@
     opacity: 0.55;
   }
   .transfers {
-    border-top: 1px solid #2b2d36;
+    border-top: 1px solid var(--surface);
     max-height: 160px;
     overflow-y: auto;
     padding: 4px 8px;

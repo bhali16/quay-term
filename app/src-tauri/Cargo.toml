@@ -27,6 +27,8 @@ quay-vault.workspace = true
 quay-sessions.workspace = true
 quay-config.workspace = true
 tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+log = "0.4"
 
 [lib]
 name = "quay_app"

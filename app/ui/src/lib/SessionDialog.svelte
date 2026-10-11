@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import KeyFileField from "./KeyFileField.svelte";
   import { focus } from "./focus";
   import type { AuthKind } from "./bindings/AuthKind";
   import type { Folder } from "./bindings/Folder";
@@ -32,7 +33,7 @@
     oncancel: () => void;
   } = $props();
 
-  const swatches = ["#3b6fd8", "#2f9e6b", "#d98e04", "#d9534f", "#8e5bd9", "#6b7280"];
+  const swatches = ["var(--accent)", "#2f9e6b", "#d98e04", "#d9534f", "#8e5bd9", "#6b7280"];
 
   // Fields start from the session being edited; the dialog is remounted per use.
   const s = untrackedSession();
@@ -111,7 +112,7 @@
       </select>
     </label>
     {#if auth === "key"}
-      <label>Key file <input bind:value={keyPath} /></label>
+      <KeyFileField bind:value={keyPath} />
     {/if}
     {#if auth !== "agent"}
       <label>
@@ -172,7 +173,7 @@
   }
   .swatches .none {
     background: none;
-    border-color: #44464f;
+    border-color: var(--border);
   }
   .swatches .sel {
     border-color: #fff;

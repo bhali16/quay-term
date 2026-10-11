@@ -152,6 +152,8 @@ async fn start_ssh(
 ) -> Result<u32, String> {
     let id = sessions.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let (prompt_id, verify) = verifier(&app, prompts, &target.host, target.port);
+    let dest = format!("{}@{}:{}", target.user, target.host, target.port);
+    log::info!("ssh connect {dest}");
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         SshSession::connect(
@@ -170,7 +172,11 @@ async fn start_ssh(
     .map_err(err)?;
     prompts.waiting.lock().unwrap().remove(&prompt_id);
 
-    let session = result.map_err(err)?;
+    let session = result.map_err(|e| {
+        log::warn!("ssh connect {dest} failed: {e}");
+        err(e)
+    })?;
+    log::info!("ssh connected {dest} (session {id})");
     sessions.map.lock().unwrap().insert(id, Box::new(session));
     Ok(id)
 }
@@ -269,8 +275,67 @@ fn session_close(state: State<'_, Sessions>, id: u32) {
     state.map.lock().unwrap().remove(&id);
 }
 
+/// Where settings.json lives, kept in managed state.
+struct SettingsPath(std::path::PathBuf);
+
+#[tauri::command]
+fn settings_load(path: State<'_, SettingsPath>) -> quay_config::Settings {
+    quay_config::Settings::load(&path.0)
+}
+
+#[tauri::command]
+fn settings_save(
+    path: State<'_, SettingsPath>,
+    settings: quay_config::Settings,
+) -> Result<quay_config::Settings, String> {
+    let settings = settings.sanitized();
+    settings.save(&path.0).map_err(err)?;
+    Ok(settings)
+}
+
+/// Facts worth pasting into a bug report. Never includes secrets or host names.
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+struct Diagnostics {
+    version: String,
+    os: String,
+    arch: String,
+    settings_file: String,
+    log_dir: String,
+}
+
+#[tauri::command]
+fn get_diagnostics(app: AppHandle, path: State<'_, SettingsPath>) -> Diagnostics {
+    Diagnostics {
+        version: env!("CARGO_PKG_VERSION").into(),
+        os: std::env::consts::OS.into(),
+        arch: std::env::consts::ARCH.into(),
+        settings_file: path.0.display().to_string(),
+        log_dir: app
+            .path()
+            .app_log_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default(),
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("quay-term".into()),
+                    },
+                ))
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ))
+                .max_file_size(1_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .manage(Sessions::default())
         .manage(Prompts::default())
@@ -279,10 +344,19 @@ pub fn run() {
             let dir = app.path().app_data_dir()?;
             let library = Library::open(&dir.join("sessions.db"), Box::new(KeychainStore::new()))?;
             app.manage(library);
+            app.manage(SettingsPath(dir.join("settings.json")));
+            log::info!(
+                "quay-term {} starting on {}",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS
+            );
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_app_info,
+            settings_load,
+            settings_save,
+            get_diagnostics,
             open_local_session,
             open_ssh_session,
             ssh_trust_response,

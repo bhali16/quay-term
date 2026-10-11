@@ -12,6 +12,8 @@
     sessionClose,
   } from "./ipc";
   import type { SshTarget } from "./bindings/SshTarget";
+  import { settings } from "./settings.svelte";
+  import { actionFor } from "./keys";
 
   // `ssh` is kept in memory so Enter can reconnect after a drop; nothing is persisted.
   // A saved session connects by id; its stored secret never leaves Rust.
@@ -62,6 +64,19 @@
       });
   }
 
+  // Live-apply settings; a font change alters the cell size, so refit afterwards.
+  $effect(() => {
+    const v = settings.value;
+    const theme = settings.theme.term;
+    if (!term) return;
+    term.options.fontFamily = v.font_family;
+    term.options.fontSize = v.font_size;
+    term.options.cursorBlink = v.cursor_blink;
+    term.options.scrollback = v.scrollback;
+    term.options.theme = theme;
+    if (active) requestAnimationFrame(() => fit.fit());
+  });
+
   // Refit and focus when this tab becomes visible.
   $effect(() => {
     if (active && fit) {
@@ -73,7 +88,16 @@
   });
 
   onMount(() => {
-    term = new Terminal({ fontSize: 14, cursorBlink: true });
+    const v = settings.value;
+    term = new Terminal({
+      fontFamily: v.font_family,
+      fontSize: v.font_size,
+      cursorBlink: v.cursor_blink,
+      scrollback: v.scrollback,
+      theme: settings.theme.term,
+    });
+    // App shortcuts must not reach the shell; returning false stops xterm handling the key.
+    term.attachCustomKeyEventHandler((e) => !(e.type === "keydown" && actionFor(e, settings.bindings)));
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);

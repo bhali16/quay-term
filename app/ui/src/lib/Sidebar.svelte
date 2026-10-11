@@ -1,5 +1,6 @@
 <script lang="ts">
   import { focus } from "./focus";
+  import Icon from "./Icon.svelte";
   import type { Folder } from "./bindings/Folder";
   import type { LibraryView } from "./bindings/LibraryView";
   import type { SavedSession } from "./bindings/SavedSession";
@@ -7,7 +8,11 @@
   let {
     library,
     query = $bindable(""),
-    notice = null,
+    version = "",
+    railOnly = false,
+    openIds = [],
+    activeId = null,
+    oncollapse,
     onconnect,
     onedit,
     onnew,
@@ -21,7 +26,12 @@
   }: {
     library: LibraryView;
     query: string;
-    notice?: string | null;
+    version?: string;
+    railOnly?: boolean;
+    /** Saved-session ids that have a tab open, and the one in the front tab. */
+    openIds?: number[];
+    activeId?: number | null;
+    oncollapse: () => void;
     onconnect: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
     /** `folderId` preselects a folder in the editor. */
@@ -43,6 +53,9 @@
 
   const searching = $derived(query.trim() !== "");
   const childrenOf = (parent: number | null) => library.folders.filter((f) => f.parent_id === parent);
+  /** Sessions in a folder and all of its subfolders. */
+  const countIn = (folder: number): number =>
+    sessionsIn(folder).length + childrenOf(folder).reduce((n, f) => n + countIn(f.id), 0);
   const sessionsIn = (folder: number | null) => library.sessions.filter((s) => s.folder_id === folder);
 
   function startRename(id: number, current: string) {
@@ -153,7 +166,7 @@
 {/snippet}
 
 {#snippet sessionRow(s: SavedSession)}
-  <div class="item session" data-drop={s.folder_id ?? "root"}>
+  <div class="item session" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"}>
     <button
       class="main"
       title={`${s.user}@${s.host}:${s.port}`}
@@ -161,20 +174,21 @@
       ondblclick={() => onconnect(s)}
       onkeydown={(e) => e.key === "Enter" && onconnect(s)}
     >
-      <span class="dot" style:background={s.color ?? "transparent"}></span>
+      <span class="sicon" style:--c={s.color ?? "var(--accent)"}><Icon name="terminal" size={10} /></span>
       <span class="name">{s.name}</span>
       {#each s.tags as t, i (i)}<span class="tag">{t}</span>{/each}
+      {#if openIds.includes(s.id)}<span class="live" title="Open in a tab"></span>{/if}
     </button>
     <span class="acts">
-      <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}>▶</button>
-      <button title="Edit" aria-label={`Edit ${s.name}`} onclick={() => onedit(s)}>✎</button>
-      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => confirmDelete(s)}>×</button>
+      <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
+      <button title="Edit" aria-label={`Edit ${s.name}`} onclick={() => onedit(s)}><Icon name="pencil" size={13} /></button>
+      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => confirmDelete(s)}><Icon name="x" size={14} /></button>
     </span>
   </div>
 {/snippet}
 
 {#snippet tree(parent: number | null)}
-  {#each childrenOf(parent) as f (f.id)}
+  {#each childrenOf(parent) as f, i (f.id)}
     <div class="item folder" class:drop={dropTarget === f.id} data-drop={f.id}>
       {#if renaming === f.id}
         <input
@@ -189,17 +203,19 @@
           onpointerdown={(e) => pressed(e, { kind: "folder", id: f.id, label: f.name })}
           onclick={() => !justDragged && (collapsed[f.id] = !collapsed[f.id])}
         >
-          <span class="caret">{collapsed[f.id] ? "▸" : "▾"}</span>
+          <span class="caret"><Icon name={collapsed[f.id] ? "chevron-right" : "chevron-down"} size={13} /></span>
+          <span class="ficon"><Icon name={collapsed[f.id] ? "folder" : "folder-open"} size={17} tint /></span>
           <span class="name">{f.name}</span>
+          <span class="count" title="Sessions in this folder">{countIn(f.id)}</span>
         </button>
         <span class="acts">
-          <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}>+</button>
-          <button title="New subfolder" aria-label={`New subfolder in ${f.name}`} onclick={() => startCreate(f.id)}>🗀</button>
-          <button title="Rename" aria-label={`Rename ${f.name}`} onclick={() => startRename(f.id, f.name)}>✎</button>
+          <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
+          <button title="New subfolder" aria-label={`New subfolder in ${f.name}`} onclick={() => startCreate(f.id)}><Icon name="folder-plus" size={14} /></button>
+          <button title="Rename" aria-label={`Rename ${f.name}`} onclick={() => startRename(f.id, f.name)}><Icon name="pencil" size={13} /></button>
           <button
             title="Delete folder"
             aria-label={`Delete folder ${f.name}`}
-            onclick={() => confirm(`Delete folder "${f.name}"? Its sessions and subfolders are kept.`) && ondeletefolder(f.id)}>×</button>
+            onclick={() => confirm(`Delete folder "${f.name}"? Its sessions and subfolders are kept.`) && ondeletefolder(f.id)}><Icon name="x" size={14} /></button>
         </span>
       {/if}
     </div>
@@ -210,17 +226,33 @@
         {#each sessionsIn(f.id) as s (s.id)}{@render sessionRow(s)}{/each}
       </div>
     {/if}
+    {#if i < childrenOf(parent).length - 1}<div class="sep"></div>{/if}
   {/each}
 {/snippet}
 
+{#if railOnly}
+  <aside class="rail">
+    <div class="railtools">
+      <button title="Search sessions" aria-label="Search sessions" onclick={oncollapse}><Icon name="search" size={17} /></button>
+      <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={17} /></button>
+      <button title="New folder" aria-label="New folder" onclick={() => (oncollapse(), startCreate(null))}><Icon name="folder-plus" size={17} /></button>
+      <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={17} /></button>
+    </div>
+    <div class="spacer"></div>
+    <div class="footer">
+      <button title="Show sidebar" aria-label="Show sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
+    </div>
+  </aside>
+{:else}
 <aside class:dragging={drag !== null}>
   <div class="bar">
-    <input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" />
-    <button title="New session" aria-label="New session" onclick={() => onnew(null)}>+</button>
-    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}>🗀</button>
-    <button title="Import from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}>⇩</button>
+    <div class="searchbox"><Icon name="search" size={14} /><input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" /></div>
   </div>
-  {#if notice}<p class="notice">{notice}</p>{/if}
+  <div class="tools">
+    <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={14} />Session</button>
+    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="folder-plus" size={15} />Folder</button>
+    <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={14} />Import</button>
+  </div>
   <div class="list" class:drop={dropTarget === "root"} data-drop="root">
     {#if creating?.parent === null}{@render folderInput()}{/if}
     {#if searching}
@@ -229,13 +261,19 @@
       {/each}
     {:else}
       {@render tree(null)}
+      {#if childrenOf(null).length > 0 && sessionsIn(null).length > 0}<div class="sep"></div>{/if}
       {#each sessionsIn(null) as s (s.id)}{@render sessionRow(s)}{/each}
       {#if library.sessions.length === 0 && library.folders.length === 0}
         <p class="empty">No saved sessions yet. Press + to add one, or import your ~/.ssh/config.</p>
       {/if}
     {/if}
   </div>
+  <div class="footer">
+    <button title="Hide sidebar" aria-label="Hide sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
+    <span class="version">{version}</span>
+  </div>
 </aside>
+{/if}
 
 {#if drag}
   <div class="ghost" style:left={`${dragPos.x + 12}px`} style:top={`${dragPos.y + 12}px`}>{drag.label}</div>
@@ -247,8 +285,8 @@
     flex-direction: column;
     width: 250px;
     flex: none;
-    background: #1a1b20;
-    border-right: 1px solid #2b2d36;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--surface);
     font-size: 13px;
     min-height: 0;
   }
@@ -257,15 +295,27 @@
     gap: 4px;
     padding: 6px;
   }
+  .searchbox {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-deep);
+    opacity: 0.9;
+  }
   .search {
     flex: 1;
     min-width: 0;
-    padding: 5px 8px;
+    padding: 6px 0;
     font: inherit;
     color: inherit;
-    border: 1px solid #33353e;
-    border-radius: 5px;
-    background: #111216;
+    border: 0;
+    outline: 0;
+    background: none;
   }
   button {
     font: inherit;
@@ -274,39 +324,95 @@
     border: 0;
     cursor: pointer;
   }
-  .bar button {
-    padding: 2px 6px;
-    opacity: 0.7;
+  .tools {
+    display: flex;
+    gap: 4px;
+    padding: 0 6px 8px;
+    border-bottom: 1px solid var(--border);
   }
-  .bar button:hover {
-    opacity: 1;
-  }
-  .notice {
-    margin: 0 8px 4px;
+  .tools button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 4px;
     font-size: 12px;
-    opacity: 0.8;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  .tools button:hover {
+    background: var(--hover);
+  }
+  .ficon,
+  .sicon {
+    display: flex;
+    flex: none;
+  }
+  .ficon {
+    color: var(--accent);
+  }
+  .sicon {
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 5px;
+    color: #fff;
+    background: var(--c);
   }
   .list {
     flex: 1;
     overflow: auto;
-    padding-bottom: 8px;
+    padding: 6px 0 8px;
   }
   .item {
     display: flex;
     align-items: center;
+    min-height: 30px;
+    margin: 1px 6px;
     padding-right: 4px;
-    border-radius: 4px;
+    border-radius: 6px;
   }
   .item:hover {
-    background: #25262d;
+    background: var(--hover);
+  }
+  .item.current {
+    background: var(--hover);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .live {
+    width: 7px;
+    height: 7px;
+    margin-left: auto;
+    flex: none;
+    border-radius: 50%;
+    background: #2f9e6b;
+  }
+  .count {
+    margin-left: auto;
+    padding: 0 6px;
+    border-radius: 5px;
+    background: var(--bg-deep);
+    font-size: 11px;
+    opacity: 0.7;
+  }
+  .item:hover .count,
+  .item:focus-within .count {
+    display: none;
+  }
+  .sep {
+    height: 1px;
+    margin: 6px 12px;
+    background: var(--border);
   }
   .main {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 4px;
+    gap: 8px;
+    padding: 5px 6px;
     text-align: left;
   }
   .name {
@@ -314,22 +420,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .dot {
-    width: 8px;
-    height: 8px;
-    flex: none;
-    border-radius: 50%;
-  }
   .tag {
     flex: none;
     padding: 0 5px;
     border-radius: 8px;
-    background: #33353e;
+    background: var(--hover);
     font-size: 11px;
     opacity: 0.8;
   }
   .caret {
-    width: 10px;
+    display: flex;
+    width: 13px;
+    margin-left: -2px;
     opacity: 0.6;
   }
   .acts {
@@ -341,7 +443,8 @@
     display: flex;
   }
   .acts button {
-    padding: 2px 5px;
+    display: flex;
+    padding: 3px 5px;
     opacity: 0.7;
   }
   .acts button:hover {
@@ -354,20 +457,22 @@
     padding: 2px 4px;
     font: inherit;
     color: inherit;
-    border: 1px solid #44464f;
-    background: #111;
+    border: 1px solid var(--border);
+    background: var(--input);
   }
   aside.dragging {
     user-select: none;
     cursor: grabbing;
   }
   .children {
-    padding-left: 12px;
+    margin-left: 18px;
+    padding-left: 2px;
+    border-left: 1px solid var(--border);
   }
   .item.drop,
   .children.drop {
     background: rgba(59, 111, 216, 0.25);
-    outline: 1px solid #3b6fd8;
+    outline: 1px solid var(--accent);
   }
   .list.drop {
     background: rgba(59, 111, 216, 0.12);
@@ -377,10 +482,54 @@
     z-index: 30;
     padding: 3px 8px;
     border-radius: 5px;
-    background: #3b6fd8;
+    background: var(--accent);
     font-size: 12px;
     pointer-events: none;
     opacity: 0.9;
+  }
+  .footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-top: 1px solid var(--surface);
+  }
+  aside.rail {
+    width: 40px;
+  }
+  .railtools {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 0;
+  }
+  .railtools button {
+    display: flex;
+    padding: 8px;
+    border-radius: 6px;
+    opacity: 0.7;
+  }
+  .railtools button:hover {
+    opacity: 1;
+    background: var(--hover);
+  }
+  .spacer {
+    flex: 1;
+  }
+  .version {
+    font-size: 11px;
+    opacity: 0.5;
+  }
+  .footer button {
+    display: flex;
+    padding: 4px 6px;
+    border-radius: 5px;
+    opacity: 0.7;
+  }
+  .footer button:hover {
+    opacity: 1;
+    background: var(--hover);
   }
   .empty {
     margin: 12px;

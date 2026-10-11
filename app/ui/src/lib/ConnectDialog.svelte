@@ -1,4 +1,5 @@
 <script lang="ts">
+  import KeyFileField from "./KeyFileField.svelte";
   import { focus } from "./focus";
   import type { SshTarget } from "./bindings/SshTarget";
 
@@ -48,7 +49,7 @@
     {#if method === "password"}
       <label>Password <input type="password" bind:value={password} autocomplete="current-password" /></label>
     {:else if method === "key"}
-      <label>Key file <input bind:value={keyPath} /></label>
+      <KeyFileField bind:value={keyPath} />
       <label>Passphrase (if any) <input type="password" bind:value={passphrase} /></label>
     {/if}
     <div class="actions">
@@ -74,7 +75,7 @@
     width: 340px;
     padding: 18px;
     border-radius: 10px;
-    background: #2b2d36;
+    background: var(--surface);
     font-size: 13px;
   }
   h2 {
@@ -101,9 +102,9 @@
     font: inherit;
     color: inherit;
     padding: 6px 8px;
-    border: 1px solid #44464f;
+    border: 1px solid var(--border);
     border-radius: 5px;
-    background: #1b1c21;
+    background: var(--bg-alt);
   }
   .actions {
     display: flex;
@@ -115,14 +116,14 @@
     font: inherit;
     color: inherit;
     padding: 6px 14px;
-    border: 1px solid #44464f;
+    border: 1px solid var(--border);
     border-radius: 5px;
     background: none;
     cursor: pointer;
   }
   .primary {
-    background: #3b6fd8;
-    border-color: #3b6fd8;
+    background: var(--accent);
+    border-color: var(--accent);
   }
   button:disabled {
     opacity: 0.5;

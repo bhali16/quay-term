@@ -1,0 +1,49 @@
+name: Release
+
+# Pushing a tag like v0.1.0 builds installers on all three OSes and attaches them
+# to a draft GitHub Release. Review the draft, then publish it by hand.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS (Apple silicon), os: macos-latest, args: "--target aarch64-apple-darwin", target: aarch64-apple-darwin }
+          - { name: macOS (Intel), os: macos-13, args: "--target x86_64-apple-darwin", target: x86_64-apple-darwin }
+          - { name: Linux, os: ubuntu-22.04, args: "", target: "" }
+          - { name: Windows, os: windows-latest, args: "", target: "" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: quay-term ${{ github.ref_name }}
+          releaseBody: See CHANGELOG.md for what changed. Installers are unsigned; see the README for first-run steps on macOS and Windows.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
