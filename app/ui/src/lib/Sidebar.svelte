@@ -9,6 +9,7 @@
     library,
     query = $bindable(""),
     notice = null,
+    version = "",
     onconnect,
     onedit,
     onnew,
@@ -23,6 +24,7 @@
     library: LibraryView;
     query: string;
     notice?: string | null;
+    version?: string;
     onconnect: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
     /** `folderId` preselects a folder in the editor. */
@@ -239,6 +241,7 @@
       {/if}
     {/if}
   </div>
+  {#if version}<div class="version">{version}</div>{/if}
 </aside>
 
 {#if drag}
@@ -404,6 +407,12 @@
     font-size: 12px;
     pointer-events: none;
     opacity: 0.9;
+  }
+  .version {
+    padding: 6px 10px;
+    border-top: 1px solid var(--surface);
+    font-size: 11px;
+    opacity: 0.5;
   }
   .empty {
     margin: 12px;

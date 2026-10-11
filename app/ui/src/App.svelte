@@ -239,7 +239,6 @@
       <button class="add ssh" class:on={activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>Files</button>
     {/if}
     <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} />Settings</button>
-    <span class="ver">{info ? `${info.name} v${info.version}` : ""}</span>
   </nav>
   <div class="body">
     {#if sidebarOpen}
@@ -247,6 +246,7 @@
         {library}
         bind:query
         {notice}
+        version={info ? `${info.name} v${info.version}` : ""}
         onconnect={(s) => connectSaved(s)}
         onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
         onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
@@ -377,10 +377,6 @@
   }
   .settings:hover {
     background: var(--hover);
-  }
-  .ver {
-    padding-right: 6px;
-    opacity: 0.5;
   }
   .body {
     display: flex;
