@@ -2,7 +2,7 @@
 
 Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Windows. Built with Rust and Tauri.
 
-> **Status:** early planning, pre-0.1.0. Nothing is usable yet.
+> **Status:** pre-0.1.0. Local terminals, SSH, saved sessions, SFTP, themes and shortcuts work; installers arrive with the first tagged release.
 
 ## Goals
 
