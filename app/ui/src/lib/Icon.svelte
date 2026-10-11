@@ -1,5 +1,5 @@
 <script lang="ts">
-  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left";
+  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left" | "palette" | "keyboard" | "info";
   let { name, size = 16 }: { name: Name; size?: number } = $props();
 
   const folder = "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z";
@@ -20,6 +20,9 @@
     "chevron-down": ["m6 9 6 6 6-6"],
     server: ["M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z", "M4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z", "M6 6h.01", "M6 18h.01"],
     "panel-left": ["M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z", "M9 3v18"],
+    palette: ["M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z", "M13.5 6.5h.01", "M17.5 10.5h.01", "M6.5 12.5h.01", "M8.5 7.5h.01"],
+    keyboard: ["M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z", "M6 9h.01", "M10 9h.01", "M14 9h.01", "M18 9h.01", "M8 15h8"],
+    info: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z", "M12 16v-4", "M12 8h.01"],
     terminal: ["m4 17 6-6-6-6", "M12 19h8"],
   };
 </script>

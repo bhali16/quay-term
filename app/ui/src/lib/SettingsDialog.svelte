@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import Icon, { type Name } from "./Icon.svelte";
   import { settings } from "./settings.svelte";
   import { themes } from "./themes";
   import { actionLabels, defaultBindings, describe, type Action } from "./keys";
@@ -13,11 +14,11 @@
   let diag = $state<Diagnostics | null>(null);
   let copied = $state(false);
   type Tab = "appearance" | "terminal" | "shortcuts" | "about";
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "appearance", label: "Appearance" },
-    { id: "terminal", label: "Terminal" },
-    { id: "shortcuts", label: "Shortcuts" },
-    { id: "about", label: "About" },
+  const tabs: { id: Tab; label: string; icon: Name }[] = [
+    { id: "appearance", icon: "palette", label: "Appearance" },
+    { id: "terminal", icon: "terminal", label: "Terminal" },
+    { id: "shortcuts", icon: "keyboard", label: "Shortcuts" },
+    { id: "about", icon: "info", label: "About" },
   ];
   let tab = $state<Tab>("appearance");
 
@@ -75,7 +76,7 @@
     <div class="layout">
       <div class="tabs" role="tablist">
         {#each tabs as t (t.id)}
-          <button role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}>{t.label}</button>
+          <button role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}><Icon name={t.icon} size={15} />{t.label}</button>
         {/each}
       </div>
       <div class="pane">
@@ -162,6 +163,9 @@
   .tabs button {
     font: inherit;
     color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     text-align: left;
     padding: 7px 10px;
     border: 0;
