@@ -25,6 +25,7 @@
   import FilePanel from "./lib/FilePanel.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
   import TrustDialog from "./lib/TrustDialog.svelte";
+  import Icon from "./lib/Icon.svelte";
   import SettingsDialog from "./lib/SettingsDialog.svelte";
   import { settings } from "./lib/settings.svelte";
   import { actionFor, type Action } from "./lib/keys";
@@ -237,7 +238,7 @@
     {#if activeTab && (activeTab.ssh || activeTab.saved)}
       <button class="add ssh" class:on={activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>Files</button>
     {/if}
-    <button class="add" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}>⚙</button>
+    <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} />Settings</button>
     <span class="ver">{info ? `${info.name} v${info.version}` : ""}</span>
   </nav>
   <div class="body">
@@ -364,8 +365,18 @@
   .ssh {
     font-size: 12px;
   }
-  .add[aria-label="Settings"] {
-    margin-left: auto;
+  .settings {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 6px 4px auto;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .settings:hover {
+    background: var(--hover);
   }
   .ver {
     padding-right: 6px;

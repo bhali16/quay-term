@@ -1,5 +1,6 @@
 <script lang="ts">
   import { focus } from "./focus";
+  import Icon from "./Icon.svelte";
   import type { Folder } from "./bindings/Folder";
   import type { LibraryView } from "./bindings/LibraryView";
   import type { SavedSession } from "./bindings/SavedSession";
@@ -161,14 +162,14 @@
       ondblclick={() => onconnect(s)}
       onkeydown={(e) => e.key === "Enter" && onconnect(s)}
     >
-      <span class="dot" style:background={s.color ?? "transparent"}></span>
+      <span class="sicon" style:color={s.color ?? "inherit"}><Icon name="server" size={15} /></span>
       <span class="name">{s.name}</span>
       {#each s.tags as t, i (i)}<span class="tag">{t}</span>{/each}
     </button>
     <span class="acts">
-      <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}>▶</button>
-      <button title="Edit" aria-label={`Edit ${s.name}`} onclick={() => onedit(s)}>✎</button>
-      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => confirmDelete(s)}>×</button>
+      <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
+      <button title="Edit" aria-label={`Edit ${s.name}`} onclick={() => onedit(s)}><Icon name="pencil" size={13} /></button>
+      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => confirmDelete(s)}><Icon name="x" size={14} /></button>
     </span>
   </div>
 {/snippet}
@@ -189,17 +190,18 @@
           onpointerdown={(e) => pressed(e, { kind: "folder", id: f.id, label: f.name })}
           onclick={() => !justDragged && (collapsed[f.id] = !collapsed[f.id])}
         >
-          <span class="caret">{collapsed[f.id] ? "▸" : "▾"}</span>
+          <span class="caret"><Icon name={collapsed[f.id] ? "chevron-right" : "chevron-down"} size={13} /></span>
+          <span class="ficon"><Icon name={collapsed[f.id] ? "folder" : "folder-open"} size={16} /></span>
           <span class="name">{f.name}</span>
         </button>
         <span class="acts">
-          <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}>+</button>
-          <button title="New subfolder" aria-label={`New subfolder in ${f.name}`} onclick={() => startCreate(f.id)}>🗀</button>
-          <button title="Rename" aria-label={`Rename ${f.name}`} onclick={() => startRename(f.id, f.name)}>✎</button>
+          <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
+          <button title="New subfolder" aria-label={`New subfolder in ${f.name}`} onclick={() => startCreate(f.id)}><Icon name="folder-plus" size={14} /></button>
+          <button title="Rename" aria-label={`Rename ${f.name}`} onclick={() => startRename(f.id, f.name)}><Icon name="pencil" size={13} /></button>
           <button
             title="Delete folder"
             aria-label={`Delete folder ${f.name}`}
-            onclick={() => confirm(`Delete folder "${f.name}"? Its sessions and subfolders are kept.`) && ondeletefolder(f.id)}>×</button>
+            onclick={() => confirm(`Delete folder "${f.name}"? Its sessions and subfolders are kept.`) && ondeletefolder(f.id)}><Icon name="x" size={14} /></button>
         </span>
       {/if}
     </div>
@@ -216,9 +218,11 @@
 <aside class:dragging={drag !== null}>
   <div class="bar">
     <input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" />
-    <button title="New session" aria-label="New session" onclick={() => onnew(null)}>+</button>
-    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}>🗀</button>
-    <button title="Import from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}>⇩</button>
+  </div>
+  <div class="tools">
+    <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={14} />Session</button>
+    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="folder-plus" size={15} />Folder</button>
+    <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={14} />Import</button>
   </div>
   {#if notice}<p class="notice">{notice}</p>{/if}
   <div class="list" class:drop={dropTarget === "root"} data-drop="root">
@@ -274,12 +278,35 @@
     border: 0;
     cursor: pointer;
   }
-  .bar button {
-    padding: 2px 6px;
-    opacity: 0.7;
+  .tools {
+    display: flex;
+    gap: 4px;
+    padding: 0 6px 6px;
   }
-  .bar button:hover {
-    opacity: 1;
+  .tools button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 4px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  .tools button:hover {
+    background: var(--hover);
+  }
+  .ficon,
+  .sicon {
+    display: flex;
+    flex: none;
+  }
+  .ficon {
+    color: #e0b04a;
+  }
+  .sicon {
+    opacity: 0.85;
   }
   .notice {
     margin: 0 8px 4px;
@@ -314,12 +341,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .dot {
-    width: 8px;
-    height: 8px;
-    flex: none;
-    border-radius: 50%;
-  }
   .tag {
     flex: none;
     padding: 0 5px;
@@ -329,7 +350,8 @@
     opacity: 0.8;
   }
   .caret {
-    width: 10px;
+    display: flex;
+    width: 13px;
     opacity: 0.6;
   }
   .acts {
@@ -341,7 +363,8 @@
     display: flex;
   }
   .acts button {
-    padding: 2px 5px;
+    display: flex;
+    padding: 3px 5px;
     opacity: 0.7;
   }
   .acts button:hover {
