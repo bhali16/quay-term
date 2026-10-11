@@ -84,10 +84,27 @@ impl PtySession {
             .openpty(pty_size(opts.size))
             .map_err(other)?;
 
+        // The default shell starts as a login shell, like Terminal.app and iTerm, so the
+        // user's profile (PATH, prompt, LS_COLORS) is loaded even when the app was
+        // launched from the Dock with a minimal environment.
+        let default = opts.program.is_none();
         let mut cmd = CommandBuilder::new(opts.program.unwrap_or_else(default_shell));
+        #[cfg(not(windows))]
+        if default && opts.args.is_empty() {
+            cmd.arg("-l");
+        }
+        let _ = default;
         cmd.args(&opts.args);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        // BSD/macOS `ls` only colors with this; harmless elsewhere.
+        if std::env::var_os("CLICOLOR").is_none() {
+            cmd.env("CLICOLOR", "1");
+        }
+        // Apps started from the Dock often lack a locale, which breaks UTF-8 text.
+        if std::env::var_os("LANG").is_none() && std::env::var_os("LC_ALL").is_none() {
+            cmd.env("LANG", "en_US.UTF-8");
+        }
         if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
             cmd.cwd(home);
         }
