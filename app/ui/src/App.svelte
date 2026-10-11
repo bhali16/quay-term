@@ -56,7 +56,9 @@
   // ---- saved sessions ----
   let library = $state<LibraryView>({ folders: [], sessions: [] });
   let query = $state("");
-  let notice = $state<string | null>(null);
+  type Toast = { id: number; kind: "info" | "success" | "error"; text: string };
+  let toasts = $state<Toast[]>([]);
+  let toastId = 0;
   let sidebarOpen = $state(readSidebarPref());
   let editing_session = $state<{ session: SavedSession | null; folderId: number | null } | null>(null);
   let dialogError = $state<string | null>(null);
@@ -77,15 +79,18 @@
       /* preference is optional */
     }
   }
-  function say(msg: string) {
-    notice = msg;
-    setTimeout(() => notice === msg && (notice = null), 6000);
+  function toast(text: string, kind: Toast["kind"] = "info") {
+    const id = ++toastId;
+    toasts.push({ id, kind, text });
+    setTimeout(() => dismiss(id), kind === "error" ? 8000 : 4500);
   }
+  const dismiss = (id: number) => (toasts = toasts.filter((t) => t.id !== id));
+  const say = (e: unknown) => toast(`${e}`, "error");
   async function refresh() {
     try {
       library = await libraryLoad(query.trim() || undefined);
     } catch (e) {
-      say(`${e}`);
+      say(e);
     }
   }
   // Re-run the search shortly after typing stops.
@@ -122,16 +127,18 @@
       await sessionDelete(s.id);
       await refresh();
     } catch (e) {
-      say(`${e}`);
+      say(e);
     }
   }
   async function doImport() {
     try {
       const r = await importSshConfig();
-      say(r.added === 0 && r.skipped === 0 ? "No hosts found in ~/.ssh/config." : `Imported ${r.added} host(s), ${r.skipped} already saved.`);
+      if (r.added === 0 && r.skipped === 0) toast("No hosts found in ~/.ssh/config.");
+      else if (r.added === 0) toast(`Nothing new to import: ${r.skipped} host(s) already saved.`);
+      else toast(`Imported ${r.added} host(s)${r.skipped ? `, ${r.skipped} already saved` : ""}.`, "success");
       await refresh();
     } catch (e) {
-      say(`${e}`);
+      say(e);
     }
   }
   const folderAction = (run: () => Promise<unknown>) => async () => {
@@ -139,7 +146,7 @@
       await run();
       await refresh();
     } catch (e) {
-      say(`${e}`);
+      say(e);
     }
   };
 
@@ -261,7 +268,6 @@
         railOnly={!sidebarOpen}
         {library}
         bind:query
-        {notice}
         oncollapse={toggleSidebar}
         openIds={tabs.flatMap((t) => (t.saved ? [t.saved.id] : []))}
         activeId={activeTab?.saved?.id ?? null}
@@ -322,6 +328,15 @@
   {#if connecting}
     <ConnectDialog onconnect={connectSsh} oncancel={() => (connecting = false)} />
   {/if}
+  <div class="toasts" aria-live="polite">
+    {#each toasts as t (t.id)}
+      <div class="toast {t.kind}" role="status">
+        <Icon name={t.kind === "error" ? "info" : t.kind === "success" ? "check" : "info"} size={16} />
+        <span>{t.text}</span>
+        <button aria-label="Dismiss" onclick={() => dismiss(t.id)}><Icon name="x" size={14} /></button>
+      </div>
+    {/each}
+  </div>
   {#if showSettings}
     <SettingsDialog onclose={() => (showSettings = false)} />
   {/if}
@@ -428,6 +443,56 @@
     margin-left: auto;
     font: 11px ui-monospace, Menlo, monospace;
     opacity: 0.55;
+  }
+  .toasts {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 360px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    font-size: 13px;
+    pointer-events: auto;
+    animation: toast-in 0.15s ease-out;
+  }
+  .toast.success {
+    border-left-color: #2f9e6b;
+  }
+  .toast.error {
+    border-left-color: #d9534f;
+  }
+  .toast span {
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+  .toast button {
+    display: flex;
+    padding: 2px;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  .toast button:hover {
+    opacity: 1;
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
   }
   .settings {
     display: flex;

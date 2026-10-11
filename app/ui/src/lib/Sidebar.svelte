@@ -8,7 +8,6 @@
   let {
     library,
     query = $bindable(""),
-    notice = null,
     version = "",
     railOnly = false,
     openIds = [],
@@ -27,7 +26,6 @@
   }: {
     library: LibraryView;
     query: string;
-    notice?: string | null;
     version?: string;
     railOnly?: boolean;
     /** Saved-session ids that have a tab open, and the one in the front tab. */
@@ -255,7 +253,6 @@
     <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="folder-plus" size={15} />Folder</button>
     <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={14} />Import</button>
   </div>
-  {#if notice}<p class="notice">{notice}</p>{/if}
   <div class="list" class:drop={dropTarget === "root"} data-drop="root">
     {#if creating?.parent === null}{@render folderInput()}{/if}
     {#if searching}
@@ -363,11 +360,6 @@
     border-radius: 5px;
     color: #fff;
     background: var(--c);
-  }
-  .notice {
-    margin: 0 8px 4px;
-    font-size: 12px;
-    opacity: 0.8;
   }
   .list {
     flex: 1;
