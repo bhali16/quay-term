@@ -10,6 +10,9 @@ import type { LibraryView } from "./bindings/LibraryView";
 import type { SavedSession } from "./bindings/SavedSession";
 import type { SecretUpdate } from "./bindings/SecretUpdate";
 import type { SessionInput } from "./bindings/SessionInput";
+import type { Entry } from "./bindings/Entry";
+import type { SftpOpened } from "./bindings/SftpOpened";
+import type { SftpTransfer } from "./bindings/SftpTransfer";
 
 /** Typed wrappers around Tauri commands. Types are generated from Rust by ts-rs. */
 export const getAppInfo = () => invoke<AppInfo>("get_app_info");
@@ -84,3 +87,21 @@ export const sessionClose = (id: number) => invoke<void>("session_close", { id }
 
 export const onSessionExit = (cb: (exit: SessionExit) => void) =>
   listen<SessionExit>("session-exit", (e) => cb(e.payload));
+
+// ---- SFTP file panel ----
+export const sftpOpen = (target: SshTarget) => invoke<SftpOpened>("sftp_open", { target });
+export const sftpOpenSaved = (id: number, secret: string | null) =>
+  invoke<SftpOpened>("sftp_open_saved", { id, secret });
+export const sftpList = (id: number, path: string) => invoke<Entry[]>("sftp_list", { id, path });
+export const sftpCanonical = (id: number, path: string) => invoke<string>("sftp_canonical", { id, path });
+export const sftpMkdir = (id: number, path: string) => invoke<void>("sftp_mkdir", { id, path });
+export const sftpRename = (id: number, from: string, to: string) => invoke<void>("sftp_rename", { id, from, to });
+export const sftpDelete = (id: number, path: string) => invoke<void>("sftp_delete", { id, path });
+export const sftpUpload = (id: number, locals: string[], dir: string) =>
+  invoke<number[]>("sftp_upload", { id, locals, dir });
+/** Resolves to the local path the file is being saved to. */
+export const sftpDownload = (id: number, remote: string) => invoke<string>("sftp_download", { id, remote });
+export const sftpCancel = (id: number, transfer: number) => invoke<void>("sftp_cancel", { id, transfer });
+export const sftpClose = (id: number) => invoke<void>("sftp_close", { id });
+export const onSftpTransfer = (cb: (t: SftpTransfer) => void) =>
+  listen<SftpTransfer>("sftp-transfer", (e) => cb(e.payload));

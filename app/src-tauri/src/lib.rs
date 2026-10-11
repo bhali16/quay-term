@@ -1,4 +1,5 @@
 mod library;
+mod sftp;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -14,6 +15,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use library::{ImportResult, Library, LibraryView, SecretUpdate};
+use sftp::Sftps;
 
 /// How long the user has to answer a host-key prompt.
 const TRUST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -27,13 +29,46 @@ struct Sessions {
 
 /// Host-key prompts waiting for the user's answer.
 #[derive(Default)]
-struct Prompts {
+pub(crate) struct Prompts {
     next_id: AtomicU32,
-    waiting: Mutex<HashMap<u32, mpsc::Sender<bool>>>,
+    pub(crate) waiting: Mutex<HashMap<u32, mpsc::Sender<bool>>>,
 }
 
-fn err(e: impl std::fmt::Display) -> String {
+pub(crate) fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
+}
+
+/// Register a pending host-key prompt. The returned closure asks the UI (via
+/// an event) and waits for `ssh_trust_response`; the caller removes the entry
+/// from `prompts.waiting` when the connect call is over.
+pub(crate) fn verifier(
+    app: &AppHandle,
+    prompts: &Prompts,
+    host: &str,
+    port: u16,
+) -> (
+    u32,
+    impl FnMut(&quay_ssh::HostKeyInfo) -> bool + Send + 'static,
+) {
+    let app = app.clone();
+    let host = host.to_string();
+    let prompt_id = prompts.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let (answer_tx, answer_rx) = mpsc::channel::<bool>();
+    prompts.waiting.lock().unwrap().insert(prompt_id, answer_tx);
+    let verify = move |info: &quay_ssh::HostKeyInfo| {
+        let _ = app.emit(
+            "ssh-host-key-prompt",
+            HostKeyPrompt {
+                prompt_id,
+                host: host.clone(),
+                port,
+                key_type: info.key_type.clone(),
+                fingerprint: info.fingerprint.clone(),
+            },
+        );
+        answer_rx.recv_timeout(TRUST_TIMEOUT).unwrap_or(false)
+    };
+    (prompt_id, verify)
 }
 
 #[tauri::command]
@@ -116,30 +151,13 @@ async fn start_ssh(
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     let id = sessions.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    let host = target.host.clone();
-    let port = target.port;
-    let prompt_app = app.clone();
-    let prompt_id = prompts.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    let (answer_tx, answer_rx) = mpsc::channel::<bool>();
-    prompts.waiting.lock().unwrap().insert(prompt_id, answer_tx);
+    let (prompt_id, verify) = verifier(&app, prompts, &target.host, target.port);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         SshSession::connect(
             &ConnectOptions::new(target),
             TermSize { cols, rows },
-            |info| {
-                let _ = prompt_app.emit(
-                    "ssh-host-key-prompt",
-                    HostKeyPrompt {
-                        prompt_id,
-                        host: host.clone(),
-                        port,
-                        key_type: info.key_type.clone(),
-                        fingerprint: info.fingerprint.clone(),
-                    },
-                );
-                answer_rx.recv_timeout(TRUST_TIMEOUT).unwrap_or(false)
-            },
+            verify,
             move |chunk| {
                 let _ = on_output.send(InvokeResponseBody::Raw(chunk));
             },
@@ -253,8 +271,10 @@ fn session_close(state: State<'_, Sessions>, id: u32) {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Sessions::default())
         .manage(Prompts::default())
+        .manage(Sftps::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let library = Library::open(&dir.join("sessions.db"), Box::new(KeychainStore::new()))?;
@@ -278,7 +298,18 @@ pub fn run() {
             import_ssh_config,
             session_write,
             session_resize,
-            session_close
+            session_close,
+            sftp::sftp_open,
+            sftp::sftp_open_saved,
+            sftp::sftp_list,
+            sftp::sftp_canonical,
+            sftp::sftp_mkdir,
+            sftp::sftp_rename,
+            sftp::sftp_delete,
+            sftp::sftp_upload,
+            sftp::sftp_download,
+            sftp::sftp_cancel,
+            sftp::sftp_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running quay-term");

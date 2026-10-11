@@ -13,4 +13,11 @@ workspace = true
 
 [dependencies]
 quay-core.workspace = true
+quay-ssh.workspace = true
+ssh2.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
