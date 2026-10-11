@@ -176,7 +176,7 @@
       ondblclick={() => onconnect(s)}
       onkeydown={(e) => e.key === "Enter" && onconnect(s)}
     >
-      <span class="sicon" style:--c={s.color ?? "var(--accent)"}><Icon name="terminal" size={13} /></span>
+      <span class="sicon" style:--c={s.color ?? "var(--accent)"}><Icon name="terminal" size={10} /></span>
       <span class="name">{s.name}</span>
       {#each s.tags as t, i (i)}<span class="tag">{t}</span>{/each}
       {#if openIds.includes(s.id)}<span class="live" title="Open in a tab"></span>{/if}
@@ -352,9 +352,9 @@
   .sicon {
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
+    width: 17px;
+    height: 17px;
+    border-radius: 5px;
     color: #fff;
     background: var(--c);
   }
