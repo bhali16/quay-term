@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { focus } from "./focus";
   import type { SshTarget } from "./bindings/SshTarget";
 
   let { onconnect, oncancel }: { onconnect: (t: SshTarget) => void; oncancel: () => void } = $props();
@@ -30,7 +31,7 @@
   <form class="dialog" onsubmit={submit} aria-label="New SSH connection">
     <h2>New SSH connection</h2>
     <div class="row">
-      <label class="grow">Host <!-- svelte-ignore a11y_autofocus --><input autofocus bind:value={host} placeholder="example.com" /></label>
+      <label class="grow">Host <input use:focus bind:value={host} placeholder="example.com" /></label>
       <label class="narrow">Port <input type="number" bind:value={port} min="1" max="65535" /></label>
     </div>
     <label>User <input bind:value={user} autocomplete="username" /></label>

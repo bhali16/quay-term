@@ -14,3 +14,9 @@ workspace = true
 [dependencies]
 quay-core.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+ts-rs.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
