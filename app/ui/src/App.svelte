@@ -44,6 +44,7 @@
   let connecting = $state(false);
   let trustPrompt = $state<HostKeyPrompt | null>(null);
   let showSettings = $state(false);
+  let newMenu = $state(false);
 
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
     const key = ++counter;
@@ -184,6 +185,7 @@
     return settings.update({ ...settings.value, font_size: size });
   }
   function onkeydown(e: KeyboardEvent) {
+    if (newMenu && e.key === "Escape") newMenu = false;
     if (showSettings) return; // the dialog records shortcuts itself
     const a = actionFor(e, settings.bindings);
     if (a) {
@@ -210,7 +212,7 @@
   });
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} onmousedown={(e) => newMenu && !(e.target as HTMLElement).closest(".newwrap") && (newMenu = false)} />
 
 <main>
   <nav data-tauri-drag-region class:mac={isMac}>
@@ -232,10 +234,25 @@
         <button class="close" aria-label="Close tab" onclick={() => closeTab(tab.key)}>×</button>
       </div>
     {/each}
-    <button class="add" aria-label="New local tab" title="New local shell" onclick={() => newTab()}>+</button>
-    <button class="add ssh" title="New SSH connection" onclick={() => (connecting = true)}>SSH</button>
+    <div class="newwrap">
+      <button class="add plus" aria-label="New tab" aria-haspopup="menu" aria-expanded={newMenu} title="New tab" onclick={() => (newMenu = !newMenu)}>
+        <Icon name="plus" size={17} />
+      </button>
+      {#if newMenu}
+        <div class="menu" role="menu">
+          <button role="menuitem" onclick={() => ((newMenu = false), newTab())}>
+            <Icon name="terminal" size={15} />Local shell<kbd>{settings.bindings.new_tab}</kbd>
+          </button>
+          <button role="menuitem" onclick={() => ((newMenu = false), (connecting = true))}>
+            <Icon name="server" size={15} />SSH connection…
+          </button>
+        </div>
+      {/if}
+    </div>
     {#if activeTab && (activeTab.ssh || activeTab.saved)}
-      <button class="add ssh" class:on={activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>Files</button>
+      <button class="add filesbtn" class:on={activeTab.files} aria-label="Files" title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>
+        <Icon name="folder-open" size={17} />
+      </button>
     {/if}
     <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
   </nav>
@@ -373,8 +390,44 @@
   .add:hover {
     opacity: 1;
   }
-  .ssh {
-    font-size: 12px;
+  .add.plus,
+  .add.filesbtn {
+    display: flex;
+    padding: 6px;
+    border-radius: 6px;
+  }
+  .newwrap {
+    position: relative;
+  }
+  .menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    min-width: 210px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 5px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu button:hover {
+    background: var(--hover);
+  }
+  .menu kbd {
+    margin-left: auto;
+    font: 11px ui-monospace, Menlo, monospace;
+    opacity: 0.55;
   }
   .settings {
     display: flex;
@@ -408,10 +461,10 @@
     flex: 1;
     min-width: 0;
   }
-  .ssh.on {
+  .filesbtn.on {
     opacity: 1;
     background: var(--surface);
-    border-radius: 4px 4px 0 0;
+    border-radius: 6px;
   }
   .panes {
     position: relative;

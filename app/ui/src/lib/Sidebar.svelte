@@ -234,6 +234,12 @@
 
 {#if railOnly}
   <aside class="rail">
+    <div class="railtools">
+      <button title="Search sessions" aria-label="Search sessions" onclick={oncollapse}><Icon name="search" size={17} /></button>
+      <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={17} /></button>
+      <button title="New folder" aria-label="New folder" onclick={() => (oncollapse(), startCreate(null))}><Icon name="folder-plus" size={17} /></button>
+      <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={17} /></button>
+    </div>
     <div class="spacer"></div>
     <div class="footer">
       <button title="Show sidebar" aria-label="Show sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
@@ -498,6 +504,23 @@
   }
   aside.rail {
     width: 40px;
+  }
+  .railtools {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 0;
+  }
+  .railtools button {
+    display: flex;
+    padding: 8px;
+    border-radius: 6px;
+    opacity: 0.7;
+  }
+  .railtools button:hover {
+    opacity: 1;
+    background: var(--hover);
   }
   .spacer {
     flex: 1;
