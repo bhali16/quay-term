@@ -1,5 +1,5 @@
 <script lang="ts">
-  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left" | "palette" | "keyboard" | "info" | "search" | "check";
+  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left" | "palette" | "keyboard" | "info" | "search" | "check" | "lock" | "file" | "arrow-up" | "arrow-down" | "trash" | "refresh";
   let { name, size = 16, tint = false }: { name: Name; size?: number; tint?: boolean } = $props();
 
   const folder = "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z";
@@ -25,6 +25,12 @@
     info: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z", "M12 16v-4", "M12 8h.01"],
     search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z", "m21 21-4.3-4.3"],
     check: ["M20 6 9 17l-5-5"],
+    lock: ["M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z", "M7 11V7a5 5 0 0 1 10 0v4"],
+    file: ["M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5Z", "M14 2v6h6"],
+    trash: ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
+    refresh: ["M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", "M21 3v5h-5", "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", "M8 16H3v5"],
+    "arrow-up": ["m5 12 7-7 7 7", "M12 19V5"],
+    "arrow-down": ["M12 5v14", "m19 12-7 7-7-7"],
     terminal: ["m4 17 6-6-6-6", "M12 19h8"],
   };
 </script>
