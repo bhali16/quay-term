@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-12
+
+### Added
+- Bundled fonts: DM Sans for the interface and JetBrains Mono for the terminal, so the app looks the same on every OS. JetBrains Mono is the new default terminal font; settings still on the old default font are moved to it, custom fonts are left alone.
+- A visible keyboard focus ring on buttons.
+
+### Changed
+- Window layout: the title-bar strip is gone. The sidebar runs the full height of the window and the tab strip starts after it. On macOS the traffic lights sit over the sidebar header with the collapse toggle right after them; the toggle does not move when the sidebar collapses to the rail.
+- New tabs: a two-button pair in the sidebar header (local shell, SSH connection) replaces the tab strip's "+" menu. In the collapsed rail the pair is stacked vertically.
+- Sidebar: the search box moved to the top and was restyled; a session row shows its first tag plus "+N" so a name is never pushed out by its tags; folder icons are neutral; the rail's initials keep a trailing number (`web-01` and `web-02` read W1 and W2).
+- Terminal: line height 1.5 and more padding around the text.
+- Themes: all five themes define status colours, a full 16-colour ANSI palette and readable text on the accent colour.
+- Dialogs share one set of styles, including the SSH connection and host-key prompts; the host-key prompt always appears above other dialogs. The Settings theme swatches fit on one row.
+- Files panel: path bar, file and folder icons, hover actions and a transfer list with progress; its width scales with the window (280-380px).
+
+### Fixed
+- The session editor's Save and Connect buttons sat below the visible area at the default window size; the action bar is now pinned to the bottom of every dialog.
+- Light themes: the selected colour swatch ring was invisible, and fields used a heavy grey instead of the theme's input colour. Dracula showed white text on its light accent.
+
 ## [0.1.1] - 2026-10-11
 
 ### Fixed
