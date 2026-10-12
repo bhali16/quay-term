@@ -1,6 +1,10 @@
 :root {
   --font-ui: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* Height of the top band: the tab strip and the sidebar's header line up on it. */
+  --chrome-h: 42px;
+  --sidebar-w: 260px;
+  --rail-w: 48px;
   font-family: var(--font-ui);
 }
 

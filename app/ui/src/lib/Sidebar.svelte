@@ -13,6 +13,9 @@
     openIds = [],
     activeId = null,
     oncollapse,
+    onshell,
+    onssh,
+    shellKey = "",
     onconnect,
     onedit,
     onnew,
@@ -32,6 +35,11 @@
     openIds?: number[];
     activeId?: number | null;
     oncollapse: () => void;
+    /** New tab: a local shell, or an SSH connection (opens the connect dialog). */
+    onshell: () => void;
+    onssh: () => void;
+    /** Shortcut shown in the shell button's tooltip. */
+    shellKey?: string;
     onconnect: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
     /** `folderId` preselects a folder in the editor. */
@@ -53,10 +61,16 @@
 
   const searching = $derived(query.trim() !== "");
   const childrenOf = (parent: number | null) => library.folders.filter((f) => f.parent_id === parent);
-  /** Sessions in a folder and all of its subfolders. */
-  const countIn = (folder: number): number =>
-    sessionsIn(folder).length + childrenOf(folder).reduce((n, f) => n + countIn(f.id), 0);
   const sessionsIn = (folder: number | null) => library.sessions.filter((s) => s.folder_id === folder);
+
+  /** Short label for a host's rail button. A trailing number is what tells
+   *  "web-01" from "web-02", so it is kept whole instead of its leading zero. */
+  const initials = (name: string) => {
+    const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    if (words.length < 2) return (words[0] ?? name).slice(0, 2).toUpperCase();
+    const second = /^\d+$/.test(words[1]) ? words[1].replace(/^0+(?=\d)/, "").slice(-2) : words[1][0];
+    return (words[0][0] + second).toUpperCase();
+  };
 
   function startRename(id: number, current: string) {
     creating = null;
@@ -174,10 +188,17 @@
       ondblclick={() => onconnect(s)}
       onkeydown={(e) => e.key === "Enter" && onconnect(s)}
     >
-      <span class="sicon" style:--c={s.color ?? "var(--accent)"}><Icon name="terminal" size={10} /></span>
+      <span class="sicon" style:--c={s.color ?? "var(--accent)"}><Icon name="server" size={15} /></span>
       <span class="name">{s.name}</span>
-      {#each s.tags as t, i (i)}<span class="tag">{t}</span>{/each}
-      {#if openIds.includes(s.id)}<span class="live" title="Open in a tab"></span>{/if}
+      <span class="meta">
+        {#if s.tags.length > 0}
+          <span class="tags">
+            <span class="tag" title={s.tags.join(", ")}>{s.tags[0]}</span>
+            {#if s.tags.length > 1}<span class="tag more" title={s.tags.join(", ")}>+{s.tags.length - 1}</span>{/if}
+          </span>
+        {/if}
+        {#if openIds.includes(s.id)}<span class="live" title="Open in a tab"></span>{/if}
+      </span>
     </button>
     <span class="acts">
       <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
@@ -206,7 +227,6 @@
           <span class="caret"><Icon name={collapsed[f.id] ? "chevron-right" : "chevron-down"} size={13} /></span>
           <span class="ficon"><Icon name={collapsed[f.id] ? "folder" : "folder-open"} size={17} tint /></span>
           <span class="name">{f.name}</span>
-          <span class="count" title="Sessions in this folder">{countIn(f.id)}</span>
         </button>
         <span class="acts">
           <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
@@ -230,28 +250,51 @@
   {/each}
 {/snippet}
 
+{#snippet newTabButtons(vertical: boolean)}
+  <div class="dual" class:vertical role="group" aria-label="New tab">
+    <button title={`New shell${shellKey ? ` (${shellKey})` : ""}`} aria-label="New local shell" onclick={onshell}><Icon name="terminal" size={15} /></button>
+    <button title="New SSH connection…" aria-label="New SSH connection" onclick={onssh}><Icon name="server" size={15} /></button>
+  </div>
+{/snippet}
+
+<div class="sb" class:rail={railOnly}>
+<!-- Room for the window's traffic lights and the toggle that App draws over them. -->
+<div class="head" data-tauri-drag-region>
+  {#if !railOnly}{@render newTabButtons(false)}{/if}
+</div>
 {#if railOnly}
   <aside class="rail">
+    {@render newTabButtons(true)}
     <div class="railtools">
       <button title="Search sessions" aria-label="Search sessions" onclick={oncollapse}><Icon name="search" size={17} /></button>
       <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={17} /></button>
       <button title="New folder" aria-label="New folder" onclick={() => (oncollapse(), startCreate(null))}><Icon name="folder-plus" size={17} /></button>
       <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={17} /></button>
     </div>
-    <div class="spacer"></div>
-    <div class="footer">
-      <button title="Show sidebar" aria-label="Show sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
+    <div class="raildivider"></div>
+    <div class="railhosts">
+      {#each library.sessions as s (s.id)}
+        <button
+          class="host"
+          class:current={activeId === s.id}
+          style:--c={s.color ?? "var(--accent)"}
+          title={`${s.name}\n${s.user}@${s.host}`}
+          aria-label={`Connect to ${s.name}`}
+          onclick={() => onconnect(s)}
+        >
+          {initials(s.name)}
+          {#if openIds.includes(s.id)}<span class="live" title="Open in a tab"></span>{/if}
+        </button>
+      {/each}
     </div>
   </aside>
 {:else}
 <aside class:dragging={drag !== null}>
-  <div class="bar">
-    <div class="searchbox"><Icon name="search" size={14} /><input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" /></div>
-  </div>
+  <div class="searchbox"><Icon name="search" size={14} /><input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" /></div>
   <div class="tools">
-    <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={14} />Session</button>
-    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="folder-plus" size={15} />Folder</button>
-    <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={14} />Import</button>
+    <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</button>
+    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</button>
+    <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={13} />Import</button>
   </div>
   <div class="list" class:drop={dropTarget === "root"} data-drop="root">
     {#if creating?.parent === null}{@render folderInput()}{/if}
@@ -268,54 +311,127 @@
       {/if}
     {/if}
   </div>
-  <div class="footer">
-    <button title="Hide sidebar" aria-label="Hide sidebar" onclick={oncollapse}><Icon name="panel-left" size={16} /></button>
-    <span class="version">{version}</span>
-  </div>
+  {#if version}<div class="footer"><span class="version">{version}</span></div>{/if}
 </aside>
 {/if}
+</div>
 
 {#if drag}
   <div class="ghost" style:left={`${dragPos.x + 12}px`} style:top={`${dragPos.y + 12}px`}>{drag.label}</div>
 {/if}
 
 <style>
+  /* The wrapper animates 260 -> 48; the asides inside keep a fixed width so
+     their content is clipped, not reflowed, while it moves. */
+  .sb {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    box-sizing: border-box;
+    width: var(--sidebar-w);
+    overflow: hidden;
+    background: var(--bg-alt);
+    transition: width 160ms ease-out;
+  }
+  .sb.rail {
+    width: var(--rail-w);
+  }
+  /* The divider is drawn here, not as a border: in the rail it starts below the header,
+     because the traffic lights straddle the rail's edge and a line must not run between them. */
+  .sb::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 1px;
+    background: var(--border);
+    pointer-events: none;
+  }
+  .sb.rail::after {
+    top: var(--chrome-h);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sb {
+      transition: none;
+    }
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex: none;
+    height: var(--chrome-h);
+    padding: 0 12px;
+  }
+  /* New tab: a local shell or an SSH connection. Recessed pair, the hovered half rises. */
+  .dual {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--bg-deep);
+  }
+  .dual button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 24px;
+    border-radius: 7px;
+    color: var(--dim);
+  }
+  .dual button:hover {
+    color: var(--fg);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--border);
+  }
+  .dual.vertical {
+    flex-direction: column;
+    flex: none;
+  }
+  .dual.vertical button {
+    width: 32px;
+  }
   aside {
     display: flex;
     flex-direction: column;
-    width: 250px;
-    flex: none;
-    background: var(--bg-alt);
-    border-right: 1px solid var(--surface);
+    flex: 1;
+    gap: 10px;
+    width: calc(var(--sidebar-w) - 1px);
+    box-sizing: border-box;
+    padding: 4px 12px 12px;
     font-size: 13px;
     min-height: 0;
   }
-  .bar {
-    display: flex;
-    gap: 4px;
-    padding: 6px;
-  }
   .searchbox {
-    flex: 1;
-    min-width: 0;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0 8px;
+    gap: 8px;
+    flex: none;
+    height: 34px;
+    padding: 0 11px;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg-deep);
-    opacity: 0.9;
+    border-radius: 9px;
+    background: var(--input);
+    color: var(--dim);
+  }
+  .searchbox:focus-within {
+    border-color: var(--accent);
   }
   .search {
     flex: 1;
     min-width: 0;
-    padding: 6px 0;
+    padding: 0;
     font: inherit;
-    color: inherit;
+    font-size: 13.5px;
+    color: var(--fg);
     border: 0;
     outline: 0;
     background: none;
+  }
+  .search::placeholder {
+    color: var(--dim);
   }
   button {
     font: inherit;
@@ -326,20 +442,20 @@
   }
   .tools {
     display: flex;
-    gap: 4px;
-    padding: 0 6px 8px;
-    border-bottom: 1px solid var(--border);
+    gap: 6px;
+    flex: none;
   }
   .tools button {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
-    padding: 5px 4px;
+    gap: 4px;
+    padding: 6px 4px;
     font-size: 12px;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: 6px;
+    background: var(--surface);
   }
   .tools button:hover {
     background: var(--hover);
@@ -349,61 +465,45 @@
     display: flex;
     flex: none;
   }
+  /* Neutral, so a session's own colour is the only colour in the tree. */
   .ficon {
-    color: var(--accent);
+    color: var(--dim);
   }
   .sicon {
-    align-items: center;
-    justify-content: center;
-    width: 17px;
-    height: 17px;
-    border-radius: 5px;
-    color: #fff;
-    background: var(--c);
+    color: var(--c);
   }
   .list {
     flex: 1;
+    min-height: 0;
     overflow: auto;
-    padding: 6px 0 8px;
+    margin: 0 -4px;
+    padding: 0 4px;
   }
   .item {
     display: flex;
     align-items: center;
-    min-height: 30px;
-    margin: 1px 6px;
+    margin: 1px 0;
     padding-right: 4px;
     border-radius: 6px;
   }
-  .item:hover {
-    background: var(--hover);
-  }
+  .item:hover,
   .item.current {
     background: var(--hover);
-    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  /* The open session gets an accent edge so it is not mistaken for a hover. */
+  .item.current {
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .live {
     width: 7px;
     height: 7px;
-    margin-left: auto;
     flex: none;
     border-radius: 50%;
-    background: #2f9e6b;
-  }
-  .count {
-    margin-left: auto;
-    padding: 0 6px;
-    border-radius: 5px;
-    background: var(--bg-deep);
-    font-size: 11px;
-    opacity: 0.7;
-  }
-  .item:hover .count,
-  .item:focus-within .count {
-    display: none;
+    background: var(--green);
   }
   .sep {
     height: 1px;
-    margin: 6px 12px;
+    margin: 6px 8px;
     background: var(--border);
   }
   .main {
@@ -412,27 +512,57 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 6px;
+    padding: 6px 8px;
     text-align: left;
   }
   .name {
+    min-width: 40px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* Tags give way before the name does: a row must never lose its name. */
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 1000 auto;
+    min-width: 0;
+    margin-left: auto;
+  }
+  .tags {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+  }
   .tag {
-    flex: none;
-    padding: 0 5px;
-    border-radius: 8px;
-    background: var(--hover);
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    color: var(--dim);
     font-size: 11px;
-    opacity: 0.8;
+    line-height: 1.2;
+  }
+  .tag.more {
+    flex: none;
+  }
+  .item:hover .tags,
+  .item:focus-within .tags {
+    display: none;
   }
   .caret {
     display: flex;
     width: 13px;
     margin-left: -2px;
-    opacity: 0.6;
+    color: var(--dim);
   }
   .acts {
     display: none;
@@ -458,6 +588,7 @@
     font: inherit;
     color: inherit;
     border: 1px solid var(--border);
+    border-radius: 4px;
     background: var(--input);
   }
   aside.dragging {
@@ -465,17 +596,15 @@
     cursor: grabbing;
   }
   .children {
-    margin-left: 18px;
-    padding-left: 2px;
-    border-left: 1px solid var(--border);
+    margin-left: 16px;
   }
   .item.drop,
   .children.drop {
-    background: rgba(59, 111, 216, 0.25);
+    background: color-mix(in srgb, var(--accent) 25%, transparent);
     outline: 1px solid var(--accent);
   }
   .list.drop {
-    background: rgba(59, 111, 216, 0.12);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   .ghost {
     position: fixed;
@@ -483,56 +612,94 @@
     padding: 3px 8px;
     border-radius: 5px;
     background: var(--accent);
+    color: var(--on-accent);
     font-size: 12px;
     pointer-events: none;
     opacity: 0.9;
   }
   .footer {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 6px;
-    border-top: 1px solid var(--surface);
+    flex: none;
+    padding: 10px 4px 0;
+    border-top: 1px solid var(--border);
   }
+  .version {
+    font-size: 11px;
+    color: var(--dim);
+  }
+  .empty {
+    margin: 12px 4px;
+    color: var(--dim);
+  }
+
+  /* ---- collapsed rail ---- */
   aside.rail {
-    width: 40px;
+    align-items: center;
+    gap: 6px;
+    width: calc(var(--rail-w) - 1px);
+    padding: 4px 0 10px;
   }
   .railtools {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    padding: 8px 0;
+    gap: 2px;
   }
   .railtools button {
     display: flex;
-    padding: 8px;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     border-radius: 6px;
-    opacity: 0.7;
+    color: var(--dim);
   }
   .railtools button:hover {
-    opacity: 1;
+    color: var(--fg);
     background: var(--hover);
   }
-  .spacer {
+  .raildivider {
+    flex: none;
+    width: 24px;
+    height: 1px;
+    background: var(--border);
+  }
+  .railhosts {
     flex: 1;
-  }
-  .version {
-    font-size: 11px;
-    opacity: 0.5;
-  }
-  .footer button {
+    min-height: 0;
     display: flex;
-    padding: 4px 6px;
-    border-radius: 5px;
-    opacity: 0.7;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    overflow-y: auto;
+    scrollbar-width: none;
   }
-  .footer button:hover {
-    opacity: 1;
-    background: var(--hover);
+  .host {
+    position: relative;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--c);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
   }
-  .empty {
-    margin: 12px;
-    opacity: 0.5;
+  .host:hover {
+    filter: brightness(1.12);
+  }
+  .host.current {
+    outline: 2px solid var(--fg);
+    outline-offset: 2px;
+  }
+  .host .live {
+    position: absolute;
+    right: -3px;
+    bottom: -3px;
+    box-sizing: border-box;
+    border: 2px solid var(--bg-alt);
+    width: 11px;
+    height: 11px;
   }
 </style>
