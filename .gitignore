@@ -32,3 +32,6 @@ app/src-tauri/gen/
 
 # OS
 .DS_Store
+
+# Local promo video project (Remotion), not part of the repo
+promo/
