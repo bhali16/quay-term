@@ -171,6 +171,12 @@ select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* Keyboard focus: one visible ring for every button. */
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .dlg .actions .primary,
 .dlg .actions .primary:disabled {
   color: var(--on-accent);
