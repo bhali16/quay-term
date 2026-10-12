@@ -16,14 +16,15 @@ The installers are not code-signed or notarized yet, so your OS will warn on fir
 
 One app to manage terminals, SSH sessions and remote files on any desktop OS.
 
-Planned for v0.1.0:
+What it does today (since v0.1.0):
 
 - Local shell tabs
 - SSH connections (password, key, agent) with known-hosts verification
 - Saved sessions, folders, tags and `~/.ssh/config` import
 - Secrets stored in the OS keychain
 - Basic SFTP browser with a transfer queue
-- Themes and font settings
+- Tabbed window with a collapsible session sidebar
+- Five built-in themes, bundled fonts and font settings
 - Installers for macOS, Linux and Windows
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the milestones.
@@ -34,6 +35,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the milestones.
 - [xterm.js](https://xtermjs.org) for terminal rendering
 - [`ssh2`](https://crates.io/crates/ssh2) (libssh2) for SSH and SFTP
 - [`portable-pty`](https://crates.io/crates/portable-pty) for local shells
+- [DM Sans](https://fonts.google.com/specimen/DM+Sans) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), bundled via [Fontsource](https://fontsource.org) (SIL Open Font License 1.1)
 
 ## Independence and clean-room policy
 
