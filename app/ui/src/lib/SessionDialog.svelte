@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
+  import Icon from "./Icon.svelte";
   import KeyFileField from "./KeyFileField.svelte";
   import { focus } from "./focus";
   import type { AuthKind } from "./bindings/AuthKind";
@@ -99,10 +100,10 @@
     <h2>{session ? "Edit session" : "New session"}</h2>
     <label>Name <input bind:value={name} placeholder="Optional, defaults to user@host" /></label>
     <div class="row">
-      <label class="grow">Host <input use:focus bind:value={host} placeholder="example.com" /></label>
+      <label class="grow">Host <input class="mono" use:focus bind:value={host} placeholder="example.com" /></label>
       <label class="narrow">Port <input type="number" bind:value={port} min="1" max="65535" /></label>
     </div>
-    <label>User <input bind:value={user} autocomplete="username" /></label>
+    <label>User <input class="mono" bind:value={user} autocomplete="username" /></label>
     <label>
       Authentication
       <select bind:value={auth}>
@@ -125,6 +126,9 @@
         />
       </label>
       <label class="check"><input type="checkbox" bind:checked={saveSecret} /> Save in the system keychain</label>
+      {#if saveSecret}
+        <p class="note"><Icon name="lock" size={14} />{auth === "key" ? "Passphrase" : "Password"} stored in the OS keychain, never in the database</p>
+      {/if}
       {#if hadSecret}
         <label class="check"><input type="checkbox" bind:checked={clearSecret} /> Remove the saved secret</label>
       {/if}
@@ -175,7 +179,8 @@
     background: none;
     border-color: var(--border);
   }
+  /* var(--fg), not white: the dialog surface is white in the light themes. */
   .swatches .sel {
-    border-color: #fff;
+    border-color: var(--fg);
   }
 </style>

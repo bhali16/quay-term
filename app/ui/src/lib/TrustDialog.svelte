@@ -7,8 +7,8 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && onanswer(false)} />
 
-<div class="backdrop" role="presentation">
-  <div class="dialog" role="alertdialog" aria-label="Unknown host key" tabindex="-1">
+<div class="dlg-backdrop top" role="presentation">
+  <div class="dlg" role="alertdialog" aria-label="Unknown host key" tabindex="-1">
     <h2>Trust this host?</h2>
     <p>
       The authenticity of <strong>{prompt.host}:{prompt.port}</strong> cannot be verified. This is the first time you
@@ -22,7 +22,6 @@
     </dl>
     <p class="hint">Compare the fingerprint with one from the server's owner. Trusting saves it to known_hosts.</p>
     <div class="actions">
-      
       <button use:focus onclick={() => onanswer(false)}>Cancel</button>
       <button class="primary" onclick={() => onanswer(true)}>Trust and connect</button>
     </div>
@@ -30,64 +29,33 @@
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.5);
+  /* Above the other dialogs (z-index 10): a host-key prompt must never be hidden behind one. */
+  .top {
     z-index: 20;
   }
-  .dialog {
-    width: 420px;
-    padding: 18px;
-    border-radius: 10px;
-    background: var(--surface);
-    font-size: 13px;
-  }
-  h2 {
-    margin: 0 0 8px;
-    font-size: 15px;
-  }
   p {
-    margin: 6px 0;
+    margin: 0;
+    line-height: 1.5;
   }
   dl {
-    margin: 10px 0;
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 4px 12px;
+    gap: 6px 14px;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-deep);
   }
   dt {
-    opacity: 0.6;
+    color: var(--dim);
   }
   dd {
     margin: 0;
   }
   .fp {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
+    font-size: 12px;
     word-break: break-all;
-  }
-  .hint {
-    opacity: 0.6;
-  }
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  button {
-    font: inherit;
-    color: inherit;
-    padding: 6px 14px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: none;
-    cursor: pointer;
-  }
-  .primary {
-    background: var(--accent);
-    border-color: var(--accent);
   }
 </style>

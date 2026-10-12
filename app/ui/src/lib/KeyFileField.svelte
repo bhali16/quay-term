@@ -18,7 +18,7 @@
 <label>
   Key file
   <span class="field">
-    <input bind:value placeholder="~/.ssh/id_ed25519" />
+    <input class="mono" bind:value placeholder="~/.ssh/id_ed25519" />
     <button type="button" onclick={browse}>Browse…</button>
   </span>
 </label>

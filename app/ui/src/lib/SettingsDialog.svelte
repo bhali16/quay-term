@@ -180,7 +180,7 @@
   .tabs button.on {
     opacity: 1;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
   .pane {
     flex: 1;
@@ -191,19 +191,20 @@
     overflow: auto;
     padding-right: 2px;
   }
+  /* One row of five: they share the pane's width instead of wrapping 4 + 1. */
   .swatches {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
     gap: 8px;
   }
   .sw {
     position: relative;
-    width: 76px;
+    min-width: 0;
     height: 52px;
     border: 2px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
-    font: 600 15px ui-monospace, Menlo, monospace;
+    font: 600 15px var(--font-mono);
   }
   .sw.on {
     border-color: var(--accent);
@@ -242,7 +243,7 @@
   }
   .chip {
     min-width: 110px;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
   .chip.rec {
@@ -273,6 +274,6 @@
   }
   .err {
     margin: 0;
-    color: #ff8a80;
+    color: var(--red);
   }
 </style>
