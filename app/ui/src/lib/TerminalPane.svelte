@@ -92,6 +92,7 @@
     term = new Terminal({
       fontFamily: v.font_family,
       fontSize: v.font_size,
+      lineHeight: 1.5,
       cursorBlink: v.cursor_blink,
       scrollback: v.scrollback,
       theme: settings.theme.term,
@@ -130,7 +131,10 @@
   .term {
     position: absolute;
     inset: 0;
-    padding: 6px;
+    /* content-box on purpose: FitAddon reads this element's computed width and
+       does not subtract its padding, so border-box would overflow the window. */
+    padding: 20px 24px;
+    background: var(--bg);
   }
   .hidden {
     visibility: hidden;
