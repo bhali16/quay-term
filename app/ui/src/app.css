@@ -1,5 +1,7 @@
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-ui);
 }
 
 html,

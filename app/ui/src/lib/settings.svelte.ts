@@ -3,9 +3,12 @@ import type { Settings } from "./bindings/Settings";
 import { applyChrome, themeById } from "./themes";
 import { resolve } from "./keys";
 
+const OLD_FONT = "Menlo, Consolas, 'DejaVu Sans Mono', monospace";
+const FONT = "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', ui-monospace, monospace";
+
 const fallback: Settings = {
   theme: "quay-dark",
-  font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace",
+  font_family: FONT,
   font_size: 14,
   cursor_blink: true,
   scrollback: 5000,
@@ -19,7 +22,9 @@ class Store {
 
   async load() {
     try {
-      this.value = await settingsLoad();
+      const loaded = await settingsLoad();
+      // Move anyone still on the old built-in stack to the bundled font.
+      this.value = loaded.font_family === OLD_FONT ? { ...loaded, font_family: FONT } : loaded;
     } catch {
       /* defaults are fine */
     }

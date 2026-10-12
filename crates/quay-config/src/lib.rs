@@ -41,7 +41,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: "quay-dark".into(),
-            font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
+            font_family:
+                "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', ui-monospace, monospace"
+                    .into(),
             font_size: 14,
             cursor_blink: true,
             scrollback: 5000,
