@@ -1,5 +1,6 @@
 mod library;
 mod sftp;
+mod tunnels;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -16,6 +17,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use library::{ImportResult, Library, LibraryView, Route, SecretUpdate};
 use sftp::Sftps;
+use tunnels::Tunnels;
 
 /// How long the user has to answer a host-key prompt.
 const TRUST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -221,8 +223,13 @@ async fn start_ssh(
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     let id = sessions.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let app_for_tunnels = app.clone();
     let (prompt_id, verify) = verifier(&app, prompts);
-    let Route { target, jumps } = route;
+    let Route {
+        target,
+        jumps,
+        auto_tunnels,
+    } = route;
     let dest = format!("{}@{}:{}", target.user, target.host, target.port);
     if jumps.is_empty() {
         log::info!("ssh connect {dest}");
@@ -247,6 +254,7 @@ async fn start_ssh(
                 let _ = on_output.send(InvokeResponseBody::Raw(chunk));
             },
             move |reason| {
+                app.state::<Tunnels>().stop_session(id);
                 app.state::<Sessions>().conns.lock().unwrap().remove(&id);
                 let _ = app.emit("session-exit", SessionExit { id, reason });
             },
@@ -264,6 +272,13 @@ async fn start_ssh(
     log::info!("ssh connected {dest} (session {id})");
     sessions.conns.lock().unwrap().insert(id, conn);
     sessions.map.lock().unwrap().insert(id, Box::new(session));
+    if !auto_tunnels.is_empty() {
+        let app2 = app_for_tunnels;
+        tauri::async_runtime::spawn_blocking(move || {
+            let (sessions, tunnels) = (app2.state::<Sessions>(), app2.state::<Tunnels>());
+            tunnels::start_auto(&sessions, &tunnels, id, auto_tunnels);
+        });
+    }
     Ok(id)
 }
 
@@ -364,7 +379,8 @@ fn session_resize(state: State<'_, Sessions>, id: u32, cols: u16, rows: u16) -> 
 }
 
 #[tauri::command]
-fn session_close(state: State<'_, Sessions>, id: u32) {
+fn session_close(state: State<'_, Sessions>, tunnels: State<'_, Tunnels>, id: u32) {
+    tunnels.stop_session(id);
     // Dropping the session ends it (kills the child / closes the channel).
     state.map.lock().unwrap().remove(&id);
     state.conns.lock().unwrap().remove(&id);
@@ -435,6 +451,7 @@ pub fn run() {
         .manage(Sessions::default())
         .manage(Prompts::default())
         .manage(Sftps::default())
+        .manage(Tunnels::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let library = Library::open(&dir.join("sessions.db"), Box::new(KeychainStore::new()))?;
@@ -472,6 +489,9 @@ pub fn run() {
             sftp::sftp_open,
             sftp::sftp_open_saved,
             sftp::sftp_open_shared,
+            tunnels::tunnel_start,
+            tunnels::tunnel_stop,
+            tunnels::tunnel_list,
             sftp::sftp_list,
             sftp::sftp_canonical,
             sftp::sftp_mkdir,

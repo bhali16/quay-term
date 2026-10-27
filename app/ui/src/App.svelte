@@ -25,6 +25,7 @@
   import type { SavedSession } from "./lib/bindings/SavedSession";
   import TerminalPane from "./lib/TerminalPane.svelte";
   import FilePanel from "./lib/FilePanel.svelte";
+  import TunnelPanel from "./lib/TunnelPanel.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
   import TrustDialog from "./lib/TrustDialog.svelte";
   import AuthPromptDialog from "./lib/AuthPromptDialog.svelte";
@@ -38,7 +39,7 @@
   import type { SshTarget } from "./lib/bindings/SshTarget";
 
   type Saved = { id: number; label: string; secret?: string | null; remember?: boolean };
-  type Tab = { key: number; title: string; ssh: SshTarget | null; saved: Saved | null; files?: boolean; pane?: TerminalPane };
+  type Tab = { key: number; title: string; ssh: SshTarget | null; saved: Saved | null; files?: boolean; tunnels?: boolean; pane?: TerminalPane };
 
   let info = $state<AppInfo | null>(null);
   let tabs = $state<Tab[]>([]);
@@ -289,6 +290,9 @@
         <button class="filesbtn" class:on={activeTab.files} aria-label="Files" aria-pressed={!!activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>
           <Icon name="folder" size={16} />Files
         </button>
+        <button class="filesbtn" class:on={activeTab.tunnels} aria-label="Tunnels" aria-pressed={!!activeTab.tunnels} title="Port forwards over this connection" onclick={() => (activeTab.tunnels = !activeTab.tunnels)}>
+          <Icon name="swap" size={16} />Tunnels
+        </button>
       {/if}
       <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
     </div>
@@ -305,6 +309,14 @@
             onconnected={tab.saved?.remember ? refresh : undefined}
           />
         </div>
+        {#if tab.tunnels}
+          <TunnelPanel
+            terminalId={() => tab.pane?.sessionId() ?? null}
+            saved={library.sessions.find((x) => x.id === tab.saved?.id)?.tunnels ?? []}
+            active={tab.key === activeKey}
+            onclose={() => (tab.tunnels = false)}
+          />
+        {/if}
         {#if tab.files}
           <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey} terminalId={() => tab.pane?.sessionId() ?? null} onclose={() => (tab.files = false)} />
         {/if}
