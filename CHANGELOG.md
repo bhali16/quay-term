@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Sign-in prompts for servers that ask for more than a password (one-time codes, a second factor). The password is still sent automatically to a lone password prompt; everything else is shown in a dialog. This works for the terminal and the Files panel.
+- Frontend unit tests (vitest) for keyboard shortcut handling, run in CI.
+
+### Changed
+- The webview now has a Content Security Policy (scripts, styles, fonts and images from the app only).
+- Logs keep the five most recent rotated files instead of one.
+
+### Fixed
+- SFTP transfers use 256 KB chunks instead of 32 KB, which is several times faster on high-latency connections.
+- A saved session with an auth method this version does not know is reported as an error instead of silently turning into ssh-agent auth.
+
 ## [0.1.2] - 2026-10-12
 
 ### Added

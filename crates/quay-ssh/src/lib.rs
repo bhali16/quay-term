@@ -10,7 +10,7 @@ mod error;
 pub mod known_hosts;
 mod session;
 
-pub use connect::ConnectOptions;
+pub use connect::{Challenge, ChallengePrompt, Challenger, ConnectOptions};
 pub use error::SshError;
 pub use known_hosts::{HostKeyInfo, HostKeyStatus};
 pub use session::SshSession;

@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { Settings } from "./bindings/Settings";
 import type { Diagnostics } from "./bindings/Diagnostics";
 import type { AppInfo } from "./bindings/AppInfo";
+import type { AuthPrompt } from "./bindings/AuthPrompt";
 import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 import type { SessionExit } from "./bindings/SessionExit";
 import type { SshTarget } from "./bindings/SshTarget";
@@ -78,6 +79,12 @@ export const sshTrustResponse = (promptId: number, trust: boolean) =>
 
 export const onHostKeyPrompt = (cb: (p: HostKeyPrompt) => void) =>
   listen<HostKeyPrompt>("ssh-host-key-prompt", (e) => cb(e.payload));
+
+export const sshAuthResponse = (promptId: number, answers: string[] | null) =>
+  invoke<void>("ssh_auth_response", { promptId, answers });
+
+export const onAuthPrompt = (cb: (p: AuthPrompt) => void) =>
+  listen<AuthPrompt>("ssh-auth-prompt", (e) => cb(e.payload));
 
 export const sessionWrite = (id: number, data: Uint8Array) =>
   invoke<void>("session_write", { id, data: Array.from(data) });
