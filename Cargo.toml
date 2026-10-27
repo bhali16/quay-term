@@ -25,6 +25,8 @@ thiserror = "2"
 ts-rs = "12"
 portable-pty = "0.9"
 ssh2 = { version = "0.9", features = ["vendored-openssl"] }
+russh = { version = "0.65", default-features = false, features = ["ring", "rsa", "flate2"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "macros", "io-util"] }
 base64 = "0.22"
 tempfile = "3"
 rusqlite = { version = "0.32", features = ["bundled"] }

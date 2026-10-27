@@ -2,77 +2,16 @@
 
 use std::io::ErrorKind;
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use quay_core::{SshAuth, SshTarget};
 use socket2::{SockRef, TcpKeepalive};
-use ssh2::{HashType, KeyboardInteractivePrompt, Prompt, Session};
+use ssh2::{KeyboardInteractivePrompt, Prompt, Session};
 
 use crate::error::{code, session_code, SshError};
 use crate::known_hosts::{self, HostKeyInfo, HostKeyStatus};
-
-/// A round of keyboard-interactive questions from the server (an OTP code,
-/// a second password, a yes/no confirmation...).
-#[derive(Debug, Clone)]
-pub struct Challenge {
-    pub name: String,
-    pub instructions: String,
-    pub prompts: Vec<ChallengePrompt>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ChallengePrompt {
-    pub text: String,
-    /// `false` for secrets: the answer should not be shown while typing.
-    pub echo: bool,
-}
-
-type ChallengeFn = dyn Fn(&Challenge) -> Option<Vec<String>> + Send + Sync;
-
-/// Asks the user to answer a [`Challenge`]; `None` means they cancelled.
-#[derive(Clone)]
-pub struct Challenger(Arc<ChallengeFn>);
-
-impl Challenger {
-    pub fn new(f: impl Fn(&Challenge) -> Option<Vec<String>> + Send + Sync + 'static) -> Self {
-        Self(Arc::new(f))
-    }
-}
-
-impl std::fmt::Debug for Challenger {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Challenger")
-    }
-}
-
-/// Everything needed to open a connection.
-#[derive(Debug, Clone)]
-pub struct ConnectOptions {
-    pub target: SshTarget,
-    /// known_hosts file to check and extend; `None` uses `~/.ssh/known_hosts`.
-    pub known_hosts: Option<PathBuf>,
-    /// Applies to the TCP connect and, separately, to the handshake and auth.
-    pub timeout: Duration,
-    /// How often an SSH keepalive is sent on an otherwise idle connection.
-    pub keepalive: Duration,
-    /// Answers keyboard-interactive questions the stored password cannot,
-    /// such as one-time codes. Without it, those logins fail.
-    pub challenger: Option<Challenger>,
-}
-
-impl ConnectOptions {
-    pub fn new(target: SshTarget) -> Self {
-        Self {
-            target,
-            known_hosts: None,
-            timeout: Duration::from_secs(15),
-            keepalive: Duration::from_secs(15),
-            challenger: None,
-        }
-    }
-}
+use crate::options::{expand_tilde, Challenge, ChallengePrompt, Challenger, ConnectOptions};
 
 /// Connect, check the host key and authenticate. `verify` is called only for
 /// hosts that are not in known_hosts yet; returning `true` trusts the key and
@@ -153,13 +92,10 @@ fn check_host_key(
     verify: &mut dyn FnMut(&HostKeyInfo) -> bool,
 ) -> Result<(), SshError> {
     let SshTarget { host, port, .. } = &opts.target;
-    let (key, key_type) = session
+    let (blob, _) = session
         .host_key()
         .ok_or_else(|| SshError::Handshake("the server sent no host key".into()))?;
-    let digest = session
-        .host_key_hash(HashType::Sha256)
-        .ok_or_else(|| SshError::Handshake("could not fingerprint the host key".into()))?;
-    let info = HostKeyInfo::new(key, key_type, digest);
+    let info = HostKeyInfo::from_blob(blob)?;
     let path = opts
         .known_hosts
         .clone()
@@ -169,7 +105,7 @@ fn check_host_key(
             detail: "could not find your home directory".into(),
         })?;
 
-    match known_hosts::lookup(&path, host, *port, key)? {
+    match known_hosts::lookup(&path, host, *port, &info.key)? {
         HostKeyStatus::Trusted => Ok(()),
         HostKeyStatus::Changed => Err(SshError::HostKeyChanged {
             host: host.clone(),
@@ -369,16 +305,5 @@ impl KeyboardInteractivePrompt for Interactive<'_> {
                 blank()
             }
         }
-    }
-}
-
-pub(crate) fn expand_tilde(path: &str) -> PathBuf {
-    let home = || std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
-    match path.strip_prefix("~") {
-        Some(rest) if rest.is_empty() || rest.starts_with(['/', '\\']) => match home() {
-            Some(h) => Path::new(&h).join(rest.trim_start_matches(['/', '\\'])),
-            None => PathBuf::from(path),
-        },
-        _ => PathBuf::from(path),
     }
 }

@@ -81,8 +81,3 @@ pub(crate) fn session_code(e: &ssh2::Error) -> Option<i32> {
         _ => None,
     }
 }
-
-/// libssh2's EAGAIN: the non-blocking call must be retried later.
-pub(crate) fn would_block(e: &ssh2::Error) -> bool {
-    session_code(e) == Some(-37)
-}

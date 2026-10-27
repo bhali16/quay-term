@@ -1,25 +1,26 @@
 //! A live shell on a remote host.
 //!
-//! libssh2 sessions are not thread-safe, so one thread owns the connection
-//! and talks to it in non-blocking mode. [`SshSession`] is a handle that
-//! sends commands to that thread.
+//! The connection runs on the shared tokio runtime. [`SshSession`] is a
+//! handle that sends keystrokes and resizes to it; output comes back through
+//! the callbacks given to [`SshSession::connect`], batched so a busy terminal
+//! does not flood the UI.
 
-use std::io::{Read, Write};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use quay_core::{Error, Result, Session, TermSize};
-use ssh2::{Channel, Session as RawSession};
+use russh::client::Msg;
+use russh::{ChannelMsg, ChannelReadHalf, ChannelWriteHalf, Disconnect};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::oneshot;
+use tokio::time::Instant;
 
-use crate::connect::{connect, ConnectOptions};
-use crate::error::{would_block, SshError};
+use crate::client::{self, runtime, Connection};
+use crate::error::SshError;
 use crate::known_hosts::HostKeyInfo;
+use crate::options::ConnectOptions;
 
 const BATCH_WINDOW: Duration = Duration::from_millis(8);
 const BATCH_MAX: usize = 64 * 1024;
-const POLL_MIN: Duration = Duration::from_millis(1);
-const POLL_MAX: Duration = Duration::from_millis(10);
 
 enum Cmd {
     Write(Vec<u8>),
@@ -28,7 +29,7 @@ enum Cmd {
 }
 
 pub struct SshSession {
-    tx: Sender<Cmd>,
+    tx: UnboundedSender<Cmd>,
     closed: bool,
 }
 
@@ -46,24 +47,19 @@ impl SshSession {
         on_output: impl FnMut(Vec<u8>) + Send + 'static,
         on_exit: impl FnOnce(Option<String>) + Send + 'static,
     ) -> std::result::Result<Self, SshError> {
-        let session = connect(opts, &mut verify)?;
-        let mut channel = session
-            .channel_session()
-            .map_err(|e| SshError::Channel(e.message().to_string()))?;
-        channel
-            .request_pty(
-                "xterm-256color",
-                None,
-                Some((size.cols.max(1) as u32, size.rows.max(1) as u32, 0, 0)),
-            )
-            .map_err(|e| SshError::Channel(e.message().to_string()))?;
-        channel
-            .shell()
-            .map_err(|e| SshError::Channel(e.message().to_string()))?;
+        let conn = client::connect(opts, &mut verify)?;
+        let (read, write) = runtime().block_on(open_shell(&conn, size))?;
 
-        let (tx, rx) = mpsc::channel();
-        thread::spawn(move || {
-            let reason = io_loop(session, channel, rx, on_output);
+        let (tx, rx) = unbounded_channel();
+        let (closed_tx, closed_rx) = oneshot::channel();
+        runtime().spawn(write_loop(write, rx, closed_tx));
+        runtime().spawn(async move {
+            let reason = read_loop(read, closed_rx, on_output).await;
+            // Best-effort goodbye; a server that never answers must not hold us up.
+            let bye = conn
+                .handle
+                .disconnect(Disconnect::ByApplication, "quay-term closing", "en");
+            let _ = tokio::time::timeout(Duration::from_secs(2), bye).await;
             on_exit(reason);
         });
         Ok(Self { tx, closed: false })
@@ -101,132 +97,114 @@ impl Drop for SshSession {
     }
 }
 
-/// Run until the session ends. Returns an error message if it ended badly.
-fn io_loop(
-    session: RawSession,
-    mut channel: Channel,
-    rx: Receiver<Cmd>,
-    mut emit: impl FnMut(Vec<u8>),
-) -> Option<String> {
-    session.set_blocking(false);
-
-    let mut pending_out: Vec<u8> = Vec::new();
-    let mut pending_resize: Option<TermSize> = None;
-    let mut batch: Vec<u8> = Vec::new();
-    let mut batch_since = Instant::now();
-    let mut next_keepalive = Instant::now() + Duration::from_secs(1);
-    let mut idle = POLL_MIN;
-    let mut buf = [0u8; 16 * 1024];
-
-    let outcome: Option<String> = 'run: loop {
-        let mut busy = false;
-
-        // Commands from the UI.
-        loop {
-            match rx.try_recv() {
-                Ok(Cmd::Write(d)) => pending_out.extend_from_slice(&d),
-                Ok(Cmd::Resize(s)) => pending_resize = Some(s),
-                Ok(Cmd::Close) | Err(TryRecvError::Disconnected) => break 'run None,
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-
-        // Keystrokes out.
-        while !pending_out.is_empty() {
-            match channel.write(&pending_out) {
-                Ok(n) => {
-                    pending_out.drain(..n);
-                    busy = true;
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => break 'run Some(format!("Connection lost: {e}")),
-            }
-        }
-        if let Some(size) = pending_resize {
-            match channel.request_pty_size(
-                size.cols.max(1) as u32,
-                size.rows.max(1) as u32,
-                None,
-                None,
-            ) {
-                Ok(()) => pending_resize = None,
-                Err(e) if would_block(&e) => {}
-                Err(_) => pending_resize = None, // a failed resize is not fatal
-            }
-        }
-
-        // Output in. Reading stderr too keeps a non-pty fallback from stalling.
-        let mut got_data = false;
-        for stream in [0, 1] {
-            loop {
-                let res = if stream == 0 {
-                    channel.read(&mut buf)
-                } else {
-                    channel.stderr().read(&mut buf)
-                };
-                match res {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if batch.is_empty() {
-                            batch_since = Instant::now();
-                        }
-                        batch.extend_from_slice(&buf[..n]);
-                        got_data = true;
-                        busy = true;
-                        if batch.len() >= BATCH_MAX {
-                            emit(std::mem::take(&mut batch));
-                        }
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                    Err(e) => {
-                        flush(&mut batch, &mut emit);
-                        break 'run Some(format!("Connection lost: {e}"));
-                    }
-                }
-            }
-        }
-        if !batch.is_empty() && (!got_data || batch_since.elapsed() >= BATCH_WINDOW) {
-            flush(&mut batch, &mut emit);
-        }
-        if channel.eof() {
-            flush(&mut batch, &mut emit);
-            break 'run None;
-        }
-
-        // Keep the connection alive and notice when it has died.
-        if Instant::now() >= next_keepalive {
-            match session.keepalive_send() {
-                Ok(secs) => {
-                    next_keepalive = Instant::now() + Duration::from_secs(secs.max(1) as u64)
-                }
-                Err(e) if would_block(&e) => {}
-                Err(e) => break 'run Some(format!("Connection lost: {}", e.message())),
-            }
-        }
-
-        if busy {
-            idle = POLL_MIN;
-        } else {
-            // Sleep, but wake at once for keystrokes.
-            match rx.recv_timeout(idle) {
-                Ok(Cmd::Write(d)) => pending_out.extend_from_slice(&d),
-                Ok(Cmd::Resize(s)) => pending_resize = Some(s),
-                Ok(Cmd::Close) | Err(RecvTimeoutError::Disconnected) => break 'run None,
-                Err(RecvTimeoutError::Timeout) => idle = (idle * 2).min(POLL_MAX),
-            }
-        }
-    };
-
-    // Best-effort goodbye.
-    session.set_blocking(true);
-    session.set_timeout(2000);
-    let _ = channel.close();
-    let _ = session.disconnect(None, "quay-term closing", None);
-    outcome
+async fn open_shell(
+    conn: &Connection,
+    size: TermSize,
+) -> std::result::Result<(ChannelReadHalf, ChannelWriteHalf<Msg>), SshError> {
+    let chan_err = |e: russh::Error| SshError::Channel(e.to_string());
+    let channel = conn.handle.channel_open_session().await.map_err(chan_err)?;
+    channel
+        .request_pty(
+            true,
+            "xterm-256color",
+            size.cols.max(1) as u32,
+            size.rows.max(1) as u32,
+            0,
+            0,
+            &[],
+        )
+        .await
+        .map_err(chan_err)?;
+    channel.request_shell(true).await.map_err(chan_err)?;
+    Ok(channel.split())
 }
 
-fn flush(batch: &mut Vec<u8>, emit: &mut impl FnMut(Vec<u8>)) {
-    if !batch.is_empty() {
-        emit(std::mem::take(batch));
+/// Sends keystrokes and resizes. Separate from reading so a full remote
+/// window can never stop us from draining output (which would deadlock a
+/// big paste into a program that echoes as it reads).
+async fn write_loop(
+    write: ChannelWriteHalf<Msg>,
+    mut rx: UnboundedReceiver<Cmd>,
+    closed: oneshot::Sender<()>,
+) {
+    let mut asked_to_close = false;
+    while let Some(cmd) = rx.recv().await {
+        let ok = match cmd {
+            Cmd::Write(data) => write.data_bytes(data).await.is_ok(),
+            // A failed resize is not fatal.
+            Cmd::Resize(s) => {
+                let _ = write
+                    .window_change(s.cols.max(1) as u32, s.rows.max(1) as u32, 0, 0)
+                    .await;
+                true
+            }
+            Cmd::Close => {
+                asked_to_close = true;
+                false
+            }
+        };
+        if !ok {
+            break;
+        }
     }
+    let _ = write.eof().await;
+    let _ = write.close().await;
+    // A shell on a pty may outlive its channel, so do not wait for the server
+    // to confirm: tell the reader to wrap up.
+    if asked_to_close {
+        let _ = closed.send(());
+    }
+}
+
+/// Collect output into batches until the session ends. Returns an error
+/// message if it ended badly.
+async fn read_loop(
+    mut read: ChannelReadHalf,
+    mut closed: oneshot::Receiver<()>,
+    mut emit: impl FnMut(Vec<u8>),
+) -> Option<String> {
+    let mut batch: Vec<u8> = Vec::new();
+    let mut flush_at: Option<Instant> = None;
+    let mut ended_cleanly = false;
+
+    loop {
+        let timer = async {
+            match flush_at {
+                Some(t) => tokio::time::sleep_until(t).await,
+                None => std::future::pending().await,
+            }
+        };
+        tokio::select! {
+            msg = read.wait() => match msg {
+                Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
+                    if batch.is_empty() {
+                        flush_at = Some(Instant::now() + BATCH_WINDOW);
+                    }
+                    batch.extend_from_slice(&data);
+                    if batch.len() >= BATCH_MAX {
+                        emit(std::mem::take(&mut batch));
+                        flush_at = None;
+                    }
+                }
+                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => {
+                    ended_cleanly = true;
+                    break;
+                }
+                Some(_) => {}
+                None => break,
+            },
+            _ = &mut closed => {
+                ended_cleanly = true;
+                break;
+            }
+            _ = timer => {
+                emit(std::mem::take(&mut batch));
+                flush_at = None;
+            }
+        }
+    }
+    if !batch.is_empty() {
+        emit(batch);
+    }
+    (!ended_cleanly).then(|| "Connection lost".to_string())
 }

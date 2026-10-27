@@ -1,6 +1,6 @@
 //! Host-key verification against an OpenSSH `known_hosts` file.
 //!
-//! Lookups go through libssh2's parser (so hashed host names work); new
+//! Lookups go through russh's parser (so hashed host names work); new
 //! entries are appended as one plain line so the user's existing file is
 //! never rewritten.
 
@@ -8,9 +8,8 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
-use base64::Engine;
-use ssh2::{CheckResult, HostKeyType, KnownHostFileKind, Session};
+use russh::keys::known_hosts::known_host_keys_path;
+use russh::keys::{HashAlg, PublicKey};
 
 use crate::error::SshError;
 
@@ -21,16 +20,23 @@ pub struct HostKeyInfo {
     pub key_type: String,
     /// "SHA256:..." as printed by OpenSSH.
     pub fingerprint: String,
-    pub(crate) key: Vec<u8>,
+    pub(crate) key: PublicKey,
 }
 
 impl HostKeyInfo {
-    pub(crate) fn new(key: &[u8], key_type: HostKeyType, sha256: &[u8]) -> Self {
+    pub(crate) fn new(key: PublicKey) -> Self {
         Self {
-            key_type: key_type_name(key_type).to_string(),
-            fingerprint: fingerprint(sha256),
-            key: key.to_vec(),
+            key_type: key.algorithm().to_string(),
+            fingerprint: key.fingerprint(HashAlg::Sha256).to_string(),
+            key,
         }
+    }
+
+    /// From a key in SSH wire format, as libssh2 hands it out.
+    pub(crate) fn from_blob(blob: &[u8]) -> Result<Self, SshError> {
+        PublicKey::from_bytes(blob)
+            .map(Self::new)
+            .map_err(|e| SshError::Handshake(format!("unreadable host key: {e}")))
     }
 }
 
@@ -50,23 +56,6 @@ pub fn default_path() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".ssh").join("known_hosts"))
 }
 
-pub(crate) fn key_type_name(t: HostKeyType) -> &'static str {
-    match t {
-        HostKeyType::Rsa => "ssh-rsa",
-        HostKeyType::Dss => "ssh-dss",
-        HostKeyType::Ecdsa256 => "ecdsa-sha2-nistp256",
-        HostKeyType::Ecdsa384 => "ecdsa-sha2-nistp384",
-        HostKeyType::Ecdsa521 => "ecdsa-sha2-nistp521",
-        HostKeyType::Ed25519 => "ssh-ed25519",
-        _ => "unknown",
-    }
-}
-
-/// OpenSSH-style fingerprint from a raw SHA-256 digest of the public key.
-pub(crate) fn fingerprint(sha256: &[u8]) -> String {
-    format!("SHA256:{}", STANDARD_NO_PAD.encode(sha256))
-}
-
 /// Host pattern as written in known_hosts: plain for port 22, `[host]:port` otherwise.
 fn pattern(host: &str, port: u16) -> String {
     if port == 22 {
@@ -76,38 +65,51 @@ fn pattern(host: &str, port: u16) -> String {
     }
 }
 
-/// Compare `key` with what `path` says about `host:port`. A missing file
-/// means the host is unknown.
-pub fn lookup(path: &Path, host: &str, port: u16, key: &[u8]) -> Result<HostKeyStatus, SshError> {
-    let kh_err = |detail: String| SshError::KnownHosts {
-        path: path.to_path_buf(),
-        detail,
-    };
-    // Any session works as a parser handle; no connection is needed.
-    let session = Session::new().map_err(|e| kh_err(e.to_string()))?;
-    let mut hosts = session.known_hosts().map_err(|e| kh_err(e.to_string()))?;
-    match hosts.read_file(path, KnownHostFileKind::OpenSSH) {
-        Ok(_) => {}
-        Err(_) if !path.exists() => return Ok(HostKeyStatus::Unknown),
-        Err(e) => return Err(kh_err(e.to_string())),
+/// The keys `path` records for `host:port`. A missing file records none.
+pub(crate) fn recorded_keys(
+    path: &Path,
+    host: &str,
+    port: u16,
+) -> Result<Vec<PublicKey>, SshError> {
+    if !path.exists() {
+        return Ok(Vec::new());
     }
-    Ok(match hosts.check_port(host, port, key) {
-        CheckResult::Match => HostKeyStatus::Trusted,
-        CheckResult::NotFound => HostKeyStatus::Unknown,
-        CheckResult::Mismatch => HostKeyStatus::Changed,
-        CheckResult::Failure => return Err(kh_err("lookup failed".to_string())),
+    known_host_keys_path(host, port, path)
+        .map(|keys| keys.into_iter().map(|(_, k)| k).collect())
+        .map_err(|e| SshError::KnownHosts {
+            path: path.to_path_buf(),
+            detail: e.to_string(),
+        })
+}
+
+/// Compare `key` with what `path` says about `host:port`. A missing file
+/// means the host is unknown. A host recorded with only other keys, even of
+/// another type, counts as changed: its key must not be silently replaced.
+pub fn lookup(
+    path: &Path,
+    host: &str,
+    port: u16,
+    key: &PublicKey,
+) -> Result<HostKeyStatus, SshError> {
+    let recorded = recorded_keys(path, host, port)?;
+    Ok(if recorded.is_empty() {
+        HostKeyStatus::Unknown
+    } else if recorded.iter().any(|k| k == key) {
+        HostKeyStatus::Trusted
+    } else {
+        HostKeyStatus::Changed
     })
 }
 
 /// Append a trusted key for `host:port` to `path`, creating the file (and
 /// `~/.ssh`-style parent directory, mode 0700) if needed.
 pub fn trust(path: &Path, host: &str, port: u16, info: &HostKeyInfo) -> Result<(), SshError> {
-    let kh_err = |e: std::io::Error| SshError::KnownHosts {
+    let kh_err = |detail: String| SshError::KnownHosts {
         path: path.to_path_buf(),
-        detail: e.to_string(),
+        detail,
     };
     if let Some(dir) = path.parent().filter(|d| !d.exists()) {
-        fs::create_dir_all(dir).map_err(kh_err)?;
+        fs::create_dir_all(dir).map_err(|e| kh_err(e.to_string()))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -121,13 +123,14 @@ pub fn trust(path: &Path, host: &str, port: u16, info: &HostKeyInfo) -> Result<(
         .create(true)
         .append(true)
         .open(path)
-        .map_err(kh_err)?;
+        .map_err(|e| kh_err(e.to_string()))?;
+    let key = info.key.to_openssh().map_err(|e| kh_err(e.to_string()))?;
     let line = format!(
-        "{}{} {} {}\n",
+        "{}{} {}\n",
         if needs_newline { "\n" } else { "" },
         pattern(host, port),
-        info.key_type,
-        STANDARD.encode(&info.key)
+        key
     );
-    file.write_all(line.as_bytes()).map_err(kh_err)
+    file.write_all(line.as_bytes())
+        .map_err(|e| kh_err(e.to_string()))
 }
