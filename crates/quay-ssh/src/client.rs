@@ -22,6 +22,7 @@ use russh::keys::{
 use russh::MethodKind;
 use russh::Preferred;
 use socket2::{SockRef, TcpKeepalive};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
@@ -53,6 +54,34 @@ enum Event {
 /// An authenticated SSH connection. Shells, SFTP and forwards open channels on it.
 pub struct Connection {
     pub(crate) handle: Handle<Handler>,
+}
+
+impl Connection {
+    /// Connect, check the host key and authenticate. Blocks, so call it from a
+    /// worker thread. See [`ConnectOptions`] for what can be configured.
+    pub fn connect(
+        opts: &ConnectOptions,
+        verify: &mut dyn FnMut(&HostKeyInfo) -> bool,
+    ) -> Result<Self, SshError> {
+        connect(opts, verify)
+    }
+
+    /// Open a subsystem such as `sftp` on its own channel and return it as a
+    /// byte stream. Any number of channels share the one connection.
+    pub async fn open_subsystem(
+        &self,
+        name: &str,
+    ) -> Result<impl AsyncRead + AsyncWrite + Unpin + Send + 'static, SshError> {
+        let err = |e: russh::Error| SshError::Channel(e.to_string());
+        let channel = self.handle.channel_open_session().await.map_err(err)?;
+        channel.request_subsystem(true, name).await.map_err(err)?;
+        Ok(channel.into_stream())
+    }
+}
+
+/// Run a future to completion on the SSH runtime, from a plain thread.
+pub fn block_on<F: std::future::Future>(f: F) -> F::Output {
+    runtime().block_on(f)
 }
 
 pub(crate) struct Handler {

@@ -10,7 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Frontend unit tests (vitest) for keyboard shortcut handling, run in CI.
 
 ### Changed
-- Terminal SSH sessions now run on russh (pure Rust) instead of libssh2. Host keys are checked per connection, so jump hosts and tunnels can follow. A host recorded in known_hosts with a key of another type is still refused, and the recorded key type is now requested first, as OpenSSH does.
+- SSH and SFTP now run on russh and russh-sftp (pure Rust) instead of libssh2; there is no OpenSSL or C SSH library in the build any more.
+- Terminal SSH sessions use the new connection layer. Host keys are checked per connection, so jump hosts and tunnels can follow. A host recorded in known_hosts with a key of another type is still refused, and the recorded key type is now requested first, as OpenSSH does.
 - The webview now has a Content Security Policy (scripts, styles, fonts and images from the app only).
 - Logs keep the five most recent rotated files instead of one.
 

@@ -1,4 +1,4 @@
-//! SSH client for quay-term, built on libssh2 (`ssh2`).
+//! SSH client for quay-term, built on russh.
 //!
 //! [`SshSession::connect`] opens a TCP connection, verifies the host key
 //! against `known_hosts` (asking the caller about unknown hosts),
@@ -8,25 +8,14 @@
 mod client;
 mod error;
 pub mod known_hosts;
-mod legacy;
 mod options;
 mod session;
 
-pub use client::Connection;
+pub use client::{block_on, Connection};
 pub use error::SshError;
 pub use known_hosts::{HostKeyInfo, HostKeyStatus};
 pub use options::{Challenge, ChallengePrompt, Challenger, ConnectOptions};
 pub use session::SshSession;
-pub use ssh2::Session as RawSession;
-
-/// Connect, verify the host key and authenticate, returning the raw libssh2
-/// session (blocking mode). Used by SFTP, which opens its own connection.
-pub fn connect_raw(
-    opts: &ConnectOptions,
-    verify: &mut dyn FnMut(&HostKeyInfo) -> bool,
-) -> Result<RawSession, SshError> {
-    legacy::connect(opts, verify)
-}
 
 #[cfg(test)]
 mod tests {

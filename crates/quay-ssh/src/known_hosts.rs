@@ -31,13 +31,6 @@ impl HostKeyInfo {
             key,
         }
     }
-
-    /// From a key in SSH wire format, as libssh2 hands it out.
-    pub(crate) fn from_blob(blob: &[u8]) -> Result<Self, SshError> {
-        PublicKey::from_bytes(blob)
-            .map(Self::new)
-            .map_err(|e| SshError::Handshake(format!("unreadable host key: {e}")))
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
