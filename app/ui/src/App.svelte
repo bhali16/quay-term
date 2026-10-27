@@ -318,6 +318,7 @@
         session={editing_session.session}
         defaultFolderId={editing_session.folderId}
         folders={library.folders}
+        sessions={library.sessions}
         error={dialogError}
         onsubmit={submitSession}
         oncancel={() => (editing_session = null)}

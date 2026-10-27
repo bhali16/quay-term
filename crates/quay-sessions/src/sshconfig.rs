@@ -25,7 +25,8 @@ impl ImportedHost {
     pub(crate) fn to_input(&self, folder_id: Option<i64>) -> SessionInput {
         let mut tags = Vec::new();
         if self.proxy_jump.is_some() {
-            // Jump hosts are not supported yet; make that visible.
+            // Linked to a saved session once imported; stays as a tag when it
+            // names a host we do not know, so it is never silently dropped.
             tags.push("proxyjump".to_string());
         }
         SessionInput {
@@ -42,6 +43,7 @@ impl ImportedHost {
             key_path: self.identity_file.clone(),
             color: None,
             tags,
+            jump_id: None,
         }
     }
 }

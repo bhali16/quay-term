@@ -14,7 +14,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
-use crate::library::Library;
+use crate::library::{Library, Route};
 use crate::{challenger, err, forget_prompt, verifier, Prompts, Sessions};
 
 struct Conn {
@@ -77,17 +77,12 @@ async fn open(
     app: AppHandle,
     sftps: &Sftps,
     prompts: &Prompts,
-    target: SshTarget,
+    route: Route,
 ) -> Result<SftpOpened, String> {
-    let (prompt_id, mut verify) = verifier(&app, prompts, &target.host, target.port);
-    let mut opts = ConnectOptions::new(target.clone());
-    opts.challenger = Some(challenger(
-        &app,
-        prompts,
-        prompt_id,
-        &target.host,
-        target.port,
-    ));
+    let (prompt_id, mut verify) = verifier(&app, prompts);
+    let mut opts = ConnectOptions::new(route.target);
+    opts.jumps = route.jumps;
+    opts.challenger = Some(challenger(&app, prompts, prompt_id));
     let result =
         tauri::async_runtime::spawn_blocking(move || SftpClient::connect(&opts, &mut verify))
             .await
@@ -126,7 +121,7 @@ pub async fn sftp_open(
     prompts: State<'_, Prompts>,
     target: SshTarget,
 ) -> Result<SftpOpened, String> {
-    open(app, &sftps, &prompts, target).await
+    open(app, &sftps, &prompts, target.into()).await
 }
 
 #[tauri::command]
@@ -138,8 +133,8 @@ pub async fn sftp_open_saved(
     id: i64,
     secret: Option<String>,
 ) -> Result<SftpOpened, String> {
-    let target = library.target_for(id, secret, false)?;
-    open(app, &sftps, &prompts, target).await
+    let route = library.route_for(id, secret, false)?;
+    open(app, &sftps, &prompts, route).await
 }
 
 /// Run a blocking SFTP call off the main thread.

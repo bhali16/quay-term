@@ -10,6 +10,9 @@ use quay_core::SshTarget;
 /// a second password, a yes/no confirmation...).
 #[derive(Debug, Clone)]
 pub struct Challenge {
+    /// The host asking, which matters when connecting through jump hosts.
+    pub host: String,
+    pub port: u16,
     pub name: String,
     pub instructions: String,
     pub prompts: Vec<ChallengePrompt>,
@@ -44,6 +47,9 @@ impl std::fmt::Debug for Challenger {
 #[derive(Debug, Clone)]
 pub struct ConnectOptions {
     pub target: SshTarget,
+    /// Jump hosts to go through, first hop first. Each signs in with its own
+    /// credentials; the target is reached through the last one.
+    pub jumps: Vec<SshTarget>,
     /// known_hosts file to check and extend; `None` uses `~/.ssh/known_hosts`.
     pub known_hosts: Option<PathBuf>,
     /// Applies to the TCP connect and, separately, to the handshake and auth.
@@ -59,6 +65,7 @@ impl ConnectOptions {
     pub fn new(target: SshTarget) -> Self {
         Self {
             target,
+            jumps: Vec::new(),
             known_hosts: None,
             timeout: Duration::from_secs(15),
             keepalive: Duration::from_secs(15),

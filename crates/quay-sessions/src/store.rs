@@ -25,7 +25,10 @@ pub struct ImportSummary {
     pub skipped: usize,
 }
 
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
+
+/// Longest chain of jump hosts we follow; a longer one is almost surely a mistake.
+pub const MAX_JUMPS: usize = 8;
 
 pub struct SessionStore {
     conn: Connection,
@@ -45,7 +48,7 @@ impl SessionStore {
 
     fn init(conn: Connection) -> Result<Self> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+        let mut version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if version > SCHEMA_VERSION {
             return Err(Error::Invalid(format!(
                 "the session database was written by a newer quay-term (schema {version})"
@@ -76,7 +79,15 @@ impl SessionStore {
                      PRIMARY KEY (session_id, tag)
                  );",
             )?;
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            conn.pragma_update(None, "user_version", 1)?;
+            version = 1;
+        }
+        if version < 2 {
+            // Connect through another saved session.
+            conn.execute_batch(
+                "ALTER TABLE sessions ADD COLUMN jump_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL;",
+            )?;
+            conn.pragma_update(None, "user_version", 2)?;
         }
         Ok(Self { conn })
     }
@@ -85,10 +96,11 @@ impl SessionStore {
 
     pub fn create_session(&mut self, input: &SessionInput) -> Result<SavedSession> {
         let input = clean(input)?;
+        self.check_jump(None, input.jump_id)?;
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO sessions (name, folder_id, host, port, user, auth, key_path, color)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO sessions (name, folder_id, host, port, user, auth, key_path, color, jump_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 input.name,
                 input.folder_id,
@@ -97,7 +109,8 @@ impl SessionStore {
                 input.user,
                 input.auth.as_str(),
                 input.key_path,
-                input.color
+                input.color,
+                input.jump_id
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -112,10 +125,11 @@ impl SessionStore {
 
     pub fn update_session(&mut self, id: i64, input: &SessionInput) -> Result<SavedSession> {
         let input = clean(input)?;
+        self.check_jump(Some(id), input.jump_id)?;
         let tx = self.conn.transaction()?;
         let changed = tx.execute(
             "UPDATE sessions SET name=?2, folder_id=?3, host=?4, port=?5, user=?6,
-                                 auth=?7, key_path=?8, color=?9 WHERE id=?1",
+                                 auth=?7, key_path=?8, color=?9, jump_id=?10 WHERE id=?1",
             params![
                 id,
                 input.name,
@@ -125,7 +139,8 @@ impl SessionStore {
                 input.user,
                 input.auth.as_str(),
                 input.key_path,
-                input.color
+                input.color,
+                input.jump_id
             ],
         )?;
         if changed == 0 {
@@ -149,6 +164,67 @@ impl SessionStore {
     pub fn delete_session(&mut self, id: i64) -> Result<()> {
         self.conn
             .execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// The jump hosts `id` is reached through, first hop first (not `id` itself).
+    pub fn jump_chain(&self, id: i64) -> Result<Vec<SavedSession>> {
+        let mut chain = Vec::new();
+        let mut next = self
+            .get_session(id)?
+            .ok_or_else(|| Error::Invalid("that saved session no longer exists".into()))?
+            .input
+            .jump_id;
+        while let Some(jid) = next {
+            if jid == id || chain.iter().any(|s: &SavedSession| s.id == jid) {
+                return Err(Error::Invalid("the jump hosts form a loop".into()));
+            }
+            if chain.len() >= MAX_JUMPS {
+                return Err(Error::Invalid(format!(
+                    "more than {MAX_JUMPS} jump hosts in a row"
+                )));
+            }
+            let hop = self
+                .get_session(jid)?
+                .ok_or_else(|| Error::Invalid("a jump host no longer exists".into()))?;
+            next = hop.input.jump_id;
+            chain.push(hop);
+        }
+        chain.reverse();
+        Ok(chain)
+    }
+
+    /// Reject a jump host that does not exist or would make a loop or an
+    /// absurdly long chain. `id` is the session being saved, if it exists yet.
+    fn check_jump(&self, id: Option<i64>, jump_id: Option<i64>) -> Result<()> {
+        let Some(jid) = jump_id else { return Ok(()) };
+        if Some(jid) == id {
+            return Err(Error::Invalid(
+                "a session cannot jump through itself".into(),
+            ));
+        }
+        if self.get_session(jid)?.is_none() {
+            return Err(Error::Invalid(
+                "the chosen jump host no longer exists".into(),
+            ));
+        }
+        // Walk the chain from the jump host; meeting `id` again means a loop.
+        let mut seen = 0;
+        let mut cur = Some(jid);
+        while let Some(c) = cur {
+            if Some(c) == id {
+                return Err(Error::Invalid(
+                    "that would make a loop of jump hosts".into(),
+                ));
+            }
+            seen += 1;
+            if seen > MAX_JUMPS {
+                return Err(Error::Invalid(format!(
+                    "more than {MAX_JUMPS} jump hosts in a row"
+                )));
+            }
+            cur = self.get_session(c)?.and_then(|s| s.input.jump_id);
+        }
         Ok(())
     }
 
@@ -192,7 +268,7 @@ impl SessionStore {
 
     fn query_sessions(&self, filter: &str, args: Vec<String>) -> Result<Vec<SavedSession>> {
         let sql = format!(
-            "SELECT s.id, s.name, s.folder_id, s.host, s.port, s.user, s.auth, s.key_path, s.color, s.has_secret
+            "SELECT s.id, s.name, s.folder_id, s.host, s.port, s.user, s.auth, s.key_path, s.color, s.has_secret, s.jump_id
              FROM sessions s {filter} ORDER BY s.name COLLATE NOCASE, s.id"
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -219,6 +295,7 @@ impl SessionStore {
                         key_path: r.get(7)?,
                         color: r.get(8)?,
                         tags: vec![],
+                        jump_id: r.get(10)?,
                     },
                     has_secret: r.get(9)?,
                 })
@@ -355,7 +432,7 @@ impl SessionStore {
         folder_id: Option<i64>,
     ) -> Result<(ImportSummary, Vec<SavedSession>)> {
         let mut summary = ImportSummary::default();
-        let mut added = Vec::new();
+        let mut added: Vec<SavedSession> = Vec::new();
         let existing = self.list_sessions()?;
         for h in hosts {
             let input = h.to_input(folder_id);
@@ -372,8 +449,70 @@ impl SessionStore {
                 summary.added += 1;
             }
         }
+        // Wire up ProxyJump now that every host has an id.
+        let everyone: Vec<SavedSession> = existing.iter().chain(added.iter()).cloned().collect();
+        for h in hosts {
+            let Some(spec) = &h.proxy_jump else { continue };
+            let Some(me) = added.iter().find(|s| s.input.name == h.alias).map(|s| s.id) else {
+                continue;
+            };
+            let hops: Option<Vec<i64>> = spec
+                .split(',')
+                .map(|hop| resolve_hop(&everyone, hop.trim()))
+                .collect();
+            let Some(hops) = hops.filter(|h| !h.is_empty()) else {
+                continue; // keeps its "proxyjump" tag so the gap is visible
+            };
+            // a,b means: target via b, b via a (unless b already says otherwise).
+            let link = |who: i64, via: i64| -> Result<()> {
+                if self
+                    .get_session(who)?
+                    .is_some_and(|s| s.input.jump_id.is_none())
+                    && self.check_jump(Some(who), Some(via)).is_ok()
+                {
+                    self.conn.execute(
+                        "UPDATE sessions SET jump_id = ?2 WHERE id = ?1",
+                        params![who, via],
+                    )?;
+                }
+                Ok(())
+            };
+            for pair in hops.windows(2) {
+                link(pair[1], pair[0])?;
+            }
+            link(me, *hops.last().unwrap())?;
+            self.conn.execute(
+                "DELETE FROM session_tags WHERE session_id = ?1 AND tag = 'proxyjump'",
+                [me],
+            )?;
+        }
+        let added = added
+            .iter()
+            .filter_map(|s| self.get_session(s.id).transpose())
+            .collect::<Result<Vec<_>>>()?;
         Ok((summary, added))
     }
+}
+
+/// Find the saved session a ProxyJump hop names: by alias, else `[user@]host[:port]`.
+fn resolve_hop(sessions: &[SavedSession], hop: &str) -> Option<i64> {
+    if let Some(s) = sessions.iter().find(|s| s.input.name == hop) {
+        return Some(s.id);
+    }
+    let (user, rest) = match hop.split_once('@') {
+        Some((u, r)) => (Some(u), r),
+        None => (None, hop),
+    };
+    let (host, port) = match rest.rsplit_once(':') {
+        Some((h, p)) => (h, p.parse::<u16>().ok()?),
+        None => (rest, 22),
+    };
+    sessions
+        .iter()
+        .find(|s| {
+            s.input.host == host && s.input.port == port && user.map_or(true, |u| s.input.user == u)
+        })
+        .map(|s| s.id)
 }
 
 fn clean(input: &SessionInput) -> Result<SessionInput> {
@@ -440,6 +579,7 @@ mod tests {
             key_path: None,
             color: None,
             tags: vec![],
+            jump_id: None,
         }
     }
 
@@ -620,6 +760,82 @@ mod tests {
             None
         );
         assert!(s.move_folder(c.id, Some(a.id)).is_ok());
+    }
+
+    #[test]
+    fn jump_hosts_chain_and_reject_loops() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let a = s.create_session(&input("a", "a.example")).unwrap();
+        let mut ib = input("b", "b.example");
+        ib.jump_id = Some(a.id);
+        let b = s.create_session(&ib).unwrap();
+        let mut ic = input("c", "c.example");
+        ic.jump_id = Some(b.id);
+        let c = s.create_session(&ic).unwrap();
+
+        let names = |v: Vec<SavedSession>| v.into_iter().map(|s| s.input.name).collect::<Vec<_>>();
+        assert_eq!(names(s.jump_chain(c.id).unwrap()), ["a", "b"]);
+        assert!(s.jump_chain(a.id).unwrap().is_empty());
+
+        // a -> c would close the loop a, c, b, a.
+        let mut ia = input("a", "a.example");
+        ia.jump_id = Some(c.id);
+        let err = s.update_session(a.id, &ia).unwrap_err().to_string();
+        assert!(err.contains("loop"), "{err}");
+        ia.jump_id = Some(a.id);
+        assert!(s.update_session(a.id, &ia).is_err(), "not through itself");
+        ia.jump_id = Some(9999);
+        assert!(s.update_session(a.id, &ia).is_err(), "must exist");
+
+        // Deleting a jump host leaves its dependants direct, not dangling.
+        s.delete_session(a.id).unwrap();
+        assert_eq!(s.get_session(b.id).unwrap().unwrap().input.jump_id, None);
+    }
+
+    #[test]
+    fn existing_database_gains_the_jump_column() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sessions.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE folders (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+                     parent_id INTEGER REFERENCES folders(id) ON DELETE SET NULL);
+                 CREATE TABLE sessions (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+                     folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+                     host TEXT NOT NULL, port INTEGER NOT NULL, user TEXT NOT NULL,
+                     auth TEXT NOT NULL, key_path TEXT, color TEXT,
+                     has_secret INTEGER NOT NULL DEFAULT 0);
+                 CREATE TABLE session_tags (
+                     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                     tag TEXT NOT NULL COLLATE NOCASE, PRIMARY KEY (session_id, tag));
+                 INSERT INTO sessions (name, host, port, user, auth) VALUES ('old','h',22,'u','agent');
+                 PRAGMA user_version = 1;",
+            )
+            .unwrap();
+        }
+        let s = SessionStore::open(&path).unwrap();
+        let all = s.list_sessions().unwrap();
+        assert_eq!((all.len(), all[0].input.jump_id), (1, None));
+    }
+
+    #[test]
+    fn import_links_proxy_jump_to_known_hosts() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let hosts = parse_ssh_config(
+            "Host bastion\n  HostName b.example\n  User u\n\
+             Host inner\n  HostName i.example\n  User u\n  ProxyJump bastion\n\
+             Host far\n  HostName f.example\n  User u\n  ProxyJump bastion,inner\n\
+             Host odd\n  HostName o.example\n  User u\n  ProxyJump nobody-knows\n",
+        );
+        let (_, added) = s.import_hosts(&hosts, None).unwrap();
+        let by = |n: &str| added.iter().find(|x| x.input.name == n).unwrap().clone();
+        assert_eq!(by("inner").input.jump_id, Some(by("bastion").id));
+        assert_eq!(by("far").input.jump_id, Some(by("inner").id));
+        assert!(!by("inner").input.tags.contains(&"proxyjump".to_string()));
+        // An unresolvable jump stays visible as a tag instead of silently connecting direct.
+        assert_eq!(by("odd").input.jump_id, None);
+        assert!(by("odd").input.tags.contains(&"proxyjump".to_string()));
     }
 
     #[test]

@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- Jump hosts. A saved session can connect through another saved session ("Connect via" in the session editor), and chains work: each hop signs in with its own saved credentials, and each host key is checked and remembered under its own name. The host-key and sign-in prompts say which hop is asking, and an error names the jump host that failed. Importing `~/.ssh/config` links `ProxyJump` (aliases, `user@host:port`, and comma-separated chains) to the imported sessions; a jump it cannot resolve keeps the `proxyjump` tag. Loops and chains longer than 8 are refused.
 - Sign-in prompts for servers that ask for more than a password (one-time codes, a second factor). The password is still sent automatically to a lone password prompt; everything else is shown in a dialog. This works for the terminal and the Files panel.
 - Frontend unit tests (vitest) for keyboard shortcut handling, run in CI.
 

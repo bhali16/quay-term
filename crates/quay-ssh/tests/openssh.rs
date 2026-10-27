@@ -338,3 +338,85 @@ fn lost_connection_reports_a_reason() {
     }
     std::thread::sleep(Duration::from_secs(3));
 }
+
+/// Go through the server to reach itself, as a jump host would: the target is
+/// named "localhost" while the jump host is "127.0.0.1", so each hop must be
+/// verified (and remembered) under its own name.
+#[test]
+fn connects_through_a_jump_host() {
+    let (e, _gate) = server!();
+    let dir = tempfile::tempdir().unwrap();
+    let kh = dir.path().join("known_hosts");
+    let hop = |host: &str| SshTarget {
+        host: host.into(),
+        port: e.port,
+        user: e.user.clone(),
+        auth: password(&e),
+    };
+    // The jump host reaches the target on its own loopback, at sshd's port inside the container.
+    let mut target = hop("localhost");
+    target.port = 2222;
+    let mut o = opts(&e, password(&e), &kh);
+    o.target = target;
+    o.jumps = vec![hop(&e.host)];
+
+    let prompted = Mutex::new(Vec::new());
+    let mut live = connect(&o, |info| {
+        prompted
+            .lock()
+            .unwrap()
+            .push((info.host.clone(), info.port));
+        true
+    })
+    .unwrap();
+    assert_eq!(
+        *prompted.lock().unwrap(),
+        [(e.host.clone(), e.port), ("localhost".to_string(), 2222)],
+        "each hop is asked about under its own name"
+    );
+
+    live.session.write(b"echo hop-$((6*7))\n").unwrap();
+    live.wait_for("hop-42");
+    let known = std::fs::read_to_string(&kh).unwrap();
+    assert!(
+        known.contains(&format!("[{}]:{}", e.host, e.port)),
+        "{known}"
+    );
+    assert!(known.contains("[localhost]:2222"), "{known}");
+
+    // Second time both hops are trusted: no more questions.
+    let again = connect(&o, |_| panic!("must not prompt twice"));
+    assert!(again.is_ok());
+}
+
+#[test]
+fn a_failing_jump_host_is_named() {
+    let (e, _gate) = server!();
+    let dir = tempfile::tempdir().unwrap();
+    let kh = dir.path().join("known_hosts");
+    let mut bad = SshTarget {
+        host: e.host.clone(),
+        port: e.port,
+        user: e.user.clone(),
+        auth: SshAuth::Password {
+            password: "wrong".into(),
+        },
+    };
+    let mut o = opts(&e, password(&e), &kh);
+    o.jumps = vec![bad.clone()];
+    let err = connect(&o, |_| true).err().unwrap();
+    assert!(
+        matches!(&err, SshError::JumpHost { .. })
+            && err.to_string().contains(&format!("{}:{}", e.host, e.port))
+            && err.to_string().contains("password"),
+        "{err}"
+    );
+
+    // A jump host that cannot reach the target says so, naming the target.
+    bad.auth = password(&e);
+    o.jumps = vec![bad];
+    o.target.host = "127.0.0.1".into();
+    o.target.port = 1; // nothing listens here, from the jump host's point of view
+    let err = connect(&o, |_| true).err().unwrap();
+    assert!(matches!(&err, SshError::Connect { port: 1, .. }), "{err}");
+}

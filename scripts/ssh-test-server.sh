@@ -30,6 +30,11 @@ $(cat "$DIR/id_protected.pub")" \
       sleep 1
     done
     sleep 2
+    # Jump hosts and tunnels need TCP forwarding, which the image turns off.
+    # The tests also fail logins on purpose; without this, OpenSSH 9.8+ starts
+    # refusing the whole source address after a few of them.
+    docker exec "$NAME" sh -c "sed -i 's/^AllowTcpForwarding no/AllowTcpForwarding yes/' /config/sshd/sshd_config; echo 'PerSourcePenalties no' >> /config/sshd/sshd_config; pkill -HUP sshd" >/dev/null
+    sleep 1
     cat <<ENV
 export QUAY_TEST_SSH_HOST=127.0.0.1
 export QUAY_TEST_SSH_PORT=$PORT

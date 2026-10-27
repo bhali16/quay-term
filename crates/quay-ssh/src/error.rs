@@ -56,6 +56,13 @@ pub enum SshError {
         wanted: &'static str,
         offered: Vec<String>,
     },
+    /// A failure while going through a jump host, named so the user knows which hop.
+    #[error("Jump host {host}:{port}: {source}")]
+    JumpHost {
+        host: String,
+        port: u16,
+        source: Box<SshError>,
+    },
     #[error("Could not open a shell on the server: {0}")]
     Channel(String),
     #[error("SSH error: {0}")]

@@ -54,6 +54,9 @@ enum Event {
 /// An authenticated SSH connection. Shells, SFTP and forwards open channels on it.
 pub struct Connection {
     pub(crate) handle: Handle<Handler>,
+    /// Sessions of the jump hosts this one is tunnelled through. Kept so they
+    /// stay up for as long as the connection does (dropped after `handle`).
+    _jumps: Vec<Handle<Handler>>,
 }
 
 impl Connection {
@@ -116,7 +119,9 @@ impl client::Handler for Handler {
             PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
             PublicKeyOrCertificate::Certificate(c) => c.public_key().clone().into(),
         };
-        let info = HostKeyInfo::new(key);
+        let mut info = HostKeyInfo::new(key);
+        info.host = self.host.clone();
+        info.port = self.port;
         match known_hosts::lookup(&self.known_hosts, &self.host, self.port, &info.key) {
             Err(e) => self.refuse(e),
             Ok(HostKeyStatus::Trusted) => Ok(true),
@@ -209,37 +214,82 @@ async fn connect_async(
     events: mpsc::Sender<Event>,
     refusal: Arc<Mutex<Option<SshError>>>,
 ) -> Result<Connection, SshError> {
-    let SshTarget {
-        host, port, user, ..
-    } = &opts.target;
-    let tcp = open_tcp(host, *port, opts.timeout).await?;
+    let hops: Vec<&SshTarget> = opts.jumps.iter().chain([&opts.target]).collect();
+    let mut sessions: Vec<Handle<Handler>> = Vec::new();
 
-    let config = client::Config {
-        preferred: preferred_for(&known_hosts, host, *port)?,
-        keepalive_interval: Some(opts.keepalive),
-        keepalive_max: 3,
-        nodelay: true,
-        ..Default::default()
-    };
-    let handler = Handler {
-        host: host.clone(),
-        port: *port,
-        known_hosts,
-        events: events.clone(),
-        refusal: refusal.clone(),
-    };
-    let mut handle = client::connect_stream(Arc::new(config), tcp, handler)
-        .await
-        .map_err(|e| {
-            refusal
-                .lock()
-                .unwrap()
-                .take()
-                .unwrap_or_else(|| SshError::Handshake(e.to_string()))
-        })?;
+    for (i, hop) in hops.iter().enumerate() {
+        let is_target = i == hops.len() - 1;
+        let step = async {
+            let config = client::Config {
+                preferred: preferred_for(&known_hosts, &hop.host, hop.port)?,
+                keepalive_interval: Some(opts.keepalive),
+                keepalive_max: 3,
+                nodelay: true,
+                ..Default::default()
+            };
+            let handler = Handler {
+                host: hop.host.clone(),
+                port: hop.port,
+                known_hosts: known_hosts.clone(),
+                events: events.clone(),
+                refusal: refusal.clone(),
+            };
+            let handshake_err = |e: russh::Error| {
+                refusal
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .unwrap_or_else(|| SshError::Handshake(e.to_string()))
+            };
+            let mut handle = match sessions.last() {
+                None => {
+                    let tcp = open_tcp(&hop.host, hop.port, opts.timeout).await?;
+                    client::connect_stream(Arc::new(config), tcp, handler)
+                        .await
+                        .map_err(handshake_err)?
+                }
+                Some(previous) => {
+                    // The next hop is reached from the previous one, not from here.
+                    let channel = previous
+                        .channel_open_direct_tcpip(
+                            hop.host.clone(),
+                            hop.port as u32,
+                            "127.0.0.1",
+                            0,
+                        )
+                        .await
+                        .map_err(|e| SshError::Connect {
+                            host: hop.host.clone(),
+                            port: hop.port,
+                            detail: format!("the previous host could not open it: {e}"),
+                        })?;
+                    client::connect_stream(Arc::new(config), channel.into_stream(), handler)
+                        .await
+                        .map_err(handshake_err)?
+                }
+            };
+            authenticate(&mut handle, hop, &events).await?;
+            Ok::<_, SshError>(handle)
+        };
+        match step.await {
+            Ok(handle) => sessions.push(handle),
+            // Name the hop so "wrong password" says whose password.
+            Err(e) if !is_target => {
+                return Err(SshError::JumpHost {
+                    host: hop.host.clone(),
+                    port: hop.port,
+                    source: Box::new(e),
+                })
+            }
+            Err(e) => return Err(e),
+        }
+    }
 
-    authenticate(&mut handle, user, &opts.target.auth, &events).await?;
-    Ok(Connection { handle })
+    let handle = sessions.pop().expect("there is always a target");
+    Ok(Connection {
+        handle,
+        _jumps: sessions,
+    })
 }
 
 /// Like OpenSSH: ask for the host-key types already recorded for this host
@@ -344,10 +394,10 @@ fn method_name(m: &MethodKind) -> String {
 
 async fn authenticate(
     h: &mut Handle<Handler>,
-    user: &str,
-    auth: &SshAuth,
+    hop: &SshTarget,
     events: &mpsc::Sender<Event>,
 ) -> Result<(), SshError> {
+    let (user, auth) = (hop.user.as_str(), &hop.auth);
     let other = |e: russh::Error| SshError::Other(e.to_string());
 
     // Asking with "none" also lets servers without authentication through,
@@ -379,7 +429,7 @@ async fn authenticate(
             }
             // Many servers expose password login only as keyboard-interactive.
             if needs_second_factor || offered.contains(&MethodKind::KeyboardInteractive) {
-                if keyboard_interactive(h, user, Some(password), events).await? {
+                if keyboard_interactive(h, hop, Some(password), events).await? {
                     return Ok(());
                 }
                 return Err(SshError::PasswordRejected { user: user.into() });
@@ -466,7 +516,7 @@ async fn authenticate(
     }
 
     // First step accepted, login incomplete: a code or second password follows.
-    if needs_second_factor && keyboard_interactive(h, user, None, events).await? {
+    if needs_second_factor && keyboard_interactive(h, hop, None, events).await? {
         return Ok(());
     }
     Err(SshError::Other(
@@ -507,10 +557,11 @@ async fn connect_agent(
 /// `password`; anything else goes to the user. `Ok(false)` means rejected.
 async fn keyboard_interactive(
     h: &mut Handle<Handler>,
-    user: &str,
+    hop: &SshTarget,
     password: Option<&str>,
     events: &mpsc::Sender<Event>,
 ) -> Result<bool, SshError> {
+    let user = hop.user.as_str();
     let other = |e: russh::Error| SshError::Other(e.to_string());
     let mut password = password;
     let mut response = h
@@ -538,6 +589,8 @@ async fn keyboard_interactive(
                     _ => {
                         let (tx, rx) = oneshot::channel();
                         let challenge = Challenge {
+                            host: hop.host.clone(),
+                            port: hop.port,
                             name,
                             instructions,
                             prompts: prompts
