@@ -28,6 +28,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
 
 use crate::error::SshError;
+use crate::forward::RemoteForwards;
 use crate::known_hosts::{self, HostKeyInfo, HostKeyStatus};
 use crate::options::{expand_tilde, Challenge, ChallengePrompt, ConnectOptions};
 
@@ -57,6 +58,8 @@ pub struct Connection {
     /// Sessions of the jump hosts this one is tunnelled through. Kept so they
     /// stay up for as long as the connection does (dropped after `handle`).
     _jumps: Vec<Handle<Handler>>,
+    /// Where the server's remote-forward connections go.
+    pub(crate) remote: Arc<RemoteForwards>,
 }
 
 impl Connection {
@@ -99,6 +102,7 @@ pub(crate) struct Handler {
     events: mpsc::Sender<Event>,
     /// Why the key was refused, so the caller gets a real error and not "unknown key".
     refusal: Arc<Mutex<Option<SshError>>>,
+    remote: Arc<RemoteForwards>,
 }
 
 impl Handler {
@@ -110,6 +114,23 @@ impl Handler {
 
 impl client::Handler for Handler {
     type Error = russh::Error;
+
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        _connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        if self.remote.accept(connected_port, channel) {
+            reply.accept().await;
+        }
+        // Dropping `reply` refuses a connection nobody asked for.
+        Ok(())
+    }
 
     async fn check_server_key(
         &mut self,
@@ -216,8 +237,11 @@ async fn connect_async(
 ) -> Result<Connection, SshError> {
     let hops: Vec<&SshTarget> = opts.jumps.iter().chain([&opts.target]).collect();
     let mut sessions: Vec<Handle<Handler>> = Vec::new();
+    // Remote forwards belong to the last hop only, but each handler needs one.
+    let mut remote = Arc::new(RemoteForwards::default());
 
     for (i, hop) in hops.iter().enumerate() {
+        remote = Arc::new(RemoteForwards::default());
         let is_target = i == hops.len() - 1;
         let step = async {
             let config = client::Config {
@@ -233,6 +257,7 @@ async fn connect_async(
                 known_hosts: known_hosts.clone(),
                 events: events.clone(),
                 refusal: refusal.clone(),
+                remote: remote.clone(),
             };
             let handshake_err = |e: russh::Error| {
                 refusal
@@ -289,6 +314,7 @@ async fn connect_async(
     Ok(Connection {
         handle,
         _jumps: sessions,
+        remote,
     })
 }
 

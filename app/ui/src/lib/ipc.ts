@@ -4,6 +4,8 @@ import type { Settings } from "./bindings/Settings";
 import type { Diagnostics } from "./bindings/Diagnostics";
 import type { AppInfo } from "./bindings/AppInfo";
 import type { AuthPrompt } from "./bindings/AuthPrompt";
+import type { TunnelInfo } from "./bindings/TunnelInfo";
+import type { TunnelSpec } from "./bindings/TunnelSpec";
 import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 import type { SessionExit } from "./bindings/SessionExit";
 import type { SshTarget } from "./bindings/SshTarget";
@@ -116,6 +118,11 @@ export const sftpCancel = (id: number, transfer: number) => invoke<void>("sftp_c
 export const sftpClose = (id: number) => invoke<void>("sftp_close", { id });
 export const onSftpTransfer = (cb: (t: SftpTransfer) => void) =>
   listen<SftpTransfer>("sftp-transfer", (e) => cb(e.payload));
+
+// ---- tunnels (port forwards on a terminal tab's connection) ----
+export const tunnelStart = (session: number, spec: TunnelSpec) => invoke<TunnelInfo>("tunnel_start", { session, spec });
+export const tunnelStop = (id: number) => invoke<void>("tunnel_stop", { id });
+export const tunnelList = (session: number) => invoke<TunnelInfo[]>("tunnel_list", { session });
 
 // ---- settings and diagnostics ----
 export const settingsLoad = () => invoke<Settings>("settings_load");

@@ -1,3 +1,4 @@
+use quay_core::TunnelSpec;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -61,6 +62,10 @@ pub struct SessionInput {
     #[serde(default)]
     #[ts(type = "number | null")]
     pub jump_id: Option<i64>,
+    /// Port forwards that belong to this session; the ones marked
+    /// `auto_start` start when it connects.
+    #[serde(default)]
+    pub tunnels: Vec<TunnelSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

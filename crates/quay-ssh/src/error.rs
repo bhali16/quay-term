@@ -65,6 +65,9 @@ pub enum SshError {
     },
     #[error("Could not open a shell on the server: {0}")]
     Channel(String),
+    /// A tunnel could not be started; the message says why.
+    #[error("{0}")]
+    Tunnel(String),
     #[error("SSH error: {0}")]
     Other(String),
 }

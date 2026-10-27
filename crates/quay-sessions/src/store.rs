@@ -2,6 +2,8 @@ use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use quay_core::{TunnelKind, TunnelSpec};
+
 use crate::model::{AuthKind, Folder, SavedSession, SessionInput};
 use crate::sshconfig::ImportedHost;
 
@@ -25,7 +27,7 @@ pub struct ImportSummary {
     pub skipped: usize,
 }
 
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 /// Longest chain of jump hosts we follow; a longer one is almost surely a mistake.
 pub const MAX_JUMPS: usize = 8;
@@ -88,6 +90,24 @@ impl SessionStore {
                 "ALTER TABLE sessions ADD COLUMN jump_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL;",
             )?;
             conn.pragma_update(None, "user_version", 2)?;
+            version = 2;
+        }
+        if version < 3 {
+            // Port forwards saved with a session, in the order the user arranged them.
+            conn.execute_batch(
+                "CREATE TABLE session_tunnels (
+                     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                     position INTEGER NOT NULL,
+                     kind TEXT NOT NULL,
+                     bind_host TEXT NOT NULL,
+                     bind_port INTEGER NOT NULL,
+                     dest_host TEXT NOT NULL,
+                     dest_port INTEGER NOT NULL,
+                     auto_start INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (session_id, position)
+                 );",
+            )?;
+            conn.pragma_update(None, "user_version", 3)?;
         }
         Ok(Self { conn })
     }
@@ -115,6 +135,7 @@ impl SessionStore {
         )?;
         let id = tx.last_insert_rowid();
         write_tags(&tx, id, &input.tags)?;
+        write_tunnels(&tx, id, &input.tunnels)?;
         tx.commit()?;
         Ok(SavedSession {
             id,
@@ -147,6 +168,7 @@ impl SessionStore {
             return Err(Error::Invalid("that saved session no longer exists".into()));
         }
         write_tags(&tx, id, &input.tags)?;
+        write_tunnels(&tx, id, &input.tunnels)?;
         tx.commit()?;
         self.get_session(id)?
             .ok_or_else(|| Error::Invalid("that saved session no longer exists".into()))
@@ -296,6 +318,7 @@ impl SessionStore {
                         color: r.get(8)?,
                         tags: vec![],
                         jump_id: r.get(10)?,
+                        tunnels: vec![],
                     },
                     has_secret: r.get(9)?,
                 })
@@ -304,9 +327,29 @@ impl SessionStore {
         let mut tag_stmt = self.conn.prepare(
             "SELECT tag FROM session_tags WHERE session_id = ?1 ORDER BY tag COLLATE NOCASE",
         )?;
+        let mut tunnel_stmt = self.conn.prepare(
+            "SELECT kind, bind_host, bind_port, dest_host, dest_port, auto_start
+             FROM session_tunnels WHERE session_id = ?1 ORDER BY position",
+        )?;
         for s in &mut sessions {
             s.input.tags = tag_stmt
                 .query_map([s.id], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?;
+            s.input.tunnels = tunnel_stmt
+                .query_map([s.id], |r| {
+                    Ok(TunnelSpec {
+                        kind: match r.get::<_, String>(0)?.as_str() {
+                            "remote" => TunnelKind::Remote,
+                            "dynamic" => TunnelKind::Dynamic,
+                            _ => TunnelKind::Local,
+                        },
+                        bind_host: r.get(1)?,
+                        bind_port: r.get(2)?,
+                        dest_host: r.get(3)?,
+                        dest_port: r.get(4)?,
+                        auto_start: r.get(5)?,
+                    })
+                })?
                 .collect::<std::result::Result<_, _>>()?;
         }
         Ok(sessions)
@@ -549,7 +592,47 @@ fn clean(input: &SessionInput) -> Result<SessionInput> {
         }
     }
     out.tags = tags;
+    for t in &mut out.tunnels {
+        t.bind_host = t.bind_host.trim().to_string();
+        t.dest_host = t.dest_host.trim().to_string();
+        if t.bind_host.is_empty() {
+            return Err(Error::Invalid(
+                "a tunnel needs an address to listen on".into(),
+            ));
+        }
+        match t.kind {
+            TunnelKind::Dynamic => {
+                // Nothing to point at: the SOCKS client names the destination.
+                t.dest_host.clear();
+                t.dest_port = 0;
+            }
+            _ if t.dest_host.is_empty() || t.dest_port == 0 => {
+                return Err(Error::Invalid(
+                    "a tunnel needs a destination host and port".into(),
+                ));
+            }
+            _ => {}
+        }
+    }
     Ok(out)
+}
+
+fn write_tunnels(tx: &rusqlite::Transaction<'_>, id: i64, tunnels: &[TunnelSpec]) -> Result<()> {
+    tx.execute("DELETE FROM session_tunnels WHERE session_id = ?1", [id])?;
+    for (i, t) in tunnels.iter().enumerate() {
+        let kind = match t.kind {
+            TunnelKind::Local => "local",
+            TunnelKind::Remote => "remote",
+            TunnelKind::Dynamic => "dynamic",
+        };
+        tx.execute(
+            "INSERT INTO session_tunnels
+                 (session_id, position, kind, bind_host, bind_port, dest_host, dest_port, auto_start)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![id, i as i64, kind, t.bind_host, t.bind_port, t.dest_host, t.dest_port, t.auto_start],
+        )?;
+    }
+    Ok(())
 }
 
 fn write_tags(tx: &rusqlite::Transaction<'_>, id: i64, tags: &[String]) -> Result<()> {
@@ -580,6 +663,7 @@ mod tests {
             color: None,
             tags: vec![],
             jump_id: None,
+            tunnels: vec![],
         }
     }
 
@@ -836,6 +920,69 @@ mod tests {
         // An unresolvable jump stays visible as a tag instead of silently connecting direct.
         assert_eq!(by("odd").input.jump_id, None);
         assert!(by("odd").input.tags.contains(&"proxyjump".to_string()));
+    }
+
+    #[test]
+    fn tunnels_are_saved_in_order_and_validated() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let mut i = input("web", "web.example.com");
+        i.tunnels = vec![
+            TunnelSpec {
+                kind: TunnelKind::Local,
+                bind_port: 5433,
+                dest_host: " db ".into(),
+                dest_port: 5432,
+                auto_start: true,
+                ..TunnelSpec::default()
+            },
+            TunnelSpec {
+                kind: TunnelKind::Dynamic,
+                bind_port: 1080,
+                dest_host: "ignored".into(),
+                dest_port: 9,
+                ..TunnelSpec::default()
+            },
+            TunnelSpec {
+                kind: TunnelKind::Remote,
+                bind_port: 0,
+                dest_host: "127.0.0.1".into(),
+                dest_port: 3000,
+                ..TunnelSpec::default()
+            },
+        ];
+        let made = s.create_session(&i).unwrap();
+        let got = s.get_session(made.id).unwrap().unwrap().input.tunnels;
+        assert_eq!(got.len(), 3);
+        assert_eq!(
+            got.iter().map(|t| t.kind).collect::<Vec<_>>(),
+            [TunnelKind::Local, TunnelKind::Dynamic, TunnelKind::Remote]
+        );
+        assert_eq!(got[0].dest_host, "db", "trimmed");
+        assert!(got[0].auto_start && !got[1].auto_start);
+        assert_eq!((got[1].dest_host.as_str(), got[1].dest_port), ("", 0));
+
+        // Saving replaces the list; a bad one is refused and changes nothing.
+        let mut edit = i.clone();
+        edit.tunnels.truncate(1);
+        s.update_session(made.id, &edit).unwrap();
+        assert_eq!(
+            s.get_session(made.id).unwrap().unwrap().input.tunnels.len(),
+            1
+        );
+        edit.tunnels[0].dest_port = 0;
+        assert!(s.update_session(made.id, &edit).is_err());
+        assert_eq!(
+            s.get_session(made.id).unwrap().unwrap().input.tunnels.len(),
+            1
+        );
+
+        // Deleting the session takes its tunnels with it.
+        s.delete_session(made.id).unwrap();
+        let n: i64 = s
+            .conn
+            .query_row("SELECT COUNT(*) FROM session_tunnels", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0);
     }
 
     #[test]

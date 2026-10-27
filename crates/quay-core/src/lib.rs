@@ -70,6 +70,62 @@ pub struct SshTarget {
     pub auth: SshAuth,
 }
 
+/// Which way a tunnel carries connections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub enum TunnelKind {
+    /// Listen on this machine; each connection goes through the server to the destination.
+    Local,
+    /// The server listens; each connection comes back through here to the destination.
+    Remote,
+    /// Listen on this machine as a SOCKS5 proxy; the client names the destination.
+    Dynamic,
+}
+
+/// One port forward over an SSH connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub struct TunnelSpec {
+    pub kind: TunnelKind,
+    /// Where to listen: on this machine for local and dynamic, on the server
+    /// for remote. Defaults to loopback, so nothing else on the network can use it.
+    pub bind_host: String,
+    /// 0 asks the system for a free port.
+    pub bind_port: u16,
+    /// Where connections end up (local and remote); unused for dynamic.
+    pub dest_host: String,
+    pub dest_port: u16,
+    /// Start whenever the session it belongs to connects.
+    pub auto_start: bool,
+}
+
+impl Default for TunnelSpec {
+    fn default() -> Self {
+        Self {
+            kind: TunnelKind::Local,
+            bind_host: "127.0.0.1".into(),
+            bind_port: 0,
+            dest_host: "localhost".into(),
+            dest_port: 0,
+            auto_start: false,
+        }
+    }
+}
+
+impl TunnelSpec {
+    /// A short description such as `127.0.0.1:8080 -> db:5432`.
+    pub fn describe(&self) -> String {
+        let bind = format!("{}:{}", self.bind_host, self.bind_port);
+        match self.kind {
+            TunnelKind::Local => format!("{bind} -> {}:{}", self.dest_host, self.dest_port),
+            TunnelKind::Remote => format!("server {bind} -> {}:{}", self.dest_host, self.dest_port),
+            TunnelKind::Dynamic => format!("{bind} (SOCKS5)"),
+        }
+    }
+}
+
 /// Sent to the UI when a server's host key is not yet trusted.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]

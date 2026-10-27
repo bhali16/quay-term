@@ -7,12 +7,14 @@
 
 mod client;
 mod error;
+mod forward;
 pub mod known_hosts;
 mod options;
 mod session;
 
 pub use client::{block_on, Connection};
 pub use error::SshError;
+pub use forward::{Tunnel, TunnelCounts};
 pub use known_hosts::{HostKeyInfo, HostKeyStatus};
 pub use options::{Challenge, ChallengePrompt, Challenger, ConnectOptions};
 pub use session::SshSession;

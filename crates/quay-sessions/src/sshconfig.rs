@@ -44,6 +44,7 @@ impl ImportedHost {
             color: None,
             tags,
             jump_id: None,
+            tunnels: Vec::new(),
         }
     }
 }

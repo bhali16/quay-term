@@ -46,6 +46,8 @@ pub struct ImportResult {
 pub struct Route {
     pub target: SshTarget,
     pub jumps: Vec<SshTarget>,
+    /// Saved tunnels to start once connected.
+    pub auto_tunnels: Vec<quay_core::TunnelSpec>,
 }
 
 impl From<SshTarget> for Route {
@@ -53,6 +55,7 @@ impl From<SshTarget> for Route {
         Self {
             target,
             jumps: Vec::new(),
+            auto_tunnels: Vec::new(),
         }
     }
 }
@@ -225,12 +228,26 @@ impl Library {
         remember: bool,
     ) -> Result<Route, String> {
         let target = self.target_for(id, secret, remember)?;
-        let chain = self.store.lock().unwrap().jump_chain(id).map_err(err)?;
+        let (chain, auto_tunnels) = {
+            let store = self.store.lock().unwrap();
+            let chain = store.jump_chain(id).map_err(err)?;
+            let tunnels = store
+                .get_session(id)
+                .map_err(err)?
+                .map(|s| s.input.tunnels)
+                .unwrap_or_default();
+            (chain, tunnels)
+        };
+        let auto_tunnels = auto_tunnels.into_iter().filter(|t| t.auto_start).collect();
         let jumps = chain
             .iter()
             .map(|hop| self.stored_target(hop))
             .collect::<Result<_, _>>()?;
-        Ok(Route { target, jumps })
+        Ok(Route {
+            target,
+            jumps,
+            auto_tunnels,
+        })
     }
 
     /// A target built only from stored credentials.
@@ -330,6 +347,7 @@ mod tests {
             color: None,
             tags: vec![],
             jump_id: None,
+            tunnels: vec![],
         }
     }
 
