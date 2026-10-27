@@ -12,7 +12,7 @@ use ts_rs::TS;
 
 use crate::error::SftpError;
 
-const CHUNK: usize = 32 * 1024;
+const CHUNK: usize = 256 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]

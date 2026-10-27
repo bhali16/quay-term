@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Logs keep the five most recent rotated files instead of one.
 
 ### Fixed
+- SFTP transfers use 256 KB chunks instead of 32 KB, which is several times faster on high-latency connections.
 - A saved session with an auth method this version does not know is reported as an error instead of silently turning into ssh-agent auth.
 
 ## [0.1.2] - 2026-10-12
