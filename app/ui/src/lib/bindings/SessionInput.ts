@@ -12,4 +12,8 @@ key_path: string | null,
 /**
  * Display colour as a CSS hex string such as `#3b6fd8`.
  */
-color: string | null, tags: Array<string>, };
+color: string | null, tags: Array<string>, 
+/**
+ * Another saved session to connect through (a jump host or bastion).
+ */
+jump_id: number | null, };

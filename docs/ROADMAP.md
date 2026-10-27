@@ -23,7 +23,7 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 |---|---|
 | M6 Hardening | Fix the v0.1 gaps below; set a real CSP; frontend tests; keyboard-interactive prompts for 2FA/OTP (today every prompt gets the password) |
 | M7 Connection manager | One owner thread per SSH connection, shared by shell, SFTP and forwards, so a host needs one login. Decided: move to `russh` (see below). Shell and SFTP are done; sharing one login between them comes next |
-| M8 Jump hosts | `ProxyJump` chains per saved session and from `~/.ssh/config`; host-key prompts for every hop |
+| M8 Jump hosts | `ProxyJump` chains per saved session and from `~/.ssh/config`; host-key prompts for every hop. Done for saved sessions; a jump host needs a saved secret (no prompt for one yet) |
 | M9 Tunnels | Local, remote and dynamic (SOCKS5) forwards, saved with the session, start/stop panel, bind-address and port-in-use errors |
 | M10 Split panes | Horizontal/vertical splits inside a tab, focus and resize shortcuts, pane layout restored with the session |
 | M11 Multi-exec and snippets | Send input to selected tabs or panes; snippet library with variables, folders and search |

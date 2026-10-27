@@ -21,6 +21,7 @@
     session = null,
     defaultFolderId = null,
     folders,
+    sessions = [],
     error = null,
     onsubmit,
     oncancel,
@@ -29,6 +30,8 @@
     /** Folder preselected for a new session. */
     defaultFolderId?: number | null;
     folders: Folder[];
+    /** All saved sessions, to pick a jump host from. */
+    sessions?: SavedSession[];
     error?: string | null;
     onsubmit: (r: Result) => void;
     oncancel: () => void;
@@ -50,6 +53,7 @@
   let color = $state<string | null>(s?.color ?? null);
   let folderId = $state<number | null>(s ? s.folder_id : untrack(() => defaultFolderId));
   let tags = $state((s?.tags ?? []).join(", "));
+  let jumpId = $state<number | null>(s?.jump_id ?? null);
   let secret = $state("");
   let saveSecret = $state(true);
   let clearSecret = $state(false);
@@ -68,6 +72,10 @@
     return out;
   });
 
+  /** Sessions that can be a jump host: anything but this one. Loops are refused on save. */
+  const jumpOptions = $derived(sessions.filter((x) => x.id !== s?.id));
+  const jumpChosen = $derived(jumpOptions.find((x) => x.id === jumpId) ?? null);
+
   const secretLabel = $derived(auth === "password" ? "Password" : "Key passphrase (if any)");
   const valid = $derived(
     host.trim() !== "" && user.trim() !== "" && port > 0 && port < 65536 && (auth !== "key" || keyPath.trim() !== ""),
@@ -85,6 +93,7 @@
       key_path: auth === "key" ? keyPath.trim() : null,
       color,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      jump_id: jumpId,
     };
     const typed = auth !== "agent" && secret !== "";
     const update: SecretUpdate =
@@ -104,6 +113,21 @@
       <label class="narrow">Port <input type="number" bind:value={port} min="1" max="65535" /></label>
     </div>
     <label>User <input class="mono" bind:value={user} autocomplete="username" /></label>
+    <label>
+      Connect via
+      <select bind:value={jumpId}>
+        <option value={null}>Directly</option>
+        {#each jumpOptions as j (j.id)}
+          <option value={j.id}>{j.name} ({j.user}@{j.host})</option>
+        {/each}
+      </select>
+    </label>
+    {#if jumpChosen}
+      <p class="note">
+        <Icon name="lock" size={14} />Signs in to {jumpChosen.name} first, with the credentials saved for it
+        {jumpChosen.auth === "password" && !jumpChosen.has_secret ? " - it has no saved password yet, so save one there" : ""}
+      </p>
+    {/if}
     <label>
       Authentication
       <select bind:value={auth}>

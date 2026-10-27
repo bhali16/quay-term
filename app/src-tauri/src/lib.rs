@@ -14,7 +14,7 @@ use quay_vault::KeychainStore;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use library::{ImportResult, Library, LibraryView, SecretUpdate};
+use library::{ImportResult, Library, LibraryView, Route, SecretUpdate};
 use sftp::Sftps;
 
 /// How long the user has to answer a host-key prompt.
@@ -67,14 +67,11 @@ pub(crate) fn err(e: impl std::fmt::Display) -> String {
 pub(crate) fn verifier(
     app: &AppHandle,
     prompts: &Prompts,
-    host: &str,
-    port: u16,
 ) -> (
     u32,
     impl FnMut(&quay_ssh::HostKeyInfo) -> bool + Send + 'static,
 ) {
     let app = app.clone();
-    let host = host.to_string();
     let prompt_id = prompts.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let (answer_tx, answer_rx) = mpsc::channel::<bool>();
     prompts.waiting.lock().unwrap().insert(prompt_id, answer_tx);
@@ -83,8 +80,8 @@ pub(crate) fn verifier(
             "ssh-host-key-prompt",
             HostKeyPrompt {
                 prompt_id,
-                host: host.clone(),
-                port,
+                host: info.host.clone(),
+                port: info.port,
                 key_type: info.key_type.clone(),
                 fingerprint: info.fingerprint.clone(),
             },
@@ -100,11 +97,8 @@ pub(crate) fn challenger(
     app: &AppHandle,
     prompts: &Prompts,
     prompt_id: u32,
-    host: &str,
-    port: u16,
 ) -> quay_ssh::Challenger {
     let app = app.clone();
-    let host = host.to_string();
     let (tx, rx) = mpsc::channel();
     prompts.answers.lock().unwrap().insert(prompt_id, tx);
     let rx = Mutex::new(rx);
@@ -113,8 +107,8 @@ pub(crate) fn challenger(
             "ssh-auth-prompt",
             AuthPrompt {
                 prompt_id,
-                host: host.clone(),
-                port,
+                host: c.host.clone(),
+                port: c.port,
                 instructions: c.instructions.clone(),
                 prompts: c
                     .prompts
@@ -185,7 +179,16 @@ async fn open_ssh_session(
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
-    start_ssh(app, &sessions, &prompts, target, cols, rows, on_output).await
+    start_ssh(
+        app,
+        &sessions,
+        &prompts,
+        target.into(),
+        cols,
+        rows,
+        on_output,
+    )
+    .await
 }
 
 /// Connect to a saved session. The stored secret is read from the keychain
@@ -204,31 +207,35 @@ async fn open_saved_session(
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
-    let target = library.target_for(id, secret, remember)?;
-    start_ssh(app, &sessions, &prompts, target, cols, rows, on_output).await
+    let route = library.route_for(id, secret, remember)?;
+    start_ssh(app, &sessions, &prompts, route, cols, rows, on_output).await
 }
 
 async fn start_ssh(
     app: AppHandle,
     sessions: &Sessions,
     prompts: &Prompts,
-    target: SshTarget,
+    route: Route,
     cols: u16,
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     let id = sessions.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    let (prompt_id, verify) = verifier(&app, prompts, &target.host, target.port);
+    let (prompt_id, verify) = verifier(&app, prompts);
+    let Route { target, jumps } = route;
     let dest = format!("{}@{}:{}", target.user, target.host, target.port);
-    log::info!("ssh connect {dest}");
-    let mut opts = ConnectOptions::new(target.clone());
-    opts.challenger = Some(challenger(
-        &app,
-        prompts,
-        prompt_id,
-        &target.host,
-        target.port,
-    ));
+    if jumps.is_empty() {
+        log::info!("ssh connect {dest}");
+    } else {
+        let via: Vec<_> = jumps
+            .iter()
+            .map(|j| format!("{}:{}", j.host, j.port))
+            .collect();
+        log::info!("ssh connect {dest} via {}", via.join(" > "));
+    }
+    let mut opts = ConnectOptions::new(target);
+    opts.jumps = jumps;
+    opts.challenger = Some(challenger(&app, prompts, prompt_id));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let mut verify = verify;

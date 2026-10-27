@@ -16,6 +16,9 @@ use crate::error::SshError;
 /// A server's host key, as shown to the user in the trust prompt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostKeyInfo {
+    /// The host presenting the key, which matters when connecting through jump hosts.
+    pub host: String,
+    pub port: u16,
     /// e.g. "ssh-ed25519"
     pub key_type: String,
     /// "SHA256:..." as printed by OpenSSH.
@@ -26,6 +29,8 @@ pub struct HostKeyInfo {
 impl HostKeyInfo {
     pub(crate) fn new(key: PublicKey) -> Self {
         Self {
+            host: String::new(),
+            port: 0,
             key_type: key.algorithm().to_string(),
             fingerprint: key.fingerprint(HashAlg::Sha256).to_string(),
             key,

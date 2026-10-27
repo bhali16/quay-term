@@ -57,6 +57,10 @@ pub struct SessionInput {
     /// Display colour as a CSS hex string such as `#3b6fd8`.
     pub color: Option<String>,
     pub tags: Vec<String>,
+    /// Another saved session to connect through (a jump host or bastion).
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub jump_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
