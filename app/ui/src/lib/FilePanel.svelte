@@ -12,6 +12,7 @@
     sftpMkdir,
     sftpOpen,
     sftpOpenSaved,
+    sftpOpenShared,
     sftpRename,
     sftpUpload,
     sftpCanonical,
@@ -27,8 +28,16 @@
     ssh = null,
     saved = null,
     active,
+    terminalId,
     onclose,
-  }: { ssh?: SshTarget | null; saved?: Saved | null; active: boolean; onclose: () => void } = $props();
+  }: {
+    ssh?: SshTarget | null;
+    saved?: Saved | null;
+    active: boolean;
+    /** The terminal tab's session id, if it is connected: its login is reused. */
+    terminalId?: () => number | null;
+    onclose: () => void;
+  } = $props();
 
   let conn = $state<number | null>(null);
   let path = $state("");
@@ -59,7 +68,11 @@
     status = "connecting";
     error = null;
     try {
-      const opened = saved ? await sftpOpenSaved(saved.id, saved.secret ?? null) : await sftpOpen(ssh!);
+      // Reuse the terminal's login when it is still connected; otherwise sign in again.
+      const tid = terminalId?.() ?? null;
+      const shared = tid === null ? null : await sftpOpenShared(tid).catch(() => null);
+      const opened =
+        shared ?? (saved ? await sftpOpenSaved(saved.id, saved.secret ?? null) : await sftpOpen(ssh!));
       conn = opened.id;
       status = "ready";
       await go(opened.home);

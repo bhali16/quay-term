@@ -101,6 +101,8 @@ export const onSessionExit = (cb: (exit: SessionExit) => void) =>
 export const sftpOpen = (target: SshTarget) => invoke<SftpOpened>("sftp_open", { target });
 export const sftpOpenSaved = (id: number, secret: string | null) =>
   invoke<SftpOpened>("sftp_open_saved", { id, secret });
+/** Open SFTP on the connection behind a terminal tab, so the host needs no second login. */
+export const sftpOpenShared = (session: number) => invoke<SftpOpened>("sftp_open_shared", { session });
 export const sftpList = (id: number, path: string) => invoke<Entry[]>("sftp_list", { id, path });
 export const sftpCanonical = (id: number, path: string) => invoke<string>("sftp_canonical", { id, path });
 export const sftpMkdir = (id: number, path: string) => invoke<void>("sftp_mkdir", { id, path });

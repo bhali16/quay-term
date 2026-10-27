@@ -33,7 +33,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the milestones.
 
 - [Tauri 2](https://tauri.app) (Rust backend, system WebView)
 - [xterm.js](https://xtermjs.org) for terminal rendering
-- [`ssh2`](https://crates.io/crates/ssh2) (libssh2) for SSH and SFTP
+- [`russh`](https://crates.io/crates/russh) and [`russh-sftp`](https://crates.io/crates/russh-sftp) (pure Rust) for SSH and SFTP
 - [`portable-pty`](https://crates.io/crates/portable-pty) for local shells
 - [DM Sans](https://fonts.google.com/specimen/DM+Sans) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), bundled via [Fontsource](https://fontsource.org) (SIL Open Font License 1.1)
 

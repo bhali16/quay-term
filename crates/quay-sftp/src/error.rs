@@ -1,6 +1,7 @@
 //! Errors with messages meant to be shown to the user as-is.
 
 use quay_ssh::SshError;
+use russh_sftp::client::error::Error as SftpProtocolError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SftpError {
@@ -21,12 +22,15 @@ pub enum SftpError {
 }
 
 impl SftpError {
-    pub(crate) fn op(op: &'static str, path: &str, e: ssh2::Error) -> Self {
-        // SFTP status codes: 2 = no such file, 3 = permission denied.
-        let detail = match e.code() {
-            ssh2::ErrorCode::SFTP(2) => "no such file or directory".to_string(),
-            ssh2::ErrorCode::SFTP(3) => "permission denied".to_string(),
-            _ => e.message().to_string(),
+    pub(crate) fn op(op: &'static str, path: &str, e: SftpProtocolError) -> Self {
+        use russh_sftp::protocol::StatusCode;
+        let detail = match &e {
+            SftpProtocolError::Status(s) => match s.status_code {
+                StatusCode::NoSuchFile => "no such file or directory".to_string(),
+                StatusCode::PermissionDenied => "permission denied".to_string(),
+                _ => e.to_string(),
+            },
+            _ => e.to_string(),
         };
         Self::Op {
             op,

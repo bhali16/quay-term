@@ -22,7 +22,7 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 | Milestone | Scope |
 |---|---|
 | M6 Hardening | Fix the v0.1 gaps below; set a real CSP; frontend tests; keyboard-interactive prompts for 2FA/OTP (today every prompt gets the password) |
-| M7 Connection manager | One owner thread per SSH connection, shared by shell, SFTP and forwards, so a host needs one login. Spike first: keep `ssh2` and bridge through a loopback listener, or move to `russh` |
+| M7 Connection manager | One owner thread per SSH connection, shared by shell, SFTP and forwards, so a host needs one login. Decided: move to `russh` (see below). Shell and SFTP are done; sharing one login between them comes next |
 | M8 Jump hosts | `ProxyJump` chains per saved session and from `~/.ssh/config`; host-key prompts for every hop |
 | M9 Tunnels | Local, remote and dynamic (SOCKS5) forwards, saved with the session, start/stop panel, bind-address and port-in-use errors |
 | M10 Split panes | Horizontal/vertical splits inside a tab, focus and resize shortcuts, pane layout restored with the session |
@@ -38,7 +38,7 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 
 ### Decisions needed before M7
 
-1. `ssh2` plus loopback bridge, or `russh`? The bridge is small but adds a socket per hop; `russh` removes the one-thread-per-session polling loop and makes channels native, at the cost of rewriting `quay-ssh` and `quay-sftp`.
+1. ~~`ssh2` plus loopback bridge, or `russh`?~~ Decided: `russh`. A spike showed equal throughput on loopback, correct per-hop host keys, and several times better SFTP speed over a 40 ms link; `ssh2` needed a bridge socket and a polling thread per hop.
 2. Does the encrypted vault replace the OS keychain or sit beside it? Recommended: beside it, keychain stays the default, the vault is for export and for systems without a keychain.
 3. Code signing and notarization (Apple Developer account, Windows certificate) for v0.2 or later?
 

@@ -4,10 +4,13 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use quay_ssh::{connect_raw, ConnectOptions, HostKeyInfo, RawSession};
+use quay_ssh::{block_on, ConnectOptions, Connection, HostKeyInfo};
+use russh_sftp::client::{Config, SftpSession};
+use russh_sftp::protocol::{FileType, OpenFlags};
 use serde::Serialize;
-use ssh2::{FileStat, OpenFlags, OpenType, Sftp};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use ts_rs::TS;
 
 use crate::error::SftpError;
@@ -41,13 +44,12 @@ pub struct Entry {
     pub mode: Option<u32>,
 }
 
-fn kind_of(stat: &FileStat) -> EntryKind {
-    // S_IFMT: 0o170000; S_IFLNK 0o120000.
-    match stat.perm.map(|p| p & 0o170000) {
-        Some(0o120000) => EntryKind::Symlink,
-        _ if stat.is_dir() => EntryKind::Dir,
-        _ if stat.is_file() => EntryKind::File,
-        _ => EntryKind::Other,
+fn kind_of(file_type: FileType) -> EntryKind {
+    match file_type {
+        FileType::Dir => EntryKind::Dir,
+        FileType::File => EntryKind::File,
+        FileType::Symlink => EntryKind::Symlink,
+        FileType::Other => EntryKind::Other,
     }
 }
 
@@ -61,9 +63,9 @@ pub fn join_remote(dir: &str, name: &str) -> String {
 }
 
 pub struct SftpClient {
-    sftp: Sftp,
+    sftp: SftpSession,
     // Keeps the connection alive for as long as the client exists.
-    _session: RawSession,
+    _conn: Arc<Connection>,
 }
 
 impl SftpClient {
@@ -72,121 +74,113 @@ impl SftpClient {
         opts: &ConnectOptions,
         verify: &mut dyn FnMut(&HostKeyInfo) -> bool,
     ) -> Result<Self, SftpError> {
-        let session = connect_raw(opts, verify)?;
-        let sftp = session
-            .sftp()
-            .map_err(|e| SftpError::Subsystem(e.message().to_string()))?;
-        Ok(Self {
-            sftp,
-            _session: session,
-        })
+        Self::open(Arc::new(Connection::connect(opts, verify)?))
+    }
+
+    /// Start the SFTP subsystem on a connection that something else (a
+    /// terminal tab) already opened, so the host needs no second login.
+    pub fn open(conn: Arc<Connection>) -> Result<Self, SftpError> {
+        let sftp = block_on(async {
+            let stream = conn.open_subsystem("sftp").await?;
+            let cfg = Config {
+                // A slow link or a big directory can take longer than the default 10 s.
+                request_timeout_secs: 60,
+                ..Config::default()
+            };
+            SftpSession::new_with_config(stream, cfg)
+                .await
+                .map_err(|e| SftpError::Subsystem(e.to_string()))
+        })?;
+        Ok(Self { sftp, _conn: conn })
     }
 
     /// The server's idea of the starting directory (usually the home folder).
     pub fn home(&self) -> Result<String, SftpError> {
-        let p = self
-            .sftp
-            .realpath(Path::new("."))
-            .map_err(|e| SftpError::op("Resolve", ".", e))?;
-        Ok(p.to_string_lossy().into_owned())
+        block_on(self.sftp.canonicalize(".")).map_err(|e| SftpError::op("Resolve", ".", e))
     }
 
     /// Resolve `.`/`..` and symlinks in a path.
     pub fn canonical(&self, path: &str) -> Result<String, SftpError> {
-        let p = self
-            .sftp
-            .realpath(Path::new(path))
-            .map_err(|e| SftpError::op("Open", path, e))?;
-        Ok(p.to_string_lossy().into_owned())
+        block_on(self.sftp.canonicalize(path)).map_err(|e| SftpError::op("Open", path, e))
     }
 
     /// List a directory: folders first, then files, each sorted by name.
     pub fn list(&self, dir: &str) -> Result<Vec<Entry>, SftpError> {
-        let rows = self
-            .sftp
-            .readdir(Path::new(dir))
-            .map_err(|e| SftpError::op("Open", dir, e))?;
-        let mut out: Vec<Entry> = rows
-            .into_iter()
-            .filter_map(|(path, mut stat)| {
-                let name = path.file_name()?.to_string_lossy().into_owned();
+        block_on(async {
+            let rows = self
+                .sftp
+                .read_dir(dir)
+                .await
+                .map_err(|e| SftpError::op("Open", dir, e))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let name = row.file_name();
                 if name == "." || name == ".." {
-                    return None;
+                    continue;
                 }
                 let full = join_remote(dir, &name);
-                let mut kind = kind_of(&stat);
+                let mut attrs = row.metadata();
+                let mut kind = kind_of(attrs.file_type());
                 if kind == EntryKind::Symlink {
                     // Show a link to a folder as a folder so it can be opened.
-                    if let Ok(target) = self.sftp.stat(Path::new(&full)) {
+                    if let Ok(target) = self.sftp.metadata(full.as_str()).await {
                         if target.is_dir() {
                             kind = EntryKind::Dir;
                         }
-                        stat = target;
+                        attrs = target;
                     }
                 }
-                Some(Entry {
+                out.push(Entry {
                     name,
                     path: full,
                     kind,
-                    size: stat.size.unwrap_or(0),
-                    modified: stat.mtime,
-                    mode: stat.perm.map(|p| p & 0o7777),
-                })
-            })
-            .collect();
-        out.sort_by(|a, b| {
-            let dir_first = (b.kind == EntryKind::Dir).cmp(&(a.kind == EntryKind::Dir));
-            dir_first.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
-        Ok(out)
+                    size: attrs.size.unwrap_or(0),
+                    modified: attrs.mtime.map(u64::from),
+                    mode: attrs.permissions.map(|p| p & 0o7777),
+                });
+            }
+            out.sort_by(|a, b| {
+                let dir_first = (b.kind == EntryKind::Dir).cmp(&(a.kind == EntryKind::Dir));
+                dir_first.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+            Ok(out)
+        })
     }
 
     pub fn mkdir(&self, path: &str) -> Result<(), SftpError> {
-        self.sftp
-            .mkdir(Path::new(path), 0o755)
-            .map_err(|e| SftpError::op("Create folder", path, e))
+        block_on(self.sftp.create_dir(path)).map_err(|e| SftpError::op("Create folder", path, e))
     }
 
     pub fn rename(&self, from: &str, to: &str) -> Result<(), SftpError> {
-        self.sftp
-            .rename(Path::new(from), Path::new(to), None)
-            .map_err(|e| SftpError::op("Rename", from, e))
+        block_on(self.sftp.rename(from, to)).map_err(|e| SftpError::op("Rename", from, e))
     }
 
     /// Delete a file, or a folder and everything inside it.
     pub fn remove(&self, path: &str) -> Result<(), SftpError> {
-        let stat = self
-            .sftp
-            .lstat(Path::new(path))
+        let attrs = block_on(self.sftp.symlink_metadata(path))
             .map_err(|e| SftpError::op("Delete", path, e))?;
-        if kind_of(&stat) == EntryKind::Dir {
+        if attrs.is_dir() {
             for child in self.list(path)? {
                 self.remove(&child.path)?;
             }
-            self.sftp
-                .rmdir(Path::new(path))
-                .map_err(|e| SftpError::op("Delete", path, e))
+            block_on(self.sftp.remove_dir(path)).map_err(|e| SftpError::op("Delete", path, e))
         } else {
-            self.sftp
-                .unlink(Path::new(path))
-                .map_err(|e| SftpError::op("Delete", path, e))
+            block_on(self.sftp.remove_file(path)).map_err(|e| SftpError::op("Delete", path, e))
         }
     }
 
     /// Total bytes in a remote file or folder tree.
     pub fn size_of(&self, path: &str) -> Result<u64, SftpError> {
-        let stat = self
-            .sftp
-            .stat(Path::new(path))
-            .map_err(|e| SftpError::op("Open", path, e))?;
-        if stat.is_dir() {
+        let attrs =
+            block_on(self.sftp.metadata(path)).map_err(|e| SftpError::op("Open", path, e))?;
+        if attrs.is_dir() {
             let mut sum = 0;
             for child in self.list(path)? {
                 sum += self.size_of(&child.path)?;
             }
             Ok(sum)
         } else {
-            Ok(stat.size.unwrap_or(0))
+            Ok(attrs.size.unwrap_or(0))
         }
     }
 
@@ -199,41 +193,42 @@ impl SftpClient {
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(u64),
     ) -> Result<(), SftpError> {
-        let stat = self
-            .sftp
-            .stat(Path::new(remote))
+        let attrs = block_on(self.sftp.metadata(remote))
             .map_err(|e| SftpError::op("Download", remote, e))?;
-        if stat.is_dir() {
+        if attrs.is_dir() {
             std::fs::create_dir_all(local).map_err(|e| SftpError::local(local, e))?;
             for child in self.list(remote)? {
                 self.download(&child.path, &local.join(&child.name), cancel, progress)?;
             }
             return Ok(());
         }
-        let mut src = self
-            .sftp
-            .open(Path::new(remote))
-            .map_err(|e| SftpError::op("Download", remote, e))?;
-        let mut dst = File::create(local).map_err(|e| SftpError::local(local, e))?;
-        let mut buf = vec![0u8; CHUNK];
-        loop {
-            if cancel.load(Ordering::Relaxed) {
-                drop(dst);
-                let _ = std::fs::remove_file(local);
-                return Err(SftpError::Cancelled);
+        block_on(async {
+            let mut src = self
+                .sftp
+                .open(remote)
+                .await
+                .map_err(|e| SftpError::op("Download", remote, e))?;
+            let mut dst = File::create(local).map_err(|e| SftpError::local(local, e))?;
+            let mut buf = vec![0u8; CHUNK];
+            loop {
+                if cancel.load(Ordering::Relaxed) {
+                    drop(dst);
+                    let _ = std::fs::remove_file(local);
+                    return Err(SftpError::Cancelled);
+                }
+                let n = src.read(&mut buf).await.map_err(|e| SftpError::Op {
+                    op: "Download",
+                    path: remote.to_string(),
+                    detail: e.to_string(),
+                })?;
+                if n == 0 {
+                    return Ok(());
+                }
+                dst.write_all(&buf[..n])
+                    .map_err(|e| SftpError::local(local, e))?;
+                progress(n as u64);
             }
-            let n = src.read(&mut buf).map_err(|e| SftpError::Op {
-                op: "Download",
-                path: remote.to_string(),
-                detail: e.to_string(),
-            })?;
-            if n == 0 {
-                return Ok(());
-            }
-            dst.write_all(&buf[..n])
-                .map_err(|e| SftpError::local(local, e))?;
-            progress(n as u64);
-        }
+        })
     }
 
     /// Upload a file or folder to `remote` (the full destination path).
@@ -247,7 +242,7 @@ impl SftpClient {
         let meta = std::fs::metadata(local).map_err(|e| SftpError::local(local, e))?;
         if meta.is_dir() {
             // An existing folder is fine (merge into it).
-            if self.sftp.stat(Path::new(remote)).is_err() {
+            if block_on(self.sftp.metadata(remote)).is_err() {
                 self.mkdir(remote)?;
             }
             let mut names: Vec<PathBuf> = std::fs::read_dir(local)
@@ -261,34 +256,37 @@ impl SftpClient {
             }
             return Ok(());
         }
-        let mut src = File::open(local).map_err(|e| SftpError::local(local, e))?;
-        let mut dst = self
-            .sftp
-            .open_mode(
-                Path::new(remote),
-                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
-                0o644,
-                OpenType::File,
-            )
-            .map_err(|e| SftpError::op("Upload", remote, e))?;
-        let mut buf = vec![0u8; CHUNK];
-        loop {
-            if cancel.load(Ordering::Relaxed) {
-                drop(dst);
-                let _ = self.sftp.unlink(Path::new(remote));
-                return Err(SftpError::Cancelled);
-            }
-            let n = src.read(&mut buf).map_err(|e| SftpError::local(local, e))?;
-            if n == 0 {
-                return Ok(());
-            }
-            dst.write_all(&buf[..n]).map_err(|e| SftpError::Op {
+        block_on(async {
+            let mut src = File::open(local).map_err(|e| SftpError::local(local, e))?;
+            let mut dst = self
+                .sftp
+                .open_with_flags(
+                    remote,
+                    OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+                )
+                .await
+                .map_err(|e| SftpError::op("Upload", remote, e))?;
+            let write_err = |e: std::io::Error| SftpError::Op {
                 op: "Upload",
                 path: remote.to_string(),
                 detail: e.to_string(),
-            })?;
-            progress(n as u64);
-        }
+            };
+            let mut buf = vec![0u8; CHUNK];
+            loop {
+                if cancel.load(Ordering::Relaxed) {
+                    drop(dst);
+                    let _ = self.sftp.remove_file(remote).await;
+                    return Err(SftpError::Cancelled);
+                }
+                let n = src.read(&mut buf).map_err(|e| SftpError::local(local, e))?;
+                if n == 0 {
+                    // Writes are pipelined; shutdown waits for the server to confirm them all.
+                    return dst.shutdown().await.map_err(write_err);
+                }
+                dst.write_all(&buf[..n]).await.map_err(write_err)?;
+                progress(n as u64);
+            }
+        })
     }
 }
 

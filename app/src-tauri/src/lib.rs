@@ -3,13 +3,13 @@ mod sftp;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{mpsc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 use quay_core::{AppInfo, HostKeyPrompt, Session, SessionExit, SshTarget, TermSize};
 use quay_pty::{PtySession, SpawnOptions};
 use quay_sessions::{Folder, SavedSession, SessionInput};
-use quay_ssh::{ConnectOptions, SshSession};
+use quay_ssh::{ConnectOptions, Connection, SshSession};
 use quay_vault::KeychainStore;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -22,9 +22,12 @@ const TRUST_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Open terminal sessions (local or SSH), keyed by the id handed to the frontend.
 #[derive(Default)]
-struct Sessions {
+pub(crate) struct Sessions {
     next_id: AtomicU32,
     map: Mutex<HashMap<u32, Box<dyn Session>>>,
+    /// The SSH connection behind each SSH tab, so the Files panel can reuse
+    /// the tab's login. Removed when the shell ends.
+    pub(crate) conns: Mutex<HashMap<u32, Arc<Connection>>>,
 }
 
 /// Host-key prompts waiting for the user's answer.
@@ -228,27 +231,31 @@ async fn start_ssh(
     ));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        SshSession::connect(
-            &opts,
+        let mut verify = verify;
+        let conn = Arc::new(Connection::connect(&opts, &mut verify)?);
+        let session = SshSession::open(
+            conn.clone(),
             TermSize { cols, rows },
-            verify,
             move |chunk| {
                 let _ = on_output.send(InvokeResponseBody::Raw(chunk));
             },
             move |reason| {
+                app.state::<Sessions>().conns.lock().unwrap().remove(&id);
                 let _ = app.emit("session-exit", SessionExit { id, reason });
             },
-        )
+        )?;
+        Ok::<_, quay_ssh::SshError>((session, conn))
     })
     .await
     .map_err(err)?;
     forget_prompt(prompts, prompt_id);
 
-    let session = result.map_err(|e| {
+    let (session, conn) = result.map_err(|e| {
         log::warn!("ssh connect {dest} failed: {e}");
         err(e)
     })?;
     log::info!("ssh connected {dest} (session {id})");
+    sessions.conns.lock().unwrap().insert(id, conn);
     sessions.map.lock().unwrap().insert(id, Box::new(session));
     Ok(id)
 }
@@ -353,6 +360,7 @@ fn session_resize(state: State<'_, Sessions>, id: u32, cols: u16, rows: u16) -> 
 fn session_close(state: State<'_, Sessions>, id: u32) {
     // Dropping the session ends it (kills the child / closes the channel).
     state.map.lock().unwrap().remove(&id);
+    state.conns.lock().unwrap().remove(&id);
 }
 
 /// Where settings.json lives, kept in managed state.
@@ -456,6 +464,7 @@ pub fn run() {
             session_close,
             sftp::sftp_open,
             sftp::sftp_open_saved,
+            sftp::sftp_open_shared,
             sftp::sftp_list,
             sftp::sftp_canonical,
             sftp::sftp_mkdir,

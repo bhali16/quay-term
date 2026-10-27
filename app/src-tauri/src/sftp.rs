@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
 use crate::library::Library;
-use crate::{challenger, err, forget_prompt, verifier, Prompts};
+use crate::{challenger, err, forget_prompt, verifier, Prompts, Sessions};
 
 struct Conn {
     client: Arc<SftpClient>,
@@ -56,6 +56,23 @@ pub struct SftpTransfer {
     pub event: TransferEvent,
 }
 
+/// Wrap a connected client in a transfer queue and register it.
+fn register(app: &AppHandle, sftps: &Sftps, client: SftpClient) -> Result<SftpOpened, String> {
+    let id = sftps.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let home = client.home().map_err(err)?;
+    let client = Arc::new(client);
+    let emit_app = app.clone();
+    let queue = TransferQueue::new(client.clone(), move |event| {
+        let _ = emit_app.emit("sftp-transfer", SftpTransfer { conn: id, event });
+    });
+    sftps
+        .map
+        .lock()
+        .unwrap()
+        .insert(id, Arc::new(Conn { client, queue }));
+    Ok(SftpOpened { id, home })
+}
+
 async fn open(
     app: AppHandle,
     sftps: &Sftps,
@@ -71,23 +88,35 @@ async fn open(
         &target.host,
         target.port,
     ));
-    let id = sftps.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    let emit_app = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let client = SftpClient::connect(&opts, &mut verify)?;
-        let home = client.home()?;
-        let client = Arc::new(client);
-        let queue = TransferQueue::new(client.clone(), move |event| {
-            let _ = emit_app.emit("sftp-transfer", SftpTransfer { conn: id, event });
-        });
-        Ok::<_, quay_sftp::SftpError>((Conn { client, queue }, home))
-    })
-    .await
-    .map_err(err)?;
+    let result =
+        tauri::async_runtime::spawn_blocking(move || SftpClient::connect(&opts, &mut verify))
+            .await
+            .map_err(err)?;
     forget_prompt(prompts, prompt_id);
-    let (conn, home) = result.map_err(err)?;
-    sftps.map.lock().unwrap().insert(id, Arc::new(conn));
-    Ok(SftpOpened { id, home })
+    register(&app, sftps, result.map_err(err)?)
+}
+
+/// Open SFTP on the connection behind terminal tab `session`: no second login.
+#[tauri::command]
+pub async fn sftp_open_shared(
+    app: AppHandle,
+    sftps: State<'_, Sftps>,
+    sessions: State<'_, Sessions>,
+    session: u32,
+) -> Result<SftpOpened, String> {
+    let conn = sessions
+        .conns
+        .lock()
+        .unwrap()
+        .get(&session)
+        .cloned()
+        .filter(|c| !c.is_closed())
+        .ok_or("The terminal connection is closed.")?;
+    let client = tauri::async_runtime::spawn_blocking(move || SftpClient::open(conn))
+        .await
+        .map_err(err)?
+        .map_err(err)?;
+    register(&app, &sftps, client)
 }
 
 #[tauri::command]

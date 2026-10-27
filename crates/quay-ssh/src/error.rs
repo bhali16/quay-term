@@ -67,22 +67,3 @@ impl From<SshError> for quay_core::Error {
         quay_core::Error::Other(e.to_string())
     }
 }
-
-/// Codes from libssh2 that we map to friendlier errors.
-pub(crate) mod code {
-    pub const AUTHENTICATION_FAILED: i32 = -18;
-    pub const PUBLICKEY_UNVERIFIED: i32 = -19;
-    pub const FILE: i32 = -16;
-}
-
-pub(crate) fn session_code(e: &ssh2::Error) -> Option<i32> {
-    match e.code() {
-        ssh2::ErrorCode::Session(c) => Some(c),
-        _ => None,
-    }
-}
-
-/// libssh2's EAGAIN: the non-blocking call must be retried later.
-pub(crate) fn would_block(e: &ssh2::Error) -> bool {
-    session_code(e) == Some(-37)
-}

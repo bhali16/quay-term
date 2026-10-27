@@ -1,54 +1,49 @@
-//! SSH client for quay-term, built on libssh2 (`ssh2`).
+//! SSH client for quay-term, built on russh.
 //!
 //! [`SshSession::connect`] opens a TCP connection, verifies the host key
 //! against `known_hosts` (asking the caller about unknown hosts),
 //! authenticates with a password, key file or ssh-agent, and starts an
 //! interactive shell that implements [`quay_core::Session`].
 
-mod connect;
+mod client;
 mod error;
 pub mod known_hosts;
+mod options;
 mod session;
 
-pub use connect::{Challenge, ChallengePrompt, Challenger, ConnectOptions};
+pub use client::{block_on, Connection};
 pub use error::SshError;
 pub use known_hosts::{HostKeyInfo, HostKeyStatus};
+pub use options::{Challenge, ChallengePrompt, Challenger, ConnectOptions};
 pub use session::SshSession;
-pub use ssh2::Session as RawSession;
-
-/// Connect, verify the host key and authenticate, returning the raw libssh2
-/// session (blocking mode). Used by SFTP, which opens its own connection.
-pub fn connect_raw(
-    opts: &ConnectOptions,
-    verify: &mut dyn FnMut(&HostKeyInfo) -> bool,
-) -> Result<RawSession, SshError> {
-    connect::connect(opts, verify)
-}
 
 #[cfg(test)]
 mod tests {
     use super::known_hosts::*;
-    use crate::connect::expand_tilde;
+    use crate::options::expand_tilde;
+    use russh::keys::PublicKey;
 
-    fn info(key: &[u8]) -> HostKeyInfo {
-        HostKeyInfo {
-            key_type: "ssh-ed25519".into(),
-            fingerprint: "SHA256:test".into(),
-            key: key.to_vec(),
-        }
+    // Generated with ssh-keygen; the fingerprint is what `ssh-keygen -lf` prints for KEY_A.
+    const KEY_A: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDVLGU4gPKuK/1jGm4UbtDTiEpLO02iDCzj6Rf+ZodXv";
+    const KEY_B: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA29xIZefSbbpEoLSF9gi1OFoTpwNiNDEw1kCkyo90mW";
+
+    fn key(s: &str) -> PublicKey {
+        PublicKey::from_openssh(s).unwrap()
+    }
+
+    fn info(s: &str) -> HostKeyInfo {
+        HostKeyInfo::new(key(s))
     }
 
     #[test]
     fn fingerprint_matches_openssh_format() {
-        // sha256("") in base64 without padding.
-        let digest = [
-            0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f,
-            0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b,
-            0x78, 0x52, 0xb8, 0x55,
-        ];
+        let i = info(KEY_A);
+        assert_eq!(i.key_type, "ssh-ed25519");
         assert_eq!(
-            fingerprint(&digest),
-            "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"
+            i.fingerprint,
+            "SHA256:n3qC5vsn57hcBlePbdItGgxTOIyuH0Jm+u7rGMd2DB8"
         );
     }
 
@@ -56,8 +51,7 @@ mod tests {
     fn unknown_then_trusted_then_changed() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sub").join("known_hosts");
-        let key_a = [7u8; 32];
-        let key_b = [9u8; 32];
+        let (key_a, key_b) = (key(KEY_A), key(KEY_B));
 
         // Missing file: unknown, and nothing is created by a lookup.
         assert_eq!(
@@ -66,7 +60,7 @@ mod tests {
         );
         assert!(!path.exists());
 
-        trust(&path, "example.com", 22, &info(&key_a)).unwrap();
+        trust(&path, "example.com", 22, &info(KEY_A)).unwrap();
         assert_eq!(
             lookup(&path, "example.com", 22, &key_a).unwrap(),
             HostKeyStatus::Trusted
@@ -85,19 +79,19 @@ mod tests {
     fn non_default_ports_are_tracked_separately() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("known_hosts");
-        let key = [3u8; 32];
-        trust(&path, "example.com", 2222, &info(&key)).unwrap();
+        let key_a = key(KEY_A);
+        trust(&path, "example.com", 2222, &info(KEY_A)).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(
             text.starts_with("[example.com]:2222 ssh-ed25519 "),
             "{text}"
         );
         assert_eq!(
-            lookup(&path, "example.com", 2222, &key).unwrap(),
+            lookup(&path, "example.com", 2222, &key_a).unwrap(),
             HostKeyStatus::Trusted
         );
         assert_eq!(
-            lookup(&path, "example.com", 22, &key).unwrap(),
+            lookup(&path, "example.com", 22, &key_a).unwrap(),
             HostKeyStatus::Unknown
         );
     }
@@ -108,7 +102,7 @@ mod tests {
         let path = dir.path().join("known_hosts");
         // Comment, and no trailing newline.
         std::fs::write(&path, "# my hosts\nold.example ssh-ed25519 AAAA").unwrap();
-        trust(&path, "new.example", 22, &info(&[1u8; 32])).unwrap();
+        trust(&path, "new.example", 22, &info(KEY_B)).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(
             text.starts_with("# my hosts\nold.example ssh-ed25519 AAAA\nnew.example "),

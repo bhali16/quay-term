@@ -286,15 +286,16 @@ fn unresolvable_host_has_a_friendly_message() {
     assert!(matches!(err, SshError::Resolve { .. }), "{err}");
 }
 
-/// Known limitation: libssh2 reports a recorded key of another type as a
-/// mismatch (OpenSSH would negotiate the recorded type instead). The safe
-/// outcome, refusing without trusting anything, is what we pin here.
+/// A real RSA key on record for this host, which the server does not have
+/// (it has none of that key). We ask for the recorded type first, as OpenSSH
+/// does; whatever the server presents then differs from the record, and the
+/// connection is refused without trusting anything.
 #[test]
-fn other_key_type_on_record_is_refused_not_trusted() {
+fn other_key_on_record_is_refused_not_trusted() {
     let (e, _gate) = server!();
     let dir = tempfile::tempdir().unwrap();
     let kh = dir.path().join("known_hosts");
-    let bogus = "AAAAB3NzaC1yc2EAAAADAQABAAAAgQC7bogusbogusbogusbogusbogusbogusbogusbogusbogus";
+    let bogus = "AAAAB3NzaC1yc2EAAAADAQABAAABAQDW+Sa/GSWFGkQ2fPEmDKmanMLtIyLd30IOz/foDQLOT6k9ga17mgMJgLjp9cpfzMpwBBrMRE9WRjAWAlmFtrHAtVHS8tR4RjguriJY5TXh6TW4m1vxgzMB8aVD0j5QAryzWCVoCJrwc2G44YBGukqa5WBliEwSpHJ6XGXIn9oluvty79Bl+JLB8y3nfjBEMPZlP7Y0WkgX/xCYiYxRlhciTLk9e/lUzScFwhkvb8kXeZ0XMXcDzXFkszPTRe6E3CfE9n28mF/00UiWMhag2HFyK/XR8vIefuVBpfDUbUk1CdtgG5eUmXCINrL9J9eto+LJQRZAdnrthV4c3gykBlD/";
     let host = format!("[{}]:{}", e.host, e.port);
     std::fs::write(&kh, format!("{host} ssh-rsa {bogus}\n")).unwrap();
     let err = connect(&opts(&e, password(&e), &kh), |_| panic!("must not prompt"))
