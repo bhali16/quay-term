@@ -34,6 +34,8 @@ pub enum SshError {
     },
     #[error("The host key was not trusted, so the connection was cancelled.")]
     HostKeyRejected,
+    #[error("Sign-in was cancelled.")]
+    AuthCancelled,
     #[error("Could not check known hosts ({}): {detail}", .path.display())]
     KnownHosts { path: PathBuf, detail: String },
     #[error("Authentication failed: the server rejected the password for \"{user}\".")]

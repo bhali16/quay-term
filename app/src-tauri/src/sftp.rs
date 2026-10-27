@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
 use crate::library::Library;
-use crate::{err, verifier, Prompts};
+use crate::{challenger, err, forget_prompt, verifier, Prompts};
 
 struct Conn {
     client: Arc<SftpClient>,
@@ -63,10 +63,18 @@ async fn open(
     target: SshTarget,
 ) -> Result<SftpOpened, String> {
     let (prompt_id, mut verify) = verifier(&app, prompts, &target.host, target.port);
+    let mut opts = ConnectOptions::new(target.clone());
+    opts.challenger = Some(challenger(
+        &app,
+        prompts,
+        prompt_id,
+        &target.host,
+        target.port,
+    ));
     let id = sftps.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let emit_app = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let client = SftpClient::connect(&ConnectOptions::new(target), &mut verify)?;
+        let client = SftpClient::connect(&opts, &mut verify)?;
         let home = client.home()?;
         let client = Arc::new(client);
         let queue = TransferQueue::new(client.clone(), move |event| {
@@ -76,7 +84,7 @@ async fn open(
     })
     .await
     .map_err(err)?;
-    prompts.waiting.lock().unwrap().remove(&prompt_id);
+    forget_prompt(prompts, prompt_id);
     let (conn, home) = result.map_err(err)?;
     sftps.map.lock().unwrap().insert(id, Arc::new(conn));
     Ok(SftpOpened { id, home })

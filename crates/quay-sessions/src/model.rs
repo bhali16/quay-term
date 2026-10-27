@@ -19,11 +19,13 @@ impl AuthKind {
         }
     }
 
-    pub(crate) fn parse(s: &str) -> Self {
+    /// `None` for a value this version does not know (e.g. written by a newer one).
+    pub(crate) fn parse(s: &str) -> Option<Self> {
         match s {
-            "password" => Self::Password,
-            "key" => Self::Key,
-            _ => Self::Agent,
+            "password" => Some(Self::Password),
+            "key" => Some(Self::Key),
+            "agent" => Some(Self::Agent),
+            _ => None,
         }
     }
 }

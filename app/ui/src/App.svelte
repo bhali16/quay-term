@@ -14,6 +14,8 @@
     sessionMove,
     sessionSave,
     sshTrustResponse,
+    sshAuthResponse,
+    onAuthPrompt,
   } from "./lib/ipc";
   import Sidebar from "./lib/Sidebar.svelte";
   import SessionDialog from "./lib/SessionDialog.svelte";
@@ -25,6 +27,8 @@
   import FilePanel from "./lib/FilePanel.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
   import TrustDialog from "./lib/TrustDialog.svelte";
+  import AuthPromptDialog from "./lib/AuthPromptDialog.svelte";
+  import type { AuthPrompt } from "./lib/bindings/AuthPrompt";
   import Icon from "./lib/Icon.svelte";
   import SettingsDialog from "./lib/SettingsDialog.svelte";
   import { settings } from "./lib/settings.svelte";
@@ -43,6 +47,7 @@
   let editing = $state<number | null>(null);
   let connecting = $state(false);
   let trustPrompt = $state<HostKeyPrompt | null>(null);
+  let authPrompt = $state<AuthPrompt | null>(null);
   let showSettings = $state(false);
 
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
@@ -161,6 +166,11 @@
     trustPrompt = null;
   }
 
+  function answerAuth(answers: string[] | null) {
+    if (authPrompt) sshAuthResponse(authPrompt.prompt_id, answers);
+    authPrompt = null;
+  }
+
   function closeTab(key: number) {
     const i = tabs.findIndex((t) => t.key === key);
     if (i < 0) return;
@@ -210,6 +220,7 @@
         tab?.pane?.notifyExited(reason);
       }),
       onHostKeyPrompt((p) => (trustPrompt = p)),
+      onAuthPrompt((p) => (authPrompt = p)),
     ];
     return () => {
       unlisten.forEach((u) => u.then((f) => f()));
@@ -341,6 +352,11 @@
   {/if}
   {#if trustPrompt}
     <TrustDialog prompt={trustPrompt} onanswer={answerTrust} />
+  {/if}
+  {#if authPrompt}
+    {#key authPrompt}
+      <AuthPromptDialog prompt={authPrompt} onanswer={answerAuth} />
+    {/key}
   {/if}
 </main>
 

@@ -31,12 +31,8 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 
 ### Known gaps in v0.1 (M6)
 
-- `security.csp` is `null` in `tauri.conf.json`.
-- Keyboard-interactive auth answers every prompt with the stored password, so 2FA servers fail.
-- `AuthKind::parse` turns an unknown value into Agent instead of reporting it.
 - The SFTP panel opens a second SSH login; a host with MFA asks twice.
-- Frontend has no tests, only `svelte-check`; the keychain round-trip test is `#[ignore]`d and never runs in CI.
-- Logs rotate with `KeepOne`, so a crash report may have lost the earlier file.
+- Frontend tests cover only shortcut handling; the keychain round-trip test is `#[ignore]`d and never runs in CI.
 - No Intel macOS build; installers are unsigned and not notarized.
 - No auto-update.
 

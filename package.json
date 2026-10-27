@@ -7,7 +7,8 @@
     "dev": "vite --config app/ui/vite.config.ts app/ui",
     "build": "vite build --config app/ui/vite.config.ts app/ui",
     "check": "svelte-check --workspace app/ui --tsconfig ./tsconfig.json",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run --root app/ui"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",
@@ -23,6 +24,7 @@
     "svelte": "^5.57.2",
     "svelte-check": "^4.7.6",
     "typescript": "~5.9.3",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   }
 }

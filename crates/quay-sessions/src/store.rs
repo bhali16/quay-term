@@ -206,7 +206,16 @@ impl SessionStore {
                         host: r.get(3)?,
                         port: r.get(4)?,
                         user: r.get(5)?,
-                        auth: AuthKind::parse(&r.get::<_, String>(6)?),
+                        auth: {
+                            let raw = r.get::<_, String>(6)?;
+                            AuthKind::parse(&raw).ok_or_else(|| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    6,
+                                    rusqlite::types::Type::Text,
+                                    format!("unknown auth method {raw:?}; was this saved by a newer version?").into(),
+                                )
+                            })?
+                        },
                         key_path: r.get(7)?,
                         color: r.get(8)?,
                         tags: vec![],
@@ -432,6 +441,20 @@ mod tests {
             color: None,
             tags: vec![],
         }
+    }
+
+    #[test]
+    fn unknown_auth_method_is_an_error_not_agent() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let made = s.create_session(&input("web", "web.example.com")).unwrap();
+        s.conn
+            .execute(
+                "UPDATE sessions SET auth = 'smartcard' WHERE id = ?1",
+                [made.id],
+            )
+            .unwrap();
+        let err = s.list_sessions().unwrap_err().to_string();
+        assert!(err.contains("smartcard"), "{err}");
     }
 
     #[test]

@@ -32,6 +32,26 @@ struct Sessions {
 pub(crate) struct Prompts {
     next_id: AtomicU32,
     pub(crate) waiting: Mutex<HashMap<u32, mpsc::Sender<bool>>>,
+    /// Keyboard-interactive answers; `None` means the user cancelled.
+    pub(crate) answers: Mutex<HashMap<u32, mpsc::Sender<Option<Vec<String>>>>>,
+}
+
+/// Shown to the user when the server asks keyboard-interactive questions.
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub(crate) struct AuthPrompt {
+    pub prompt_id: u32,
+    pub host: String,
+    pub port: u16,
+    pub instructions: String,
+    pub prompts: Vec<AuthPromptField>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub(crate) struct AuthPromptField {
+    pub text: String,
+    pub echo: bool,
 }
 
 pub(crate) fn err(e: impl std::fmt::Display) -> String {
@@ -69,6 +89,50 @@ pub(crate) fn verifier(
         answer_rx.recv_timeout(TRUST_TIMEOUT).unwrap_or(false)
     };
     (prompt_id, verify)
+}
+
+/// Build a [`quay_ssh::Challenger`] that asks the UI (event `ssh-auth-prompt`)
+/// and waits for `ssh_auth_response`. Call `forget_prompt` when the connect is over.
+pub(crate) fn challenger(
+    app: &AppHandle,
+    prompts: &Prompts,
+    prompt_id: u32,
+    host: &str,
+    port: u16,
+) -> quay_ssh::Challenger {
+    let app = app.clone();
+    let host = host.to_string();
+    let (tx, rx) = mpsc::channel();
+    prompts.answers.lock().unwrap().insert(prompt_id, tx);
+    let rx = Mutex::new(rx);
+    quay_ssh::Challenger::new(move |c| {
+        let _ = app.emit(
+            "ssh-auth-prompt",
+            AuthPrompt {
+                prompt_id,
+                host: host.clone(),
+                port,
+                instructions: c.instructions.clone(),
+                prompts: c
+                    .prompts
+                    .iter()
+                    .map(|p| AuthPromptField {
+                        text: p.text.clone(),
+                        echo: p.echo,
+                    })
+                    .collect(),
+            },
+        );
+        rx.lock()
+            .unwrap()
+            .recv_timeout(TRUST_TIMEOUT)
+            .unwrap_or(None)
+    })
+}
+
+pub(crate) fn forget_prompt(prompts: &Prompts, prompt_id: u32) {
+    prompts.waiting.lock().unwrap().remove(&prompt_id);
+    prompts.answers.lock().unwrap().remove(&prompt_id);
 }
 
 #[tauri::command]
@@ -154,10 +218,18 @@ async fn start_ssh(
     let (prompt_id, verify) = verifier(&app, prompts, &target.host, target.port);
     let dest = format!("{}@{}:{}", target.user, target.host, target.port);
     log::info!("ssh connect {dest}");
+    let mut opts = ConnectOptions::new(target.clone());
+    opts.challenger = Some(challenger(
+        &app,
+        prompts,
+        prompt_id,
+        &target.host,
+        target.port,
+    ));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         SshSession::connect(
-            &ConnectOptions::new(target),
+            &opts,
             TermSize { cols, rows },
             verify,
             move |chunk| {
@@ -170,7 +242,7 @@ async fn start_ssh(
     })
     .await
     .map_err(err)?;
-    prompts.waiting.lock().unwrap().remove(&prompt_id);
+    forget_prompt(prompts, prompt_id);
 
     let session = result.map_err(|e| {
         log::warn!("ssh connect {dest} failed: {e}");
@@ -248,6 +320,14 @@ fn import_ssh_config(library: State<'_, Library>) -> Result<ImportResult, String
 fn ssh_trust_response(prompts: State<'_, Prompts>, prompt_id: u32, trust: bool) {
     if let Some(tx) = prompts.waiting.lock().unwrap().get(&prompt_id) {
         let _ = tx.send(trust);
+    }
+}
+
+/// The user's answer to an `ssh-auth-prompt` event; `None` cancels the sign-in.
+#[tauri::command]
+fn ssh_auth_response(prompts: State<'_, Prompts>, prompt_id: u32, answers: Option<Vec<String>>) {
+    if let Some(tx) = prompts.answers.lock().unwrap().get(&prompt_id) {
+        let _ = tx.send(answers);
     }
 }
 
@@ -333,7 +413,7 @@ pub fn run() {
                     tauri_plugin_log::TargetKind::Stdout,
                 ))
                 .max_file_size(1_000_000)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
@@ -360,6 +440,7 @@ pub fn run() {
             open_local_session,
             open_ssh_session,
             ssh_trust_response,
+            ssh_auth_response,
             open_saved_session,
             library_load,
             session_save,
