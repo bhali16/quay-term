@@ -306,7 +306,7 @@
           />
         </div>
         {#if tab.files}
-          <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey} onclose={() => (tab.files = false)} />
+          <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey} terminalId={() => tab.pane?.sessionId() ?? null} onclose={() => (tab.files = false)} />
         {/if}
       </div>
     {/each}

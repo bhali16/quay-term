@@ -66,6 +66,11 @@ impl Connection {
         connect(opts, verify)
     }
 
+    /// The connection has ended (closed by either side, or lost).
+    pub fn is_closed(&self) -> bool {
+        self.handle.is_closed()
+    }
+
     /// Open a subsystem such as `sftp` on its own channel and return it as a
     /// byte stream. Any number of channels share the one connection.
     pub async fn open_subsystem(

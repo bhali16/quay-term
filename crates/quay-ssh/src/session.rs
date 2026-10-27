@@ -5,6 +5,7 @@
 //! the callbacks given to [`SshSession::connect`], batched so a busy terminal
 //! does not flood the UI.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use quay_core::{Error, Result, Session, TermSize};
@@ -14,7 +15,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use crate::client::{self, runtime, Connection};
+use crate::client::{runtime, Connection};
 use crate::error::SshError;
 use crate::known_hosts::HostKeyInfo;
 use crate::options::ConnectOptions;
@@ -47,7 +48,19 @@ impl SshSession {
         on_output: impl FnMut(Vec<u8>) + Send + 'static,
         on_exit: impl FnOnce(Option<String>) + Send + 'static,
     ) -> std::result::Result<Self, SshError> {
-        let conn = client::connect(opts, &mut verify)?;
+        let conn = Arc::new(Connection::connect(opts, &mut verify)?);
+        Self::open(conn, size, on_output, on_exit)
+    }
+
+    /// Start a shell on an existing connection, which stays open for as long
+    /// as anything (this shell, an SFTP panel, a tunnel) still holds it.
+    /// Blocks until the shell is open (or fails).
+    pub fn open(
+        conn: Arc<Connection>,
+        size: TermSize,
+        on_output: impl FnMut(Vec<u8>) + Send + 'static,
+        on_exit: impl FnOnce(Option<String>) + Send + 'static,
+    ) -> std::result::Result<Self, SshError> {
         let (read, write) = runtime().block_on(open_shell(&conn, size))?;
 
         let (tx, rx) = unbounded_channel();
@@ -55,11 +68,15 @@ impl SshSession {
         runtime().spawn(write_loop(write, rx, closed_tx));
         runtime().spawn(async move {
             let reason = read_loop(read, closed_rx, on_output).await;
-            // Best-effort goodbye; a server that never answers must not hold us up.
-            let bye = conn
-                .handle
-                .disconnect(Disconnect::ByApplication, "quay-term closing", "en");
-            let _ = tokio::time::timeout(Duration::from_secs(2), bye).await;
+            // The last user of a connection says goodbye; a server that never
+            // answers must not hold us up.
+            if Arc::strong_count(&conn) == 1 {
+                let bye =
+                    conn.handle
+                        .disconnect(Disconnect::ByApplication, "quay-term closing", "en");
+                let _ = tokio::time::timeout(Duration::from_secs(2), bye).await;
+            }
+            drop(conn);
             on_exit(reason);
         });
         Ok(Self { tx, closed: false })

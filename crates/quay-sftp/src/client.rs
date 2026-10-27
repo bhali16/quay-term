@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use quay_ssh::{block_on, ConnectOptions, Connection, HostKeyInfo};
 use russh_sftp::client::{Config, SftpSession};
@@ -64,7 +65,7 @@ pub fn join_remote(dir: &str, name: &str) -> String {
 pub struct SftpClient {
     sftp: SftpSession,
     // Keeps the connection alive for as long as the client exists.
-    _conn: Connection,
+    _conn: Arc<Connection>,
 }
 
 impl SftpClient {
@@ -73,7 +74,12 @@ impl SftpClient {
         opts: &ConnectOptions,
         verify: &mut dyn FnMut(&HostKeyInfo) -> bool,
     ) -> Result<Self, SftpError> {
-        let conn = Connection::connect(opts, verify)?;
+        Self::open(Arc::new(Connection::connect(opts, verify)?))
+    }
+
+    /// Start the SFTP subsystem on a connection that something else (a
+    /// terminal tab) already opened, so the host needs no second login.
+    pub fn open(conn: Arc<Connection>) -> Result<Self, SftpError> {
         let sftp = block_on(async {
             let stream = conn.open_subsystem("sftp").await?;
             let cfg = Config {
