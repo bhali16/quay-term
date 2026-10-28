@@ -23,7 +23,18 @@
     ssh = null,
     saved = null,
     onconnected,
-  }: { active: boolean; ssh?: SshTarget | null; saved?: Saved | null; onconnected?: () => void } = $props();
+    focused = true,
+    compact = false,
+    onfocus,
+  }: {
+    active: boolean;
+    ssh?: SshTarget | null;
+    saved?: Saved | null;
+    onconnected?: () => void;
+    focused?: boolean;
+    compact?: boolean;
+    onfocus?: () => void;
+  } = $props();
   const remote = $derived(ssh !== null || saved !== null);
 
   let host: HTMLDivElement;
@@ -77,12 +88,13 @@
     if (active) requestAnimationFrame(() => fit.fit());
   });
 
-  // Refit and focus when this tab becomes visible.
+  // Refit when this tab becomes visible; focus only the pane that has the tab's focus.
   $effect(() => {
     if (active && fit) {
+      const wantFocus = focused;
       requestAnimationFrame(() => {
         fit.fit();
-        term.focus();
+        if (wantFocus) term.focus();
       });
     }
   });
@@ -103,6 +115,7 @@
     term.loadAddon(fit);
     term.open(host);
     fit.fit();
+    term.textarea?.addEventListener("focus", () => onfocus?.());
 
     const encoder = new TextEncoder();
     term.onData((d) => {
@@ -125,7 +138,7 @@
   });
 </script>
 
-<div class="term" class:hidden={!active} bind:this={host}></div>
+<div class="term" class:hidden={!active} class:compact bind:this={host}></div>
 
 <style>
   .term {
@@ -135,6 +148,9 @@
        does not subtract its padding, so border-box would overflow the window. */
     padding: 20px 24px;
     background: var(--bg);
+  }
+  .term.compact {
+    padding: 8px 10px;
   }
   .hidden {
     visibility: hidden;

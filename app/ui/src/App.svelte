@@ -34,17 +34,30 @@
   import SettingsDialog from "./lib/SettingsDialog.svelte";
   import { settings } from "./lib/settings.svelte";
   import { actionFor, isMac, type Action } from "./lib/keys";
+  import * as P from "./lib/panes";
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
   import type { SshTarget } from "./lib/bindings/SshTarget";
 
   type Saved = { id: number; label: string; secret?: string | null; remember?: boolean };
-  type Tab = { key: number; title: string; ssh: SshTarget | null; saved: Saved | null; files?: boolean; tunnels?: boolean; pane?: TerminalPane };
+  // `layout` is the split tree; every leaf is a terminal that opens the tab's own target (a new login for SSH).
+  type Tab = {
+    key: number;
+    title: string;
+    ssh: SshTarget | null;
+    saved: Saved | null;
+    files?: boolean;
+    tunnels?: boolean;
+    layout: P.Node;
+    focus: number;
+    panes: Record<number, TerminalPane>;
+  };
 
   let info = $state<AppInfo | null>(null);
   let tabs = $state<Tab[]>([]);
   let activeKey = $state(0);
   let counter = 0;
+  let paneCounter = 0;
   let editing = $state<number | null>(null);
   let connecting = $state(false);
   let trustPrompt = $state<HostKeyPrompt | null>(null);
@@ -54,8 +67,69 @@
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
     const key = ++counter;
     const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
-    tabs.push({ key, title, ssh, saved });
+    // A saved session comes back with the split layout it was last closed with.
+    const layout = (saved && loadShape(saved.id)) || { leaf: ++paneCounter };
+    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], panes: {} });
     activeKey = key;
+  }
+
+  const shapeKey = (id: number) => `quay.layout.${id}`;
+  function loadShape(id: number): P.Node | null {
+    try {
+      const raw = localStorage.getItem(shapeKey(id));
+      return raw ? P.fromShape(JSON.parse(raw), () => ++paneCounter) : null;
+    } catch {
+      return null;
+    }
+  }
+  function setLayout(tab: Tab, layout: P.Node) {
+    tab.layout = layout;
+    if (!tab.saved) return;
+    try {
+      if (P.isLeaf(layout)) localStorage.removeItem(shapeKey(tab.saved.id));
+      else localStorage.setItem(shapeKey(tab.saved.id), JSON.stringify(P.shapeOf(layout)));
+    } catch {
+      /* layout memory is optional */
+    }
+  }
+  const focusedPane = (tab: Tab | undefined) => tab?.panes[tab.focus];
+
+  function splitPane(tab: Tab, axis: P.Axis) {
+    const id = ++paneCounter;
+    setLayout(tab, P.split(tab.layout, tab.focus, id, axis));
+    tab.focus = id;
+  }
+  function closePane(tab: Tab, id: number) {
+    const next = P.remove(tab.layout, id);
+    if (!next) return closeTab(tab.key);
+    const order = P.leaves(tab.layout);
+    setLayout(tab, next);
+    delete tab.panes[id];
+    if (tab.focus === id) tab.focus = P.leaves(next)[Math.min(order.indexOf(id), order.length - 2)];
+  }
+  function moveFocus(tab: Tab, dir: P.Dir) {
+    const to = P.neighbor(P.layout(tab.layout), tab.focus, dir);
+    if (to !== null) tab.focus = to;
+  }
+  function dragDivider(e: PointerEvent, tab: Tab, d: P.Divider) {
+    const area = (e.currentTarget as HTMLElement).parentElement!.getBoundingClientRect();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const move = (m: PointerEvent) => {
+      const row = d.axis === "row";
+      const pos = row ? (m.clientX - area.left) / area.width : (m.clientY - area.top) / area.height;
+      const start = row ? d.parent.x : d.parent.y;
+      const size = row ? d.parent.w : d.parent.h;
+      setLayout(tab, P.setRatio(tab.layout, d.path, (pos - start) / size));
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
   }
 
   // ---- saved sessions ----
@@ -184,7 +258,17 @@
     const i = tabs.findIndex((t) => t.key === activeKey);
     switch (a) {
       case "new_tab": return newTab();
-      case "close_tab": return closeTab(activeKey);
+      case "close_tab": return activeTab && closePane(activeTab, activeTab.focus);
+      case "split_right": return activeTab && splitPane(activeTab, "row");
+      case "split_down": return activeTab && splitPane(activeTab, "col");
+      case "focus_left": return activeTab && moveFocus(activeTab, "left");
+      case "focus_right": return activeTab && moveFocus(activeTab, "right");
+      case "focus_up": return activeTab && moveFocus(activeTab, "up");
+      case "focus_down": return activeTab && moveFocus(activeTab, "down");
+      case "resize_left": return activeTab && setLayout(activeTab, P.nudge(activeTab.layout, activeTab.focus, "left"));
+      case "resize_right": return activeTab && setLayout(activeTab, P.nudge(activeTab.layout, activeTab.focus, "right"));
+      case "resize_up": return activeTab && setLayout(activeTab, P.nudge(activeTab.layout, activeTab.focus, "up"));
+      case "resize_down": return activeTab && setLayout(activeTab, P.nudge(activeTab.layout, activeTab.focus, "down"));
       case "next_tab": return (activeKey = tabs[(i + 1) % tabs.length].key);
       case "prev_tab": return (activeKey = tabs[(i - 1 + tabs.length) % tabs.length].key);
       case "toggle_sidebar": return toggleSidebar();
@@ -217,8 +301,7 @@
     refresh();
     const unlisten = [
       onSessionExit(({ id, reason }) => {
-        const tab = tabs.find((t) => t.pane?.sessionId() === id);
-        tab?.pane?.notifyExited(reason);
+        for (const t of tabs) for (const p of Object.values(t.panes)) if (p?.sessionId() === id) p.notifyExited(reason);
       }),
       onHostKeyPrompt((p) => (trustPrompt = p)),
       onAuthPrompt((p) => (authPrompt = p)),
@@ -299,26 +382,53 @@
   </nav>
   <div class="panes">
     {#each tabs as tab (tab.key)}
+      {@const lay = P.layout(tab.layout)}
+      {@const solo = lay.panes.length === 1}
       <div class="tabview" class:hidden={tab.key !== activeKey}>
         <div class="term">
-          <TerminalPane
-            bind:this={tab.pane}
-            active={tab.key === activeKey}
-            ssh={tab.ssh}
-            saved={tab.saved}
-            onconnected={tab.saved?.remember ? refresh : undefined}
-          />
+          {#each lay.panes as p (p.id)}
+            <div
+              class="leaf"
+              class:focused={!solo && tab.focus === p.id}
+              style:left="{p.rect.x * 100}%"
+              style:top="{p.rect.y * 100}%"
+              style:width="{p.rect.w * 100}%"
+              style:height="{p.rect.h * 100}%"
+            >
+              <TerminalPane
+                bind:this={tab.panes[p.id]}
+                active={tab.key === activeKey}
+                focused={tab.focus === p.id}
+                compact={!solo}
+                onfocus={() => (tab.focus = p.id)}
+                ssh={tab.ssh}
+                saved={tab.saved}
+                onconnected={tab.saved?.remember ? refresh : undefined}
+              />
+            </div>
+          {/each}
+          {#each lay.dividers as d (d.path)}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="divider {d.axis}"
+              style:left="{d.rect.x * 100}%"
+              style:top="{d.rect.y * 100}%"
+              style:width={d.axis === "col" ? `${d.rect.w * 100}%` : undefined}
+              style:height={d.axis === "row" ? `${d.rect.h * 100}%` : undefined}
+              onpointerdown={(e) => dragDivider(e, tab, d)}
+            ></div>
+          {/each}
         </div>
         {#if tab.tunnels}
           <TunnelPanel
-            terminalId={() => tab.pane?.sessionId() ?? null}
+            terminalId={() => focusedPane(tab)?.sessionId() ?? null}
             saved={library.sessions.find((x) => x.id === tab.saved?.id)?.tunnels ?? []}
             active={tab.key === activeKey}
             onclose={() => (tab.tunnels = false)}
           />
         {/if}
         {#if tab.files}
-          <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey} terminalId={() => tab.pane?.sessionId() ?? null} onclose={() => (tab.files = false)} />
+          <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey} terminalId={() => focusedPane(tab)?.sessionId() ?? null} onclose={() => (tab.files = false)} />
         {/if}
       </div>
     {/each}
@@ -619,6 +729,34 @@
     position: relative;
     flex: 1;
     min-width: 0;
+  }
+  /* Each pane sits at its fraction of the tab area, so splitting never remounts (and never restarts) a terminal. */
+  .leaf {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+  }
+  .leaf.focused {
+    border-color: var(--accent);
+  }
+  .divider {
+    position: absolute;
+    z-index: 2;
+    touch-action: none;
+  }
+  .divider.row {
+    width: 7px;
+    margin-left: -3px;
+    cursor: col-resize;
+  }
+  .divider.col {
+    height: 7px;
+    margin-top: -3px;
+    cursor: row-resize;
+  }
+  .divider:hover {
+    background: var(--accent);
+    opacity: 0.4;
   }
   .panes {
     position: relative;
