@@ -1,5 +1,6 @@
 mod library;
 mod sftp;
+mod snippets;
 mod tunnels;
 
 use std::collections::HashMap;
@@ -456,6 +457,7 @@ pub fn run() {
             let dir = app.path().app_data_dir()?;
             let library = Library::open(&dir.join("sessions.db"), Box::new(KeychainStore::new()))?;
             app.manage(library);
+            app.manage(snippets::Snippets::open(dir.join("snippets.json")));
             app.manage(SettingsPath(dir.join("settings.json")));
             log::info!(
                 "quay-term {} starting on {}",
@@ -492,6 +494,9 @@ pub fn run() {
             tunnels::tunnel_start,
             tunnels::tunnel_stop,
             tunnels::tunnel_list,
+            snippets::snippets_load,
+            snippets::snippet_save,
+            snippets::snippet_delete,
             sftp::sftp_list,
             sftp::sftp_canonical,
             sftp::sftp_mkdir,

@@ -16,6 +16,7 @@ import type { SavedSession } from "./bindings/SavedSession";
 import type { SecretUpdate } from "./bindings/SecretUpdate";
 import type { SessionInput } from "./bindings/SessionInput";
 import type { Entry } from "./bindings/Entry";
+import type { Snippet } from "./bindings/Snippet";
 import type { SftpOpened } from "./bindings/SftpOpened";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
 
@@ -128,3 +129,8 @@ export const tunnelList = (session: number) => invoke<TunnelInfo[]>("tunnel_list
 export const settingsLoad = () => invoke<Settings>("settings_load");
 export const settingsSave = (settings: Settings) => invoke<Settings>("settings_save", { settings });
 export const getDiagnostics = () => invoke<Diagnostics>("get_diagnostics");
+
+export const snippetsLoad = () => invoke<Snippet[]>("snippets_load");
+export const snippetSave = (id: number | null, name: string, folder: string, body: string) =>
+  invoke<Snippet>("snippet_save", { id, name, folder, body });
+export const snippetDelete = (id: number) => invoke<void>("snippet_delete", { id });

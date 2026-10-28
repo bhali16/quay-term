@@ -16,6 +16,9 @@
     sshTrustResponse,
     sshAuthResponse,
     onAuthPrompt,
+    snippetDelete,
+    snippetSave,
+    snippetsLoad,
   } from "./lib/ipc";
   import Sidebar from "./lib/Sidebar.svelte";
   import SessionDialog from "./lib/SessionDialog.svelte";
@@ -32,6 +35,9 @@
   import type { AuthPrompt } from "./lib/bindings/AuthPrompt";
   import Icon from "./lib/Icon.svelte";
   import SettingsDialog from "./lib/SettingsDialog.svelte";
+  import SnippetDialog from "./lib/SnippetDialog.svelte";
+  import type { Target } from "./lib/SnippetDialog.svelte";
+  import type { Snippet } from "./lib/bindings/Snippet";
   import { settings } from "./lib/settings.svelte";
   import { actionFor, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
@@ -63,6 +69,46 @@
   let trustPrompt = $state<HostKeyPrompt | null>(null);
   let authPrompt = $state<AuthPrompt | null>(null);
   let showSettings = $state(false);
+
+  // ---- multi-exec and snippets ----
+  // Panes whose typing is mirrored to each other. Pane ids are unique across tabs, so a tab needs no part in the key.
+  let broadcast = $state<number[]>([]);
+  let snippets = $state<Snippet[]>([]);
+  let showSnippets = $state(false);
+  const paneById = (id: number) => tabs.map((t) => t.panes[id]).find(Boolean);
+  function toggleBroadcast(ids: number[]) {
+    const all = ids.every((i) => broadcast.includes(i));
+    broadcast = all ? broadcast.filter((i) => !ids.includes(i)) : [...new Set([...broadcast, ...ids])];
+  }
+  // Typing in a selected pane goes to the other selected ones; typing elsewhere stays put.
+  function mirror(from: number, data: string) {
+    if (broadcast.includes(from)) for (const id of broadcast) if (id !== from) paneById(id)?.send(data);
+  }
+  function sendSnippet(text: string, target: Target) {
+    const tab = activeTab;
+    if (!tab) return;
+    const ids =
+      target === "focused" ? [tab.focus] : target === "tab" ? P.leaves(tab.layout) : broadcast;
+    for (const id of ids) paneById(id)?.send(text);
+    showSnippets = false;
+  }
+  async function saveSnippet(id: number | null, name: string, folder: string, body: string) {
+    try {
+      await snippetSave(id, name, folder, body);
+      snippets = await snippetsLoad();
+      return null;
+    } catch (e) {
+      return `${e}`;
+    }
+  }
+  async function removeSnippet(s: Snippet) {
+    try {
+      await snippetDelete(s.id);
+      snippets = await snippetsLoad();
+    } catch (e) {
+      say(e);
+    }
+  }
 
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
     const key = ++counter;
@@ -105,6 +151,7 @@
     const order = P.leaves(tab.layout);
     setLayout(tab, next);
     delete tab.panes[id];
+    broadcast = broadcast.filter((b) => b !== id);
     if (tab.focus === id) tab.focus = P.leaves(next)[Math.min(order.indexOf(id), order.length - 2)];
   }
   function moveFocus(tab: Tab, dir: P.Dir) {
@@ -249,6 +296,8 @@
   function closeTab(key: number) {
     const i = tabs.findIndex((t) => t.key === key);
     if (i < 0) return;
+    const gone = P.leaves(tabs[i].layout);
+    broadcast = broadcast.filter((b) => !gone.includes(b));
     tabs.splice(i, 1);
     if (activeKey === key) activeKey = tabs[Math.min(i, tabs.length - 1)]?.key ?? 0;
     if (tabs.length === 0) newTab();
@@ -259,6 +308,9 @@
     switch (a) {
       case "new_tab": return newTab();
       case "close_tab": return activeTab && closePane(activeTab, activeTab.focus);
+      case "broadcast_pane": return activeTab && toggleBroadcast([activeTab.focus]);
+      case "broadcast_tab": return activeTab && toggleBroadcast(P.leaves(activeTab.layout));
+      case "snippets": return (showSnippets = !showSnippets);
       case "split_right": return activeTab && splitPane(activeTab, "row");
       case "split_down": return activeTab && splitPane(activeTab, "col");
       case "focus_left": return activeTab && moveFocus(activeTab, "left");
@@ -299,6 +351,7 @@
     getAppInfo().then((i) => (info = i));
     newTab();
     refresh();
+    snippetsLoad().then((s) => (snippets = s)).catch(say);
     const unlisten = [
       onSessionExit(({ id, reason }) => {
         for (const t of tabs) for (const p of Object.values(t.panes)) if (p?.sessionId() === id) p.notifyExited(reason);
@@ -377,6 +430,14 @@
           <Icon name="swap" size={16} />Tunnels
         </button>
       {/if}
+      {#if broadcast.length}
+        <button class="filesbtn on warn" title="Stop broadcasting" aria-label="Stop broadcasting to {broadcast.length} panes" onclick={() => (broadcast = [])}>
+          <Icon name="x" size={14} />Broadcast {broadcast.length}
+        </button>
+      {/if}
+      <button class="filesbtn" title={`Snippets (${settings.bindings.snippets})`} aria-label="Snippets" onclick={() => (showSnippets = true)}>
+        <Icon name="terminal" size={16} />Snippets
+      </button>
       <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
     </div>
   </nav>
@@ -401,6 +462,8 @@
                 focused={tab.focus === p.id}
                 compact={!solo}
                 onfocus={() => (tab.focus = p.id)}
+                oninput={(d) => mirror(p.id, d)}
+                broadcasting={broadcast.includes(p.id)}
                 ssh={tab.ssh}
                 saved={tab.saved}
                 onconnected={tab.saved?.remember ? refresh : undefined}
@@ -470,6 +533,17 @@
       </div>
     {/each}
   </div>
+  {#if showSnippets}
+    <SnippetDialog
+      {snippets}
+      tabPanes={activeTab ? P.leaves(activeTab.layout).length : 0}
+      broadcast={broadcast.length}
+      onsend={sendSnippet}
+      onsave={saveSnippet}
+      ondelete={removeSnippet}
+      onclose={() => (showSnippets = false)}
+    />
+  {/if}
   {#if showSettings}
     <SettingsDialog onclose={() => (showSettings = false)} />
   {/if}
@@ -636,6 +710,9 @@
   }
   .filesbtn.on {
     color: var(--accent);
+  }
+  .filesbtn.warn {
+    color: var(--red);
   }
   .toasts {
     position: fixed;

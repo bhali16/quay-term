@@ -2,6 +2,9 @@
 export type Action =
   | "new_tab"
   | "close_tab"
+  | "broadcast_pane"
+  | "broadcast_tab"
+  | "snippets"
   | "split_right"
   | "split_down"
   | "focus_left"
@@ -24,6 +27,9 @@ export type Action =
 export const actionLabels: Record<Action, string> = {
   new_tab: "New local tab",
   close_tab: "Close pane or tab",
+  broadcast_pane: "Send typing to this pane too (toggle)",
+  broadcast_tab: "Send typing to all panes of this tab (toggle)",
+  snippets: "Open snippets",
   split_right: "Split pane right",
   split_down: "Split pane down",
   focus_left: "Focus pane to the left",
@@ -51,6 +57,9 @@ const M = isMac ? "Cmd" : "Ctrl+Shift";
 export const defaultBindings: Record<Action, string> = {
   new_tab: `${M}+T`,
   close_tab: `${M}+W`,
+  broadcast_pane: isMac ? "Alt+Cmd+B" : "Ctrl+Alt+B",
+  broadcast_tab: isMac ? "Alt+Cmd+I" : "Ctrl+Alt+I",
+  snippets: isMac ? "Shift+Cmd+S" : "Ctrl+Alt+S",
   split_right: `${M}+D`,
   split_down: isMac ? "Shift+Cmd+D" : "Ctrl+Alt+D",
   focus_left: isMac ? "Alt+Cmd+ArrowLeft" : "Ctrl+Alt+ArrowLeft",

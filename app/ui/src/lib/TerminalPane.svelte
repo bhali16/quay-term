@@ -26,6 +26,8 @@
     focused = true,
     compact = false,
     onfocus,
+    oninput,
+    broadcasting = false,
   }: {
     active: boolean;
     ssh?: SshTarget | null;
@@ -34,6 +36,9 @@
     focused?: boolean;
     compact?: boolean;
     onfocus?: () => void;
+    /** Text typed or pasted here, for the app to mirror to other panes. */
+    oninput?: (data: string) => void;
+    broadcasting?: boolean;
   } = $props();
   const remote = $derived(ssh !== null || saved !== null);
 
@@ -45,6 +50,10 @@
 
   export function sessionId() {
     return id;
+  }
+  /** Type into this pane from outside (a snippet, or another pane's broadcast). */
+  export function send(text: string) {
+    if (id !== null) sessionWrite(id, new TextEncoder().encode(text));
   }
   export function notifyExited(reason: string | null) {
     ended = true;
@@ -119,7 +128,10 @@
 
     const encoder = new TextEncoder();
     term.onData((d) => {
-      if (id !== null) sessionWrite(id, encoder.encode(d));
+      if (id !== null) {
+        sessionWrite(id, encoder.encode(d));
+        oninput?.(d);
+      }
       else if (remote && ended && d === "\r") start();
     });
     term.onBinary((d) => id !== null && sessionWrite(id, Uint8Array.from(d, (c) => c.charCodeAt(0))));
@@ -139,6 +151,7 @@
 </script>
 
 <div class="term" class:hidden={!active} class:compact bind:this={host}></div>
+{#if broadcasting && active}<span class="bcast" title="What you type here is also sent to the other selected panes">Broadcast</span>{/if}
 
 <style>
   .term {
@@ -148,6 +161,19 @@
        does not subtract its padding, so border-box would overflow the window. */
     padding: 20px 24px;
     background: var(--bg);
+  }
+  .bcast {
+    position: absolute;
+    top: 6px;
+    right: 14px;
+    z-index: 1;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: var(--red);
+    color: var(--bg);
+    font-size: 11px;
+    font-weight: 600;
+    pointer-events: none;
   }
   .term.compact {
     padding: 8px 10px;
