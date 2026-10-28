@@ -25,7 +25,7 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 | M7 Connection manager | One owner thread per SSH connection, shared by shell, SFTP and forwards, so a host needs one login. Decided: move to `russh` (see below). Shell and SFTP are done; sharing one login between them comes next |
 | M8 Jump hosts | `ProxyJump` chains per saved session and from `~/.ssh/config`; host-key prompts for every hop. Done for saved sessions; a jump host needs a saved secret (no prompt for one yet) |
 | M9 Tunnels | Local, remote and dynamic (SOCKS5) forwards, saved with the session, start/stop panel, bind-address and port-in-use errors. Done; importing `LocalForward`/`RemoteForward`/`DynamicForward` from `~/.ssh/config` is not |
-| M10 Split panes | Horizontal/vertical splits inside a tab, focus and resize shortcuts, pane layout restored with the session. Done; not yet exercised in the running app |
+| M10 Split panes | Horizontal/vertical splits inside a tab, focus and resize shortcuts, pane layout restored with the session. Done |
 | M11 Multi-exec and snippets | Send input to selected tabs or panes; snippet library with variables, folders and search |
 | M12 Encrypted vault and release | Export/import of sessions and secrets as one file (Argon2id + AEAD, master password); fallback when no OS keychain exists (headless Linux); Intel macOS build; tag v0.2.0 |
 

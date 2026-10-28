@@ -38,3 +38,13 @@ suite("resolve and actionFor", () => {
     expect(actionFor(ev({ key: "q", code: "KeyQ" }), b)).toBeNull();
   });
 });
+
+suite("default bindings", () => {
+  it("are written in canonical modifier order, or they could never match", () => {
+    for (const [a, combo] of Object.entries(defaultBindings)) expect(normalize(combo), a).toBe(combo);
+  });
+  it("are unique", () => {
+    const all = Object.values(defaultBindings);
+    expect(new Set(all).size).toBe(all.length);
+  });
+});
