@@ -162,6 +162,10 @@
             <input type="number" min="0" max="100000" step="1000" value={settings.value.scrollback} onchange={(e) => patch({ scrollback: Number(e.currentTarget.value) || 0 })} />
           </label>
           <label class="check">
+            <input type="checkbox" checked={settings.value.copy_on_select} onchange={(e) => patch({ copy_on_select: e.currentTarget.checked })} />
+            Copy text to the clipboard when selected
+          </label>
+          <label class="check">
             <input type="checkbox" checked={settings.value.cursor_blink} onchange={(e) => patch({ cursor_blink: e.currentTarget.checked })} />
             Blinking cursor
           </label>

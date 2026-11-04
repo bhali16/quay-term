@@ -14,7 +14,7 @@
   } from "./ipc";
   import type { SshTarget } from "./bindings/SshTarget";
   import { settings } from "./settings.svelte";
-  import { actionFor } from "./keys";
+  import { actionFor, isMac } from "./keys";
 
   // `ssh` is kept in memory so Enter can reconnect after a drop; nothing is persisted.
   // A saved session connects by id; its stored secret never leaves Rust.
@@ -61,6 +61,34 @@
     id = null;
     if (reason) term?.writeln(`\r\n\x1b[31m${reason}\x1b[0m`);
     term?.writeln(remote ? "\r\n[connection closed - press Enter to reconnect]" : "\r\n[process exited]");
+  }
+
+  async function writeClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Some webviews refuse the async API outside a gesture; fall back to execCommand.
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      term?.focus();
+    }
+  }
+  function copySelection() {
+    const text = term.getSelection();
+    if (text) void writeClipboard(text);
+  }
+  async function pasteClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) term.paste(text);
+    } catch {
+      /* clipboard unreadable; nothing to paste */
+    }
   }
 
   function start() {
@@ -114,18 +142,57 @@
     term = new Terminal({
       fontFamily: v.font_family,
       fontSize: v.font_size,
-      lineHeight: 1.5,
+      lineHeight: 1.2,
+      minimumContrastRatio: 4.5,
+      macOptionClickForcesSelection: true,
+      rightClickSelectsWord: false,
       cursorBlink: v.cursor_blink,
       scrollback: v.scrollback,
       theme: settings.theme.term,
     });
     // App shortcuts must not reach the shell; returning false stops xterm handling the key.
-    term.attachCustomKeyEventHandler((e) => !(e.type === "keydown" && actionFor(e, settings.bindings)));
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      if (actionFor(e, settings.bindings)) return false;
+      const k = e.key.toLowerCase();
+      // Copy: Ctrl/Cmd+C copies a selection (and clears it); with none, Ctrl+C is the shell's interrupt.
+      // Ctrl+Shift+C always copies, never interrupts.
+      if (k === "c" && !e.altKey && (e.ctrlKey || e.metaKey)) {
+        if (term.hasSelection() || (e.shiftKey && !isMac)) {
+          copySelection();
+          term.clearSelection();
+          return false;
+        }
+        return true;
+      }
+      // Ctrl+Shift+V pastes (plain Ctrl+V is handled by xterm's own paste event).
+      if (k === "v" && e.ctrlKey && e.shiftKey && !e.altKey) {
+        pasteClipboard();
+        return false;
+      }
+      return true;
+    });
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
     fit.fit();
     term.textarea?.addEventListener("focus", () => onfocus?.());
+
+    // Copy on select: wait for the mouse to be released so a drag copies once, not per cell.
+    const onMouseUp = () => {
+      if (settings.value.copy_on_select && term.hasSelection()) copySelection();
+    };
+    host.addEventListener("mouseup", onMouseUp);
+    // Right-click pastes on Windows/Linux (PuTTY-style); macOS keeps the native context menu.
+    const onContext = (e: MouseEvent) => {
+      if (isMac) return;
+      e.preventDefault();
+      if (term.hasSelection()) {
+        copySelection();
+        term.clearSelection();
+      } else pasteClipboard();
+    };
+    host.addEventListener("contextmenu", onContext);
 
     const encoder = new TextEncoder();
     term.onData((d) => {
@@ -145,6 +212,8 @@
 
     return () => {
       ro.disconnect();
+      host.removeEventListener("mouseup", onMouseUp);
+      host.removeEventListener("contextmenu", onContext);
       if (id !== null) sessionClose(id);
       term.dispose();
     };
