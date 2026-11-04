@@ -26,6 +26,7 @@
   import SessionDialog from "./lib/SessionDialog.svelte";
   import type { Result as SessionResult } from "./lib/SessionDialog.svelte";
   import PasswordPrompt from "./lib/PasswordPrompt.svelte";
+  import { updates } from "./lib/updates.svelte";
   import type { LibraryView } from "./lib/bindings/LibraryView";
   import type { SavedSession } from "./lib/bindings/SavedSession";
   import TerminalPane from "./lib/TerminalPane.svelte";
@@ -376,7 +377,14 @@
   }
 
   onMount(() => {
-    settings.load();
+    settings.load().then(() => {
+      if (!settings.value.check_for_updates) return;
+      // Let the first tab connect before touching the network.
+      setTimeout(async () => {
+        await updates.check(true);
+        if (updates.state.kind === "available") toast(`quay-term ${updates.state.version} is available. Install it from Settings > About.`, "info");
+      }, 5000);
+    });
     getAppInfo().then((i) => (info = i));
     newTab();
     refresh();

@@ -34,7 +34,7 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 - ~~The SFTP panel opens a second SSH login.~~ Fixed in M7: the Files panel reuses its tab's connection.
 - Frontend tests cover only shortcut handling. ~~The keychain round-trip test never runs in CI.~~ It now runs on all three platforms in its own CI job.
 - ~~No Intel macOS build.~~ Added in M12. Installers are still unsigned and not notarized.
-- No auto-update.
+- ~~No auto-update.~~ Added: signed updates from GitHub Releases (see CHANGELOG).
 
 ### Decisions needed before M7
 

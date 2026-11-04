@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Icon, { type Name } from "./Icon.svelte";
   import { settings } from "./settings.svelte";
+  import { updates } from "./updates.svelte";
   import { themes } from "./themes";
   import { actionLabels, defaultBindings, describe, type Action } from "./keys";
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -164,6 +165,10 @@
             <input type="checkbox" checked={settings.value.cursor_blink} onchange={(e) => patch({ cursor_blink: e.currentTarget.checked })} />
             Blinking cursor
           </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.check_for_updates} onchange={(e) => patch({ check_for_updates: e.currentTarget.checked })} />
+            Check for updates when quay-term starts
+          </label>
         {:else if tab === "shortcuts"}
           <div class="keys">
             {#each actions as a (a)}
@@ -212,6 +217,22 @@
             <span class="path" title={diag.log_dir}>Logs: {diag.log_dir}</span>
             <span class="path" title={diag.settings_file}>Settings: {diag.settings_file}</span>
             <button class="copy" onclick={copyDiag}>{copied ? "Copied" : "Copy diagnostics"}</button>
+          </div>
+          <h3>Updates</h3>
+          <div class="about" aria-live="polite">
+            {#if updates.state.kind === "available"}
+              <span>Version {updates.state.version} is available.</span>
+              {#if updates.state.notes}<span class="path" title={updates.state.notes}>{updates.state.notes}</span>{/if}
+              <button class="copy" onclick={() => updates.install()}>Install and restart</button>
+            {:else if updates.state.kind === "downloading"}
+              <span>Downloading {updates.state.version}{updates.state.percent === null ? "…" : ` – ${updates.state.percent}%`}</span>
+            {:else if updates.state.kind === "checking"}
+              <span>Checking…</span>
+            {:else}
+              {#if updates.state.kind === "current"}<span>You are on the latest version.</span>{/if}
+              {#if updates.state.kind === "error"}<span class="err">Could not check: {updates.state.message}</span>{/if}
+              <button class="copy" onclick={() => updates.check()}>Check for updates</button>
+            {/if}
           </div>
         {/if}
       </div>
