@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-04
+
 ### Added
 - Updates from inside the app. About in Settings shows the version, checks for a newer release and installs it with one click (Install and restart). Updates are signed with a project key, and the app refuses anything that does not match it. By default it also checks a few seconds after launch and shows a message if there is a newer version; turn that off under Settings > Terminal > Check for updates when quay-term starts. Nothing is downloaded until you click. Installs from before this version need one manual update first.
 
