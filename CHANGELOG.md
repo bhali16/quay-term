@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Copy on select: text you select in a terminal is copied as soon as you release the mouse. Turn it off under Settings > Terminal.
+- Ctrl+C (Cmd+C on macOS) copies the selected text; with nothing selected it still interrupts the running command. Ctrl+Shift+C copies and Ctrl+Shift+V pastes. On Windows and Linux, right-click copies a selection or pastes.
+- Ctrl+click (Cmd+click on macOS) opens http and https links in your browser.
+
+### Changed
+- Tighter line spacing, a clearer selection highlight, and a minimum contrast so dim colours stay readable.
+
 ## [0.2.2] - 2026-11-04
 
 ### Changed
