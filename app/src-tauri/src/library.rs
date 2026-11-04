@@ -41,6 +41,25 @@ pub struct ImportResult {
     pub skipped: u32,
 }
 
+/// A jump host on the way to a saved session that needs a password typed before connecting.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../ui/src/lib/bindings/")]
+pub struct MissingSecret {
+    pub id: i64,
+    pub name: String,
+    pub user: String,
+    pub host: String,
+}
+
+/// A secret the user just typed for a jump host, with whether to keep it.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../ui/src/lib/bindings/")]
+pub struct JumpSecret {
+    pub id: i64,
+    pub secret: String,
+    pub remember: bool,
+}
+
 /// Where to connect: the target and the jump hosts to go through first.
 #[derive(Debug, Clone)]
 pub struct Route {
@@ -224,13 +243,30 @@ impl Library {
     /// Build a connection target for a saved session. `secret` overrides the
     /// stored one (used when the user just typed it) and is saved if
     /// `remember` is set.
-    /// The saved session plus its chain of jump hosts. Jump hosts sign in with
-    /// what is stored for them; there is no chance to type a secret for one.
+    /// The jump hosts on the way to `id` that use a password and have none
+    /// saved, first hop first. The caller asks for each before connecting.
+    pub fn missing_jump_secrets(&self, id: i64) -> Result<Vec<MissingSecret>, String> {
+        let chain = self.store.lock().unwrap().jump_chain(id).map_err(err)?;
+        Ok(chain
+            .into_iter()
+            .filter(|h| h.input.auth == AuthKind::Password && !h.has_secret)
+            .map(|h| MissingSecret {
+                id: h.id,
+                name: h.input.name,
+                user: h.input.user,
+                host: h.input.host,
+            })
+            .collect())
+    }
+
+    /// The saved session plus its chain of jump hosts. A jump host signs in
+    /// with a secret typed just now (`jump_secrets`) or else the stored one.
     pub fn route_for(
         &self,
         id: i64,
         secret: Option<String>,
         remember: bool,
+        jump_secrets: &[JumpSecret],
     ) -> Result<Route, String> {
         let target = self.target_for(id, secret, remember)?;
         let (chain, auto_tunnels) = {
@@ -246,7 +282,7 @@ impl Library {
         let auto_tunnels = auto_tunnels.into_iter().filter(|t| t.auto_start).collect();
         let jumps = chain
             .iter()
-            .map(|hop| self.stored_target(hop))
+            .map(|hop| self.stored_target(hop, jump_secrets.iter().find(|j| j.id == hop.id)))
             .collect::<Result<_, _>>()?;
         Ok(Route {
             target,
@@ -255,10 +291,29 @@ impl Library {
         })
     }
 
-    /// A target built only from stored credentials.
-    fn stored_target(&self, s: &SavedSession) -> Result<SshTarget, String> {
-        let secret = match secret_kind(s.input.auth) {
-            Some(kind) if s.has_secret => {
+    /// A target built from stored credentials, or from `typed` when the user
+    /// just gave one (which is saved too if they asked).
+    fn stored_target(
+        &self,
+        s: &SavedSession,
+        typed: Option<&JumpSecret>,
+    ) -> Result<SshTarget, String> {
+        let kind = secret_kind(s.input.auth);
+        let secret = match (kind, typed) {
+            (Some(kind), Some(t)) => {
+                if t.remember {
+                    self.vault
+                        .set(SecretKey::new(s.id, kind), &t.secret)
+                        .map_err(|e| format!("Could not save the secret: {e}"))?;
+                    self.store
+                        .lock()
+                        .unwrap()
+                        .set_has_secret(s.id, true)
+                        .map_err(err)?;
+                }
+                Some(t.secret.clone())
+            }
+            (Some(kind), None) if s.has_secret => {
                 self.vault.get(SecretKey::new(s.id, kind)).map_err(err)?
             }
             _ => None,
@@ -266,10 +321,7 @@ impl Library {
         let auth = match s.input.auth {
             AuthKind::Password => SshAuth::Password {
                 password: secret.ok_or_else(|| {
-                    format!(
-                        "The jump host \"{}\" has no saved password. Connect to it once and choose to save it.",
-                        s.input.name
-                    )
+                    format!("The jump host \"{}\" needs a password.", s.input.name)
                 })?,
             },
             AuthKind::Key => SshAuth::Key {
@@ -557,7 +609,7 @@ mod tests {
         inner.jump_id = Some(bastion.id);
         let inner = l.save(None, &inner, SecretUpdate::Unchanged).unwrap();
 
-        let r = l.route_for(inner.id, None, false).unwrap();
+        let r = l.route_for(inner.id, None, false, &[]).unwrap();
         assert_eq!(r.target.host, "h.example");
         assert_eq!(r.jumps.len(), 1);
         assert_eq!(r.jumps[0].host, "b.example");
@@ -573,8 +625,50 @@ mod tests {
         let mut inner = input(AuthKind::Agent);
         inner.jump_id = Some(bastion.id);
         let inner = l.save(None, &inner, SecretUpdate::Unchanged).unwrap();
-        let e = l.route_for(inner.id, None, false).unwrap_err();
-        assert!(e.contains("bastion") && e.contains("saved password"), "{e}");
+        let e = l.route_for(inner.id, None, false, &[]).unwrap_err();
+        assert!(
+            e.contains("bastion") && e.contains("needs a password"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_typed_jump_password_is_used_and_saved_only_when_asked() {
+        let l = lib();
+        let mut jump = input(AuthKind::Password);
+        jump.name = "bastion".into();
+        let bastion = l.save(None, &jump, SecretUpdate::Unchanged).unwrap();
+        let mut inner = input(AuthKind::Agent);
+        inner.jump_id = Some(bastion.id);
+        let inner = l.save(None, &inner, SecretUpdate::Unchanged).unwrap();
+
+        let missing = l.missing_jump_secrets(inner.id).unwrap();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].id, bastion.id);
+
+        let typed = |remember| {
+            vec![JumpSecret {
+                id: bastion.id,
+                secret: "typed".into(),
+                remember,
+            }]
+        };
+        let r = l.route_for(inner.id, None, false, &typed(false)).unwrap();
+        assert_eq!(password_of(&r.jumps[0]), Some("typed"));
+        assert_eq!(
+            l.missing_jump_secrets(inner.id).unwrap().len(),
+            1,
+            "not kept"
+        );
+
+        l.route_for(inner.id, None, false, &typed(true)).unwrap();
+        assert!(l.missing_jump_secrets(inner.id).unwrap().is_empty());
+        let r = l.route_for(inner.id, None, false, &[]).unwrap();
+        assert_eq!(
+            password_of(&r.jumps[0]),
+            Some("typed"),
+            "kept for next time"
+        );
     }
 
     #[test]

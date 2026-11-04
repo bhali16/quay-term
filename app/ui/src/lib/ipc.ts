@@ -18,6 +18,8 @@ import type { SessionInput } from "./bindings/SessionInput";
 import type { Entry } from "./bindings/Entry";
 import type { BackupReport } from "./bindings/BackupReport";
 import type { VaultStatus } from "./bindings/VaultStatus";
+import type { JumpSecret } from "./bindings/JumpSecret";
+import type { MissingSecret } from "./bindings/MissingSecret";
 import type { Snippet } from "./bindings/Snippet";
 import type { SftpOpened } from "./bindings/SftpOpened";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
@@ -56,15 +58,18 @@ export function openSavedSession(
   id: number,
   secret: string | null,
   remember: boolean,
+  jumpSecrets: JumpSecret[],
   cols: number,
   rows: number,
   onOutput: (data: Uint8Array) => void,
 ): Promise<number> {
   const channel = new Channel<ArrayBuffer>();
   channel.onmessage = (buf) => onOutput(new Uint8Array(buf));
-  return invoke<number>("open_saved_session", { id, secret, remember, cols, rows, onOutput: channel });
+  return invoke<number>("open_saved_session", { id, secret, remember, jumpSecrets, cols, rows, onOutput: channel });
 }
 
+/** Jump hosts on the way to a saved session that use a password and have none saved. */
+export const jumpSecretsMissing = (id: number) => invoke<MissingSecret[]>("jump_secrets_missing", { id });
 export const libraryLoad = (query?: string) => invoke<LibraryView>("library_load", { query: query ?? null });
 export const sessionSave = (id: number | null, input: SessionInput, secret: SecretUpdate) =>
   invoke<SavedSession>("session_save", { id, input, secret });
@@ -104,8 +109,8 @@ export const onSessionExit = (cb: (exit: SessionExit) => void) =>
 
 // ---- SFTP file panel ----
 export const sftpOpen = (target: SshTarget) => invoke<SftpOpened>("sftp_open", { target });
-export const sftpOpenSaved = (id: number, secret: string | null) =>
-  invoke<SftpOpened>("sftp_open_saved", { id, secret });
+export const sftpOpenSaved = (id: number, secret: string | null, jumpSecrets: JumpSecret[] = []) =>
+  invoke<SftpOpened>("sftp_open_saved", { id, secret, jumpSecrets });
 /** Open SFTP on the connection behind a terminal tab, so the host needs no second login. */
 export const sftpOpenShared = (session: number) => invoke<SftpOpened>("sftp_open_shared", { session });
 export const sftpList = (id: number, path: string) => invoke<Entry[]>("sftp_list", { id, path });

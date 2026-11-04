@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- A jump host with a password but none saved no longer stops the connection. You are asked for its password before the tab opens, with the same "save in the keychain" choice, one prompt per such hop. The Files panel reuses it if it has to sign in again.
+
 ## [0.2.0] - 2026-11-04
 
 ### Added

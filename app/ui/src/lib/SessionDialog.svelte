@@ -139,7 +139,7 @@
     {#if jumpChosen}
       <p class="note">
         <Icon name="lock" size={14} />Signs in to {jumpChosen.name} first, with the credentials saved for it
-        {jumpChosen.auth === "password" && !jumpChosen.has_secret ? " - it has no saved password yet, so save one there" : ""}
+        {jumpChosen.auth === "password" && !jumpChosen.has_secret ? " - it has no saved password yet, so you will be asked for it when you connect" : ""}
       </p>
     {/if}
     <label>

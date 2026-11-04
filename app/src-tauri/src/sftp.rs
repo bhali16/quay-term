@@ -132,8 +132,9 @@ pub async fn sftp_open_saved(
     library: State<'_, Library>,
     id: i64,
     secret: Option<String>,
+    jump_secrets: Vec<crate::library::JumpSecret>,
 ) -> Result<SftpOpened, String> {
-    let route = library.route_for(id, secret, false)?;
+    let route = library.route_for(id, secret, false, &jump_secrets)?;
     open(app, &sftps, &prompts, route).await
 }
 

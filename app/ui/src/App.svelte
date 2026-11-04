@@ -8,6 +8,7 @@
     getAppInfo,
     importSshConfig,
     libraryLoad,
+    jumpSecretsMissing,
     onHostKeyPrompt,
     onSessionExit,
     sessionDelete,
@@ -47,8 +48,10 @@
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
   import type { SshTarget } from "./lib/bindings/SshTarget";
+  import type { JumpSecret } from "./lib/bindings/JumpSecret";
+  import type { MissingSecret } from "./lib/bindings/MissingSecret";
 
-  type Saved = { id: number; label: string; secret?: string | null; remember?: boolean };
+  type Saved = { id: number; label: string; secret?: string | null; remember?: boolean; jumps?: JumpSecret[] };
   // `layout` is the split tree; every leaf is a terminal that opens the tab's own target (a new login for SSH).
   type Tab = {
     key: number;
@@ -196,6 +199,13 @@
   let editing_session = $state<{ session: SavedSession | null; folderId: number | null } | null>(null);
   let dialogError = $state<string | null>(null);
   let passwordFor = $state<SavedSession | null>(null);
+  let jumpFor = $state<{
+    session: SavedSession;
+    secret: string | null;
+    remember: boolean;
+    jumps: JumpSecret[];
+    hop: MissingSecret;
+  } | null>(null);
 
   function readSidebarPref() {
     try {
@@ -235,12 +245,24 @@
     return () => clearTimeout(searchTimer);
   });
 
-  function connectSaved(s: SavedSession, secret: string | null = null, remember = false) {
+  // A jump host with no saved password is asked for one at a time before the tab opens.
+  async function connectSaved(
+    s: SavedSession,
+    secret: string | null = null,
+    remember = false,
+    jumps: JumpSecret[] = [],
+  ) {
     if (s.auth === "password" && !s.has_secret && secret === null) {
       passwordFor = s;
       return;
     }
-    newTab(null, { id: s.id, label: s.name, secret, remember });
+    const missing = await jumpSecretsMissing(s.id).catch(() => [] as MissingSecret[]);
+    const hop = missing.find((m) => !jumps.some((j) => j.id === m.id));
+    if (hop) {
+      jumpFor = { session: s, secret, remember, jumps, hop };
+      return;
+    }
+    newTab(null, { id: s.id, label: s.name, secret, remember, jumps });
   }
 
   async function submitSession(r: SessionResult) {
@@ -476,7 +498,7 @@
                 broadcasting={broadcast.includes(p.id)}
                 ssh={tab.ssh}
                 saved={tab.saved}
-                onconnected={tab.saved?.remember ? refresh : undefined}
+                onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
               />
             </div>
           {/each}
@@ -528,6 +550,17 @@
         const s = passwordFor!;
         passwordFor = null;
         connectSaved(s, pw, remember);
+      }}
+    />
+  {/if}
+  {#if jumpFor}
+    <PasswordPrompt
+      title={`${jumpFor.hop.user}@${jumpFor.hop.host} (jump host ${jumpFor.hop.name})`}
+      oncancel={() => (jumpFor = null)}
+      onsubmit={(pw, remember) => {
+        const j = jumpFor!;
+        jumpFor = null;
+        connectSaved(j.session, j.secret, j.remember, [...j.jumps, { id: j.hop.id, secret: pw, remember }]);
       }}
     />
   {/if}

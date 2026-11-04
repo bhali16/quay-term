@@ -22,18 +22,18 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 | Milestone | Scope |
 |---|---|
 | M6 Hardening | Fix the v0.1 gaps below; set a real CSP; frontend tests; keyboard-interactive prompts for 2FA/OTP (today every prompt gets the password) |
-| M7 Connection manager | One owner thread per SSH connection, shared by shell, SFTP and forwards, so a host needs one login. Decided: move to `russh` (see below). Shell and SFTP are done; sharing one login between them comes next |
-| M8 Jump hosts | `ProxyJump` chains per saved session and from `~/.ssh/config`; host-key prompts for every hop. Done for saved sessions; a jump host needs a saved secret (no prompt for one yet) |
+| M7 Connection manager | One owner thread per SSH connection, shared by shell, SFTP and forwards, so a host needs one login. Decided: move to `russh` (see below). Done: shell and SFTP share one login (the Files panel reuses its tab's connection; it signs in again only if the tab is disconnected). Tunnels and jump hosts use the same connection |
+| M8 Jump hosts | `ProxyJump` chains per saved session and from `~/.ssh/config`; host-key prompts for every hop. Done for saved sessions; a jump host with no saved password is asked for one before connecting |
 | M9 Tunnels | Local, remote and dynamic (SOCKS5) forwards, saved with the session, start/stop panel, bind-address and port-in-use errors. Done; importing `LocalForward`/`RemoteForward`/`DynamicForward` from `~/.ssh/config` is not |
 | M10 Split panes | Horizontal/vertical splits inside a tab, focus and resize shortcuts, pane layout restored with the session. Done |
-| M11 Multi-exec and snippets | Send input to selected tabs or panes; snippet library with variables, folders and search. Done; snippets do not yet travel with the M12 export |
+| M11 Multi-exec and snippets | Send input to selected tabs or panes; snippet library with variables, folders and search. Done; snippets travel with the M12 export |
 | M12 Encrypted vault and release. Done except tagging v0.2.0, which is left for the maintainer | Export/import of sessions and secrets as one file (Argon2id + AEAD, master password); fallback when no OS keychain exists (headless Linux); Intel macOS build; tag v0.2.0 |
 
 ### Known gaps in v0.1 (M6)
 
-- The SFTP panel opens a second SSH login; a host with MFA asks twice.
+- ~~The SFTP panel opens a second SSH login.~~ Fixed in M7: the Files panel reuses its tab's connection.
 - Frontend tests cover only shortcut handling; the keychain round-trip test is `#[ignore]`d and never runs in CI.
-- No Intel macOS build; installers are unsigned and not notarized.
+- ~~No Intel macOS build.~~ Added in M12. Installers are still unsigned and not notarized.
 - No auto-update.
 
 ### Decisions needed before M7
