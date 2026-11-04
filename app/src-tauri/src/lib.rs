@@ -17,7 +17,7 @@ use quay_vault::{FallbackStore, FileStore, KeychainStore};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use library::{ImportResult, Library, LibraryView, Route, SecretUpdate};
+use library::{ImportResult, JumpSecret, Library, LibraryView, MissingSecret, Route, SecretUpdate};
 use sftp::Sftps;
 use tunnels::Tunnels;
 
@@ -207,11 +207,12 @@ async fn open_saved_session(
     id: i64,
     secret: Option<String>,
     remember: bool,
+    jump_secrets: Vec<JumpSecret>,
     cols: u16,
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
-    let route = library.route_for(id, secret, remember)?;
+    let route = library.route_for(id, secret, remember, &jump_secrets)?;
     start_ssh(app, &sessions, &prompts, route, cols, rows, on_output).await
 }
 
@@ -282,6 +283,15 @@ async fn start_ssh(
         });
     }
     Ok(id)
+}
+
+/// Jump hosts on the way to a saved session that still need a password.
+#[tauri::command]
+fn jump_secrets_missing(
+    library: State<'_, Library>,
+    id: i64,
+) -> Result<Vec<MissingSecret>, String> {
+    library.missing_jump_secrets(id)
 }
 
 #[tauri::command]
@@ -450,6 +460,8 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Sessions::default())
         .manage(Prompts::default())
         .manage(Sftps::default())
@@ -484,6 +496,7 @@ pub fn run() {
             ssh_auth_response,
             open_saved_session,
             library_load,
+            jump_secrets_missing,
             session_save,
             session_delete,
             folder_create,

@@ -374,6 +374,35 @@ mod tests {
     }
 
     #[test]
+    fn snippets_travel_with_the_bundle_and_are_not_duplicated() {
+        let snip = |name: &str| Snippet {
+            id: 7,
+            name: name.into(),
+            folder: "ops".into(),
+            body: format!("echo {name}"),
+        };
+        let json =
+            serde_json::to_vec(&lib().bundle(vec![snip("a"), snip("b")], false).unwrap()).unwrap();
+        let (r, incoming) = lib()
+            .absorb(serde_json::from_slice(&json).unwrap())
+            .unwrap();
+        assert_eq!(incoming.len(), 2);
+        assert_eq!(r.snippets, 0, "merge, not absorb, counts what was added");
+
+        let dir = std::env::temp_dir().join(format!("quay-backup-snip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let library = Snippets::open(dir.join("snippets.json"));
+        assert_eq!(library.merge(incoming.clone()).unwrap(), 2);
+        assert_eq!(
+            library.merge(incoming).unwrap(),
+            0,
+            "a second import adds nothing"
+        );
+        let ids: Vec<u32> = library.all().iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec![1, 2], "imported snippets get fresh ids");
+    }
+
+    #[test]
     fn refuses_a_newer_format() {
         let b = Bundle {
             version: VERSION + 1,

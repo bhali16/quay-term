@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { JumpSecret } from "./bindings/JumpSecret";
   import { onMount } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
@@ -23,7 +24,7 @@
   import type { SftpTransfer } from "./bindings/SftpTransfer";
   import type { SshTarget } from "./bindings/SshTarget";
 
-  type Saved = { id: number; label: string; secret?: string | null };
+  type Saved = { id: number; label: string; secret?: string | null; jumps?: JumpSecret[] };
   let {
     ssh = null,
     saved = null,
@@ -72,7 +73,7 @@
       const tid = terminalId?.() ?? null;
       const shared = tid === null ? null : await sftpOpenShared(tid).catch(() => null);
       const opened =
-        shared ?? (saved ? await sftpOpenSaved(saved.id, saved.secret ?? null) : await sftpOpen(ssh!));
+        shared ?? (saved ? await sftpOpenSaved(saved.id, saved.secret ?? null, saved.jumps ?? []) : await sftpOpen(ssh!));
       conn = opened.id;
       status = "ready";
       await go(opened.home);

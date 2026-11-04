@@ -12,6 +12,7 @@ const fallback: Settings = {
   font_size: 14,
   cursor_blink: true,
   scrollback: 5000,
+  check_for_updates: true,
   keybindings: {},
 };
 

@@ -10,6 +10,10 @@ theme: string,
  */
 font_family: string, font_size: number, cursor_blink: boolean, scrollback: number, 
 /**
+ * Look for a newer release shortly after launch. Nothing is installed without a click.
+ */
+check_for_updates: boolean, 
+/**
  * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
  */
 keybindings: { [key in string]: string }, };

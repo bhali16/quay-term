@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { JumpSecret } from "./bindings/JumpSecret";
   import { onMount } from "svelte";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
@@ -17,7 +18,7 @@
 
   // `ssh` is kept in memory so Enter can reconnect after a drop; nothing is persisted.
   // A saved session connects by id; its stored secret never leaves Rust.
-  type Saved = { id: number; label: string; secret?: string | null; remember?: boolean };
+  type Saved = { id: number; label: string; secret?: string | null; remember?: boolean; jumps?: JumpSecret[] };
   let {
     active,
     ssh = null,
@@ -68,7 +69,7 @@
     if (ssh) term.writeln(`Connecting to ${ssh.user}@${ssh.host}:${ssh.port}...`);
     if (saved) term.writeln(`Connecting to ${saved.label}...`);
     const opening = saved
-      ? openSavedSession(saved.id, saved.secret ?? null, saved.remember ?? false, term.cols, term.rows, out)
+      ? openSavedSession(saved.id, saved.secret ?? null, saved.remember ?? false, saved.jumps ?? [], term.cols, term.rows, out)
       : ssh
         ? openSshSession(ssh, term.cols, term.rows, out)
         : openLocalSession(term.cols, term.rows, out);

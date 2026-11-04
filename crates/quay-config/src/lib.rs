@@ -33,6 +33,8 @@ pub struct Settings {
     pub font_size: u32,
     pub cursor_blink: bool,
     pub scrollback: u32,
+    /// Look for a newer release shortly after launch. Nothing is installed without a click.
+    pub check_for_updates: bool,
     /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
     pub keybindings: BTreeMap<String, String>,
 }
@@ -47,6 +49,7 @@ impl Default for Settings {
             font_size: 14,
             cursor_blink: true,
             scrollback: 5000,
+            check_for_updates: true,
             keybindings: BTreeMap::new(),
         }
     }
@@ -113,6 +116,16 @@ mod tests {
         let s = Settings::load(&p);
         assert_eq!(s.font_size, 18);
         assert_eq!(s.theme, Settings::default().theme);
+    }
+
+    #[test]
+    fn update_checks_are_on_for_settings_saved_before_they_existed() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        assert!(Settings::load(&p).check_for_updates);
+        std::fs::write(&p, r#"{"check_for_updates": false}"#).unwrap();
+        assert!(!Settings::load(&p).check_for_updates);
     }
 
     #[test]

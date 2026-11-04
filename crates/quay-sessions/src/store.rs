@@ -923,6 +923,19 @@ mod tests {
     }
 
     #[test]
+    fn imported_forwards_are_saved_with_the_host() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let hosts = parse_ssh_config(
+            "Host db\n  HostName d.example\n  User u\n  LocalForward 5433 localhost:5432\n  DynamicForward 1080\n",
+        );
+        let (_, added) = s.import_hosts(&hosts, None).unwrap();
+        let got = s.get_session(added[0].id).unwrap().unwrap().input.tunnels;
+        assert_eq!(got.len(), 2);
+        assert_eq!((got[0].bind_port, got[0].dest_port), (5433, 5432));
+        assert!(got.iter().all(|t| !t.auto_start));
+    }
+
+    #[test]
     fn tunnels_are_saved_in_order_and_validated() {
         let mut s = SessionStore::open_in_memory().unwrap();
         let mut i = input("web", "web.example.com");

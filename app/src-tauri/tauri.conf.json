@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quay Term",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "io.github.bhali16.quayterm",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -18,8 +18,15 @@
       "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIzNUM2MzQ4NzY1REEyMjcKUldRbm9sMTJTR05jczdBbWxwQ25EUXlmeG45UU80Y0ZMWGxsL3UzWW84S3NXMlNZQlhzVEdpYnYK",
+      "endpoints": ["https://github.com/bhali16/quay-term/releases/latest/download/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "macOS": {
       "signingIdentity": "-"

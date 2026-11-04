@@ -1,7 +1,10 @@
 name: Release
 
 # Pushing a tag like v0.1.0 builds installers on all three OSes and attaches them
-# to a draft GitHub Release. Review the draft, then publish it by hand.
+# to a draft GitHub Release, with a signed latest.json that installed copies read to
+# find updates. Review the draft, then publish it by hand; installed copies only see
+# the update once it is published. Needs the repository secrets
+# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 on:
   push:
     tags: ["v*"]
@@ -40,6 +43,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update bundles; the matching public key is in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: quay-term ${{ github.ref_name }}

@@ -68,3 +68,29 @@ jobs:
           echo "QUAY_TEST_SSH_CONTAINER=quay-test-sshd" >> "$GITHUB_ENV"
       - name: Integration tests
         run: cargo test -p quay-ssh --test openssh -p quay-sftp --test openssh -- --nocapture
+
+  keychain:
+    name: Keychain (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # The test writes to the real OS credential store, so it is `#[ignore]`d
+      # for local runs and run explicitly here.
+      - name: Test (macOS, Windows)
+        if: runner.os != 'Linux'
+        run: cargo test -p quay-vault -- --ignored
+      - name: Test (Linux, gnome-keyring over a private D-Bus session)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnome-keyring libdbus-1-dev pkg-config
+          dbus-run-session -- bash -c '
+            echo "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null
+            cargo test -p quay-vault -- --ignored
+          '
