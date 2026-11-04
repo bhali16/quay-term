@@ -61,13 +61,20 @@ impl Library {
                 Item { session, secret }
             })
             .collect();
-        Ok(Bundle { version: VERSION, folders: store.list_folders().map_err(err)?, sessions, snippets })
+        Ok(Bundle {
+            version: VERSION,
+            folders: store.list_folders().map_err(err)?,
+            sessions,
+            snippets,
+        })
     }
 
     /// Add what the bundle holds and is not here yet; nothing existing is changed or removed.
     fn absorb(&self, b: Bundle) -> Result<(BackupReport, Vec<Snippet>), String> {
         if b.version > VERSION {
-            return Err("This vault file was made by a newer quay-term. Update the app to read it.".into());
+            return Err(
+                "This vault file was made by a newer quay-term. Update the app to read it.".into(),
+            );
         }
         let mut store = self.store.lock().unwrap();
         let mut r = BackupReport::default();
@@ -83,7 +90,10 @@ impl Library {
                     None => Some(None),
                     Some(p) => folder_map.get(&p).map(|n| Some(*n)),
                 };
-                let Some(parent) = parent else { rest.push(f); continue };
+                let Some(parent) = parent else {
+                    rest.push(f);
+                    continue;
+                };
                 let existing = store
                     .list_folders()
                     .map_err(err)?
@@ -109,7 +119,10 @@ impl Library {
             input.folder_id = input.folder_id.and_then(|f| folder_map.get(&f).copied());
             input.jump_id = None;
             let same = store.list_sessions().map_err(err)?.into_iter().find(|e| {
-                e.input.name == input.name && e.input.host == input.host && e.input.port == input.port && e.input.user == input.user
+                e.input.name == input.name
+                    && e.input.host == input.host
+                    && e.input.port == input.port
+                    && e.input.user == input.user
             });
             if let Some(e) = same {
                 session_map.insert(item.session.id, e.id);
@@ -123,7 +136,11 @@ impl Library {
         }
         for (item, saved) in created {
             let mut input = saved.input.clone();
-            input.jump_id = item.session.input.jump_id.and_then(|j| session_map.get(&j).copied());
+            input.jump_id = item
+                .session
+                .input
+                .jump_id
+                .and_then(|j| session_map.get(&j).copied());
             if input.jump_id.is_some() {
                 store.update_session(saved.id, &input).map_err(err)?;
             }
@@ -165,7 +182,10 @@ pub(crate) fn vault_status(store: State<'_, FallbackStore>) -> VaultStatus {
 }
 
 #[tauri::command]
-pub(crate) async fn vault_unlock(store: State<'_, FallbackStore>, password: String) -> Result<(), String> {
+pub(crate) async fn vault_unlock(
+    store: State<'_, FallbackStore>,
+    password: String,
+) -> Result<(), String> {
     if store.file_is_new() && password.chars().count() < 8 {
         return Err("Use a master password of at least 8 characters.".into());
     }
@@ -174,7 +194,9 @@ pub(crate) async fn vault_unlock(store: State<'_, FallbackStore>, password: Stri
         .await
         .map_err(err)?
         .map_err(|e| match e {
-            quay_vault::VaultError::Other(m) if m.contains("wrong password") => "Wrong master password.".to_string(),
+            quay_vault::VaultError::Other(m) if m.contains("wrong password") => {
+                "Wrong master password.".to_string()
+            }
             e => e.to_string(),
         })
 }
@@ -202,7 +224,11 @@ pub(crate) async fn vault_export(
     let bundle = library.bundle(snippets.all(), with_secrets)?;
     let report = BackupReport {
         sessions: bundle.sessions.len() as u32,
-        secrets: bundle.sessions.iter().filter(|i| i.secret.is_some()).count() as u32,
+        secrets: bundle
+            .sessions
+            .iter()
+            .filter(|i| i.secret.is_some())
+            .count() as u32,
         snippets: bundle.snippets.len() as u32,
         ..Default::default()
     };
@@ -211,7 +237,8 @@ pub(crate) async fn vault_export(
         .await
         .map_err(err)?
         .map_err(err)?;
-    std::fs::write(&path, sealed).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+    std::fs::write(&path, sealed)
+        .map_err(|e| format!("Could not write {}: {e}", path.display()))?;
     Ok(report)
 }
 
@@ -223,12 +250,14 @@ pub(crate) async fn vault_import(
     password: String,
 ) -> Result<BackupReport, String> {
     let path = file_path(path)?;
-    let data = std::fs::read(&path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let data =
+        std::fs::read(&path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
     let plain = tauri::async_runtime::spawn_blocking(move || archive::open(&password, &data))
         .await
         .map_err(err)?
         .map_err(err)?;
-    let bundle: Bundle = serde_json::from_slice(&plain).map_err(|_| "The vault file is damaged.".to_string())?;
+    let bundle: Bundle =
+        serde_json::from_slice(&plain).map_err(|_| "The vault file is damaged.".to_string())?;
     let (mut report, incoming) = library.absorb(bundle)?;
     report.snippets = snippets.merge(incoming)? as u32;
     Ok(report)
@@ -266,32 +295,54 @@ mod tests {
             let mut s = a.store.lock().unwrap();
             let outer = s.create_folder("prod", None).unwrap();
             let inner = s.create_folder("web", Some(outer.id)).unwrap();
-            let bastion = s.create_session(&input("bastion", "b.example", Some(outer.id), None)).unwrap();
-            let app = s.create_session(&input("app", "a.example", Some(inner.id), Some(bastion.id))).unwrap();
+            let bastion = s
+                .create_session(&input("bastion", "b.example", Some(outer.id), None))
+                .unwrap();
+            let app = s
+                .create_session(&input("app", "a.example", Some(inner.id), Some(bastion.id)))
+                .unwrap();
             (bastion.id, app.id)
         };
         for id in [bastion, app] {
-            a.vault.set(SecretKey::new(id, SecretKind::Password), &format!("pw{id}")).unwrap();
+            a.vault
+                .set(SecretKey::new(id, SecretKind::Password), &format!("pw{id}"))
+                .unwrap();
             a.store.lock().unwrap().set_has_secret(id, true).unwrap();
         }
         let json = serde_json::to_vec(&a.bundle(vec![], true).unwrap()).unwrap();
 
         // A fresh machine with one unrelated session already saved.
         let b = lib();
-        b.store.lock().unwrap().create_session(&input("other", "o.example", None, None)).unwrap();
+        b.store
+            .lock()
+            .unwrap()
+            .create_session(&input("other", "o.example", None, None))
+            .unwrap();
         let (r, _) = b.absorb(serde_json::from_slice(&json).unwrap()).unwrap();
         assert_eq!((r.sessions, r.secrets, r.skipped), (2, 2, 0));
         let store = b.store.lock().unwrap();
         let sessions = store.list_sessions().unwrap();
         let new_app = sessions.iter().find(|s| s.input.name == "app").unwrap();
         let new_bastion = sessions.iter().find(|s| s.input.name == "bastion").unwrap();
-        assert_eq!(new_app.input.jump_id, Some(new_bastion.id), "the jump follows the new id");
-        let folder = store.list_folders().unwrap().into_iter().find(|f| Some(f.id) == new_app.input.folder_id).unwrap();
+        assert_eq!(
+            new_app.input.jump_id,
+            Some(new_bastion.id),
+            "the jump follows the new id"
+        );
+        let folder = store
+            .list_folders()
+            .unwrap()
+            .into_iter()
+            .find(|f| Some(f.id) == new_app.input.folder_id)
+            .unwrap();
         assert_eq!(folder.name, "web");
         assert!(folder.parent_id.is_some(), "nesting is kept");
         assert!(new_app.has_secret);
         assert_eq!(
-            b.vault.get(SecretKey::new(new_app.id, SecretKind::Password)).unwrap().as_deref(),
+            b.vault
+                .get(SecretKey::new(new_app.id, SecretKind::Password))
+                .unwrap()
+                .as_deref(),
             Some(format!("pw{app}").as_str())
         );
         drop(store);
@@ -305,8 +356,16 @@ mod tests {
     #[test]
     fn secrets_stay_out_unless_asked_for() {
         let a = lib();
-        let id = a.store.lock().unwrap().create_session(&input("x", "x.example", None, None)).unwrap().id;
-        a.vault.set(SecretKey::new(id, SecretKind::Password), "hunter2").unwrap();
+        let id = a
+            .store
+            .lock()
+            .unwrap()
+            .create_session(&input("x", "x.example", None, None))
+            .unwrap()
+            .id;
+        a.vault
+            .set(SecretKey::new(id, SecretKind::Password), "hunter2")
+            .unwrap();
         a.store.lock().unwrap().set_has_secret(id, true).unwrap();
         let json = serde_json::to_string(&a.bundle(vec![], false).unwrap()).unwrap();
         assert!(!json.contains("hunter2"));
@@ -316,7 +375,12 @@ mod tests {
 
     #[test]
     fn refuses_a_newer_format() {
-        let b = Bundle { version: VERSION + 1, folders: vec![], sessions: vec![], snippets: vec![] };
+        let b = Bundle {
+            version: VERSION + 1,
+            folders: vec![],
+            sessions: vec![],
+            snippets: vec![],
+        };
         assert!(lib().absorb(b).is_err());
     }
 }

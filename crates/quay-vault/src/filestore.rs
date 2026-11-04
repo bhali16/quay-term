@@ -34,7 +34,11 @@ impl FileStore {
     }
 
     pub fn with_cost(path: PathBuf, cost: Cost) -> Self {
-        Self { path, cost, state: Mutex::new(None) }
+        Self {
+            path,
+            cost,
+            state: Mutex::new(None),
+        }
     }
 
     /// A vault file exists (so unlocking asks for the existing password rather than choosing one).
@@ -50,12 +54,17 @@ impl FileStore {
     pub fn unlock(&self, password: &str) -> Result<()> {
         let secrets = if self.path.exists() {
             let data = std::fs::read(&self.path).map_err(io)?;
-            let plain = archive::open(password, &data).map_err(|e| VaultError::Other(e.to_string()))?;
-            serde_json::from_slice(&plain).map_err(|_| VaultError::Other("the secrets file is damaged".into()))?
+            let plain =
+                archive::open(password, &data).map_err(|e| VaultError::Other(e.to_string()))?;
+            serde_json::from_slice(&plain)
+                .map_err(|_| VaultError::Other("the secrets file is damaged".into()))?
         } else {
             BTreeMap::new()
         };
-        let unlocked = Unlocked { password: Zeroizing::new(password.to_string()), secrets };
+        let unlocked = Unlocked {
+            password: Zeroizing::new(password.to_string()),
+            secrets,
+        };
         if !self.path.exists() {
             self.persist(&unlocked)?;
         }
@@ -64,8 +73,11 @@ impl FileStore {
     }
 
     fn persist(&self, u: &Unlocked) -> Result<()> {
-        let json = Zeroizing::new(serde_json::to_vec(&u.secrets).map_err(|e| VaultError::Other(e.to_string()))?);
-        let sealed = archive::seal_with(&u.password, &json, self.cost).map_err(|e| VaultError::Other(e.to_string()))?;
+        let json = Zeroizing::new(
+            serde_json::to_vec(&u.secrets).map_err(|e| VaultError::Other(e.to_string()))?,
+        );
+        let sealed = archive::seal_with(&u.password, &json, self.cost)
+            .map_err(|e| VaultError::Other(e.to_string()))?;
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).map_err(io)?;
         }
@@ -129,12 +141,20 @@ impl FallbackStore {
     pub fn new(keychain: KeychainStore, file: FileStore) -> Self {
         let probe = SecretKey::new(0, crate::SecretKind::Password);
         let use_file = matches!(keychain.get(probe), Err(VaultError::Unavailable(_)));
-        Self { keychain: Arc::new(keychain), file: Arc::new(file), use_file }
+        Self {
+            keychain: Arc::new(keychain),
+            file: Arc::new(file),
+            use_file,
+        }
     }
 
     #[cfg(test)]
     fn forced(keychain: KeychainStore, file: FileStore, use_file: bool) -> Self {
-        Self { keychain: Arc::new(keychain), file: Arc::new(file), use_file }
+        Self {
+            keychain: Arc::new(keychain),
+            file: Arc::new(file),
+            use_file,
+        }
     }
 
     pub fn mode(&self) -> Mode {
@@ -180,7 +200,11 @@ mod tests {
     use super::*;
     use crate::SecretKind;
 
-    const FAST: Cost = Cost { memory_kib: 64, passes: 1, lanes: 1 };
+    const FAST: Cost = Cost {
+        memory_kib: 64,
+        passes: 1,
+        lanes: 1,
+    };
     fn temp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("quay-vault-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -207,7 +231,10 @@ mod tests {
         again.unlock("master pw").unwrap();
         assert_eq!(again.get(key(1)).unwrap().as_deref(), Some("hunter2"));
         assert_eq!(again.get(key(2)).unwrap(), None);
-        assert!(!std::fs::read(path).unwrap().windows(7).any(|w| w == b"hunter2"));
+        assert!(!std::fs::read(path)
+            .unwrap()
+            .windows(7)
+            .any(|w| w == b"hunter2"));
     }
 
     #[test]

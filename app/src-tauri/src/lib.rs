@@ -457,7 +457,10 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             // Secrets go to the OS keychain; with none (headless Linux) they go to a master-password file.
-            let secrets = FallbackStore::new(KeychainStore::new(), FileStore::new(dir.join("secrets.vault")));
+            let secrets = FallbackStore::new(
+                KeychainStore::new(),
+                FileStore::new(dir.join("secrets.vault")),
+            );
             app.manage(secrets.clone());
             let library = Library::open(&dir.join("sessions.db"), Box::new(secrets))?;
             app.manage(library);

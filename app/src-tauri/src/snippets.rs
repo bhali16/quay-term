@@ -40,11 +40,17 @@ impl Snippets {
             .and_then(|b| serde_json::from_slice::<File>(&b).ok())
             .map(|f| f.snippets)
             .unwrap_or_default();
-        Self { path, items: Mutex::new(items) }
+        Self {
+            path,
+            items: Mutex::new(items),
+        }
     }
 
     fn persist(&self, items: &[Snippet]) -> Result<(), String> {
-        let json = serde_json::to_vec_pretty(&File { snippets: items.to_vec() }).map_err(err)?;
+        let json = serde_json::to_vec_pretty(&File {
+            snippets: items.to_vec(),
+        })
+        .map_err(err)?;
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).map_err(err)?;
         }
@@ -64,7 +70,10 @@ impl Snippets {
         let mut next = items.clone();
         let mut added = 0;
         for s in incoming {
-            if next.iter().any(|x| x.name == s.name && x.folder == s.folder && x.body == s.body) {
+            if next
+                .iter()
+                .any(|x| x.name == s.name && x.folder == s.folder && x.body == s.body)
+            {
                 continue;
             }
             let id = next.iter().map(|x| x.id).max().unwrap_or(0) + 1;
@@ -78,7 +87,13 @@ impl Snippets {
         Ok(added)
     }
 
-    fn save(&self, id: Option<u32>, name: &str, folder: &str, body: &str) -> Result<Snippet, String> {
+    fn save(
+        &self,
+        id: Option<u32>,
+        name: &str,
+        folder: &str,
+        body: &str,
+    ) -> Result<Snippet, String> {
         let name = name.trim();
         if name.is_empty() {
             return Err("A snippet needs a name.".into());
@@ -96,7 +111,10 @@ impl Snippets {
         let mut next = items.clone();
         let snippet = match id {
             Some(id) => {
-                let s = next.iter_mut().find(|s| s.id == id).ok_or("That snippet no longer exists.")?;
+                let s = next
+                    .iter_mut()
+                    .find(|s| s.id == id)
+                    .ok_or("That snippet no longer exists.")?;
                 s.name = name.into();
                 s.folder = folder;
                 s.body = body.into();
@@ -153,7 +171,11 @@ mod tests {
     use super::*;
 
     fn temp() -> PathBuf {
-        let d = std::env::temp_dir().join(format!("quay-snippets-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let d = std::env::temp_dir().join(format!(
+            "quay-snippets-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::remove_dir_all(&d);
         d.join("snippets.json")
     }
@@ -162,11 +184,27 @@ mod tests {
     fn saves_edits_deletes_and_reloads() {
         let path = temp();
         let s = Snippets::open(path.clone());
-        let a = s.save(None, " Restart ", " ops// web /", "sudo systemctl restart {{unit}}").unwrap();
-        assert_eq!((a.id, a.name.as_str(), a.folder.as_str()), (1, "Restart", "ops/web"));
+        let a = s
+            .save(
+                None,
+                " Restart ",
+                " ops// web /",
+                "sudo systemctl restart {{unit}}",
+            )
+            .unwrap();
+        assert_eq!(
+            (a.id, a.name.as_str(), a.folder.as_str()),
+            (1, "Restart", "ops/web")
+        );
         let b = s.save(None, "Disk", "", "df -h").unwrap();
         assert_eq!(b.id, 2);
-        s.save(Some(1), "Restart unit", "ops", "sudo systemctl restart {{unit}}").unwrap();
+        s.save(
+            Some(1),
+            "Restart unit",
+            "ops",
+            "sudo systemctl restart {{unit}}",
+        )
+        .unwrap();
         s.delete(2).unwrap();
         let again = Snippets::open(path);
         let items = again.items.lock().unwrap();

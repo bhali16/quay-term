@@ -23,12 +23,20 @@ pub struct Cost {
 
 impl Default for Cost {
     fn default() -> Self {
-        Self { memory_kib: 64 * 1024, passes: 3, lanes: 1 }
+        Self {
+            memory_kib: 64 * 1024,
+            passes: 3,
+            lanes: 1,
+        }
     }
 }
 
 /// The most a file may ask for, so a crafted file cannot make us allocate gigabytes.
-const MAX: Cost = Cost { memory_kib: 512 * 1024, passes: 10, lanes: 16 };
+const MAX: Cost = Cost {
+    memory_kib: 512 * 1024,
+    passes: 10,
+    lanes: 16,
+};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ArchiveError {
@@ -73,7 +81,13 @@ pub fn seal_with(password: &str, plaintext: &[u8], cost: Cost) -> Result<Vec<u8>
     let key = derive(password, &salt, cost)?;
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key.as_ref()));
     let body = cipher
-        .encrypt(Nonce::from_slice(&nonce), Payload { msg: plaintext, aad: &out })
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext,
+                aad: &out,
+            },
+        )
         .map_err(|e| ArchiveError::Crypto(e.to_string()))?;
     out.extend_from_slice(&body);
     Ok(out)
@@ -84,7 +98,11 @@ pub fn open(password: &str, data: &[u8]) -> Result<Zeroizing<Vec<u8>>, ArchiveEr
         return Err(ArchiveError::NotAVault);
     }
     let u32_at = |i: usize| u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
-    let cost = Cost { memory_kib: u32_at(8), passes: u32_at(12), lanes: u32_at(16) };
+    let cost = Cost {
+        memory_kib: u32_at(8),
+        passes: u32_at(12),
+        lanes: u32_at(16),
+    };
     if cost.memory_kib > MAX.memory_kib || cost.passes > MAX.passes || cost.lanes > MAX.lanes {
         return Err(ArchiveError::TooCostly);
     }
@@ -92,7 +110,13 @@ pub fn open(password: &str, data: &[u8]) -> Result<Zeroizing<Vec<u8>>, ArchiveEr
     let key = derive(password, salt, cost).map_err(|_| ArchiveError::NotAVault)?;
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key.as_ref()));
     cipher
-        .decrypt(Nonce::from_slice(nonce), Payload { msg: &data[HEADER..], aad: &data[..HEADER] })
+        .decrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: &data[HEADER..],
+                aad: &data[..HEADER],
+            },
+        )
         .map(Zeroizing::new)
         .map_err(|_| ArchiveError::WrongPasswordOrDamaged)
 }
@@ -101,19 +125,29 @@ pub fn open(password: &str, data: &[u8]) -> Result<Zeroizing<Vec<u8>>, ArchiveEr
 mod tests {
     use super::*;
 
-    const FAST: Cost = Cost { memory_kib: 64, passes: 1, lanes: 1 };
+    const FAST: Cost = Cost {
+        memory_kib: 64,
+        passes: 1,
+        lanes: 1,
+    };
 
     #[test]
     fn round_trips() {
         let blob = seal_with("correct horse", b"secret data", FAST).unwrap();
         assert!(!blob.windows(11).any(|w| w == b"secret data"));
-        assert_eq!(open("correct horse", &blob).unwrap().as_slice(), b"secret data");
+        assert_eq!(
+            open("correct horse", &blob).unwrap().as_slice(),
+            b"secret data"
+        );
     }
 
     #[test]
     fn wrong_password_and_tampering_are_refused() {
         let blob = seal_with("pw", b"data", FAST).unwrap();
-        assert_eq!(open("other", &blob).unwrap_err(), ArchiveError::WrongPasswordOrDamaged);
+        assert_eq!(
+            open("other", &blob).unwrap_err(),
+            ArchiveError::WrongPasswordOrDamaged
+        );
         for i in [HEADER + 1, 9, 30, blob.len() - 1] {
             let mut bad = blob.clone();
             bad[i] ^= 1;
