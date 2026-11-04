@@ -27,7 +27,7 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 | M9 Tunnels | Local, remote and dynamic (SOCKS5) forwards, saved with the session, start/stop panel, bind-address and port-in-use errors. Done, including importing `LocalForward`/`RemoteForward`/`DynamicForward` from `~/.ssh/config` (saved without Auto start) |
 | M10 Split panes | Horizontal/vertical splits inside a tab, focus and resize shortcuts, pane layout restored with the session. Done |
 | M11 Multi-exec and snippets | Send input to selected tabs or panes; snippet library with variables, folders and search. Done; snippets travel with the M12 export |
-| M12 Encrypted vault and release. Done except tagging v0.2.0, which is left for the maintainer | Export/import of sessions and secrets as one file (Argon2id + AEAD, master password); fallback when no OS keychain exists (headless Linux); Intel macOS build; tag v0.2.0 |
+| M12 Encrypted vault and release. Done; v0.2.0 and v0.2.1 are tagged | Export/import of sessions and secrets as one file (Argon2id + AEAD, master password); fallback when no OS keychain exists (headless Linux); Intel macOS build; tag v0.2.0. Signed in-app updates arrived in v0.2.1 |
 
 ### Known gaps in v0.1 (M6)
 
