@@ -61,11 +61,11 @@ impl From<SshTarget> for Route {
 }
 
 pub struct Library {
-    store: Mutex<SessionStore>,
-    vault: Box<dyn SecretStore>,
+    pub(crate) store: Mutex<SessionStore>,
+    pub(crate) vault: Box<dyn SecretStore>,
 }
 
-fn secret_kind(auth: AuthKind) -> Option<SecretKind> {
+pub(crate) fn secret_kind(auth: AuthKind) -> Option<SecretKind> {
     match auth {
         AuthKind::Password => Some(SecretKind::Password),
         AuthKind::Key => Some(SecretKind::Passphrase),
@@ -73,7 +73,7 @@ fn secret_kind(auth: AuthKind) -> Option<SecretKind> {
     }
 }
 
-fn err(e: impl std::fmt::Display) -> String {
+pub(crate) fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
@@ -83,6 +83,11 @@ impl Library {
             store: Mutex::new(SessionStore::open(db).map_err(err)?),
             vault,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_for_test() -> Self {
+        Self::in_memory(Box::new(quay_vault::MemoryStore::default()))
     }
 
     #[cfg(test)]

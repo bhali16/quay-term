@@ -4,6 +4,8 @@
 //! keychain and are addressed by saved-session id, so no secret ever appears
 //! in the session database or config files.
 
+pub mod archive;
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 

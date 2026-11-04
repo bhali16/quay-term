@@ -1,3 +1,4 @@
+mod backup;
 mod library;
 mod sftp;
 mod snippets;
@@ -494,6 +495,8 @@ pub fn run() {
             tunnels::tunnel_start,
             tunnels::tunnel_stop,
             tunnels::tunnel_list,
+            backup::vault_export,
+            backup::vault_import,
             snippets::snippets_load,
             snippets::snippet_save,
             snippets::snippet_delete,

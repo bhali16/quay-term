@@ -545,7 +545,10 @@
     />
   {/if}
   {#if showSettings}
-    <SettingsDialog onclose={() => (showSettings = false)} />
+    <SettingsDialog
+      onclose={() => (showSettings = false)}
+      onimported={() => (refresh(), snippetsLoad().then((x) => (snippets = x)))}
+    />
   {/if}
   {#if trustPrompt}
     <TrustDialog prompt={trustPrompt} onanswer={answerTrust} />

@@ -16,6 +16,7 @@ import type { SavedSession } from "./bindings/SavedSession";
 import type { SecretUpdate } from "./bindings/SecretUpdate";
 import type { SessionInput } from "./bindings/SessionInput";
 import type { Entry } from "./bindings/Entry";
+import type { BackupReport } from "./bindings/BackupReport";
 import type { Snippet } from "./bindings/Snippet";
 import type { SftpOpened } from "./bindings/SftpOpened";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
@@ -134,3 +135,7 @@ export const snippetsLoad = () => invoke<Snippet[]>("snippets_load");
 export const snippetSave = (id: number | null, name: string, folder: string, body: string) =>
   invoke<Snippet>("snippet_save", { id, name, folder, body });
 export const snippetDelete = (id: number) => invoke<void>("snippet_delete", { id });
+
+export const vaultExport = (path: string, password: string, withSecrets: boolean) =>
+  invoke<BackupReport>("vault_export", { path, password, withSecrets });
+export const vaultImport = (path: string, password: string) => invoke<BackupReport>("vault_import", { path, password });

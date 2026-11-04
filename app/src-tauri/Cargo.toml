@@ -29,6 +29,7 @@ quay-config.workspace = true
 tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 log = "0.4"
+zeroize = "1"
 
 [lib]
 name = "quay_app"

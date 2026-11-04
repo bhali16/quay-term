@@ -4,20 +4,23 @@
   import { settings } from "./settings.svelte";
   import { themes } from "./themes";
   import { actionLabels, defaultBindings, describe, type Action } from "./keys";
-  import { getDiagnostics } from "./ipc";
+  import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+  import { getDiagnostics, vaultExport, vaultImport } from "./ipc";
+  import type { BackupReport } from "./bindings/BackupReport";
   import type { Diagnostics } from "./bindings/Diagnostics";
 
-  let { onclose }: { onclose: () => void } = $props();
+  let { onclose, onimported }: { onclose: () => void; onimported?: () => void } = $props();
 
   let error = $state<string | null>(null);
   let recording = $state<Action | null>(null);
   let diag = $state<Diagnostics | null>(null);
   let copied = $state(false);
-  type Tab = "appearance" | "terminal" | "shortcuts" | "about";
+  type Tab = "appearance" | "terminal" | "shortcuts" | "backup" | "about";
   const tabs: { id: Tab; label: string; icon: Name }[] = [
     { id: "appearance", icon: "palette", label: "Appearance" },
     { id: "terminal", icon: "terminal", label: "Terminal" },
     { id: "shortcuts", icon: "keyboard", label: "Shortcuts" },
+    { id: "backup", icon: "lock", label: "Backup" },
     { id: "about", icon: "info", label: "About" },
   ];
   let tab = $state<Tab>("appearance");
@@ -56,6 +59,46 @@
     window.addEventListener("keydown", onkey, true);
     return () => window.removeEventListener("keydown", onkey, true);
   });
+
+  // ---- encrypted backup ----
+  let pw = $state("");
+  let pw2 = $state("");
+  let withSecrets = $state(true);
+  let busy = $state(false);
+  let result = $state<string | null>(null);
+
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  async function run(job: () => Promise<string | null>) {
+    error = result = null;
+    busy = true;
+    try {
+      result = await job();
+    } catch (e) {
+      error = `${e}`;
+    } finally {
+      busy = false;
+    }
+  }
+  const doExport = () =>
+    run(async () => {
+      if (pw !== pw2) throw "The two passwords differ.";
+      const file = await saveDialog({ title: "Save vault file", defaultPath: "quay-term.vault" });
+      if (!file) return null;
+      const r = await vaultExport(file, pw, withSecrets);
+      return `Saved ${plural(r.sessions, "session")}${withSecrets ? `, ${plural(r.secrets, "secret")}` : ""} and ${plural(r.snippets, "snippet")}.`;
+    });
+  const doImport = () =>
+    run(async () => {
+      const file = await openDialog({ multiple: false, directory: false, title: "Open vault file" });
+      if (typeof file !== "string") return null;
+      const r: BackupReport = await vaultImport(file, pw);
+      onimported?.();
+      const bits = [`${plural(r.sessions, "session")} added`, `${plural(r.snippets, "snippet")} added`];
+      if (r.secrets) bits.push(`${plural(r.secrets, "secret")} stored`);
+      if (r.skipped) bits.push(`${r.skipped} already here`);
+      if (r.secrets_failed) bits.push(`${r.secrets_failed} secret(s) could not be stored in the keychain`);
+      return bits.join(", ") + ".";
+    });
 
   async function copyDiag() {
     if (!diag) return;
@@ -125,6 +168,25 @@
               <button class="reset" title="Reset to default" disabled={!settings.value.keybindings[a]} onclick={() => setBinding(a, null)}>↺</button>
             {/each}
           </div>
+        {:else if tab === "backup"}
+          <h3>Move to another machine</h3>
+          <p class="blurb">Saves your sessions, folders, jump hosts, tunnels and snippets in one file, locked with a master password (Argon2id and ChaCha20-Poly1305). Importing adds what is missing and never changes what you have.</p>
+          <label>
+            Master password
+            <input type="password" autocomplete="new-password" bind:value={pw} />
+          </label>
+          <label>
+            Repeat it (to export)
+            <input type="password" autocomplete="new-password" bind:value={pw2} />
+          </label>
+          <label class="check"><input type="checkbox" bind:checked={withSecrets} /> Include saved passwords and key passphrases</label>
+          <div class="brow">
+            <button class="copy" disabled={busy || pw.length < 8} onclick={doExport}>Export…</button>
+            <button class="copy" disabled={busy || !pw} onclick={doImport}>Import…</button>
+          </div>
+          {#if pw && pw.length < 8}<p class="blurb">A master password needs at least 8 characters to export.</p>{/if}
+          {#if busy}<p class="blurb">Working… this takes a moment on purpose.</p>{/if}
+          {#if result}<p class="ok" role="status">{result}</p>{/if}
         {:else if diag}
           <h3>quay-term</h3>
           <div class="about">
@@ -255,6 +317,24 @@
   .reset:disabled {
     opacity: 0.3;
     cursor: default;
+  }
+  .blurb {
+    margin: 0;
+    font-size: 12.5px;
+    opacity: 0.75;
+  }
+  .brow {
+    display: flex;
+    gap: 8px;
+  }
+  .copy:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .ok {
+    margin: 0;
+    color: var(--green);
+    font-size: 13px;
   }
   .about {
     display: flex;

@@ -54,6 +54,30 @@ impl Snippets {
         std::fs::rename(&tmp, &self.path).map_err(err)
     }
 
+    pub(crate) fn all(&self) -> Vec<Snippet> {
+        self.items.lock().unwrap().clone()
+    }
+
+    /// Add the snippets that are not already here (same name, folder and text). Returns how many were added.
+    pub(crate) fn merge(&self, incoming: Vec<Snippet>) -> Result<usize, String> {
+        let mut items = self.items.lock().unwrap();
+        let mut next = items.clone();
+        let mut added = 0;
+        for s in incoming {
+            if next.iter().any(|x| x.name == s.name && x.folder == s.folder && x.body == s.body) {
+                continue;
+            }
+            let id = next.iter().map(|x| x.id).max().unwrap_or(0) + 1;
+            next.push(Snippet { id, ..s });
+            added += 1;
+        }
+        if added > 0 {
+            self.persist(&next)?;
+            *items = next;
+        }
+        Ok(added)
+    }
+
     fn save(&self, id: Option<u32>, name: &str, folder: &str, body: &str) -> Result<Snippet, String> {
         let name = name.trim();
         if name.is_empty() {
