@@ -17,6 +17,7 @@
     sshAuthResponse,
     onAuthPrompt,
     snippetDelete,
+    vaultStatus,
     snippetSave,
     snippetsLoad,
   } from "./lib/ipc";
@@ -36,6 +37,8 @@
   import Icon from "./lib/Icon.svelte";
   import SettingsDialog from "./lib/SettingsDialog.svelte";
   import SnippetDialog from "./lib/SnippetDialog.svelte";
+  import UnlockDialog from "./lib/UnlockDialog.svelte";
+  import type { VaultStatus } from "./lib/bindings/VaultStatus";
   import type { Target } from "./lib/SnippetDialog.svelte";
   import type { Snippet } from "./lib/bindings/Snippet";
   import { settings } from "./lib/settings.svelte";
@@ -74,6 +77,10 @@
   // Panes whose typing is mirrored to each other. Pane ids are unique across tabs, so a tab needs no part in the key.
   let broadcast = $state<number[]>([]);
   let snippets = $state<Snippet[]>([]);
+  // Without a system keychain, secrets sit in a master-password file that must be unlocked first.
+  let vault = $state<VaultStatus | null>(null);
+  let showUnlock = $state(false);
+  const loadVault = () => vaultStatus().then((v) => (vault = v)).catch(say);
   let showSnippets = $state(false);
   const paneById = (id: number) => tabs.map((t) => t.panes[id]).find(Boolean);
   function toggleBroadcast(ids: number[]) {
@@ -352,6 +359,9 @@
     newTab();
     refresh();
     snippetsLoad().then((s) => (snippets = s)).catch(say);
+    loadVault().then(() => {
+      if (vault?.mode === "locked" && !vault.is_new) showUnlock = true;
+    });
     const unlisten = [
       onSessionExit(({ id, reason }) => {
         for (const t of tabs) for (const p of Object.values(t.panes)) if (p?.sessionId() === id) p.notifyExited(reason);
@@ -544,9 +554,14 @@
       onclose={() => (showSnippets = false)}
     />
   {/if}
+  {#if showUnlock && vault}
+    <UnlockDialog isNew={vault.is_new} ondone={() => ((showUnlock = false), loadVault(), refresh())} oncancel={() => (showUnlock = false)} />
+  {/if}
   {#if showSettings}
     <SettingsDialog
       onclose={() => (showSettings = false)}
+      {vault}
+      onunlock={() => ((showSettings = false), (showUnlock = true))}
       onimported={() => (refresh(), snippetsLoad().then((x) => (snippets = x)))}
     />
   {/if}

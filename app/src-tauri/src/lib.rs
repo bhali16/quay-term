@@ -13,7 +13,7 @@ use quay_core::{AppInfo, HostKeyPrompt, Session, SessionExit, SshTarget, TermSiz
 use quay_pty::{PtySession, SpawnOptions};
 use quay_sessions::{Folder, SavedSession, SessionInput};
 use quay_ssh::{ConnectOptions, Connection, SshSession};
-use quay_vault::KeychainStore;
+use quay_vault::{FallbackStore, FileStore, KeychainStore};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -456,7 +456,10 @@ pub fn run() {
         .manage(Tunnels::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
-            let library = Library::open(&dir.join("sessions.db"), Box::new(KeychainStore::new()))?;
+            // Secrets go to the OS keychain; with none (headless Linux) they go to a master-password file.
+            let secrets = FallbackStore::new(KeychainStore::new(), FileStore::new(dir.join("secrets.vault")));
+            app.manage(secrets.clone());
+            let library = Library::open(&dir.join("sessions.db"), Box::new(secrets))?;
             app.manage(library);
             app.manage(snippets::Snippets::open(dir.join("snippets.json")));
             app.manage(SettingsPath(dir.join("settings.json")));
@@ -495,6 +498,8 @@ pub fn run() {
             tunnels::tunnel_start,
             tunnels::tunnel_stop,
             tunnels::tunnel_list,
+            backup::vault_status,
+            backup::vault_unlock,
             backup::vault_export,
             backup::vault_import,
             snippets::snippets_load,

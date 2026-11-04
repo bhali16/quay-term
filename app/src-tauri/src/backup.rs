@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use quay_sessions::{Folder, SavedSession};
 use quay_vault::archive;
-use quay_vault::{SecretKey, SecretKind};
+use quay_vault::{FallbackStore, Mode, SecretKey, SecretKind};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use ts_rs::TS;
@@ -140,6 +140,43 @@ impl Library {
         }
         Ok((r, b.snippets))
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "../../ui/src/lib/bindings/")]
+pub struct VaultStatus {
+    /// "keychain", "locked" (a master-password file that needs unlocking) or "unlocked".
+    pub mode: String,
+    /// Unlocking would create the file, so ask for a new password.
+    pub is_new: bool,
+}
+
+#[tauri::command]
+pub(crate) fn vault_status(store: State<'_, FallbackStore>) -> VaultStatus {
+    VaultStatus {
+        mode: match store.mode() {
+            Mode::Keychain => "keychain",
+            Mode::FileLocked => "locked",
+            Mode::FileUnlocked => "unlocked",
+        }
+        .into(),
+        is_new: store.file_is_new(),
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn vault_unlock(store: State<'_, FallbackStore>, password: String) -> Result<(), String> {
+    if store.file_is_new() && password.chars().count() < 8 {
+        return Err("Use a master password of at least 8 characters.".into());
+    }
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || store.unlock(&password))
+        .await
+        .map_err(err)?
+        .map_err(|e| match e {
+            quay_vault::VaultError::Other(m) if m.contains("wrong password") => "Wrong master password.".to_string(),
+            e => e.to_string(),
+        })
 }
 
 fn file_path(p: String) -> Result<PathBuf, String> {

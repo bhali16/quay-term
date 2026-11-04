@@ -5,7 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-04
+
 ### Added
+- Encrypted export and import (Settings > Backup). Sessions, folders, jump hosts, tunnels and snippets, and optionally saved passwords and key passphrases, go into one file sealed with a master password (Argon2id key derivation, ChaCha20-Poly1305 encryption). Importing only adds what is missing: a session with the same name, host, port and user is kept as it is, and links between sessions and folders are rebuilt.
+- A secret vault for computers with no system keychain (a headless Linux box). Saved passwords go into a file locked with a master password, asked for once per launch. The system keychain is still used wherever it exists.
+- An Intel macOS installer, next to the Apple silicon one.
 - Multi-exec. Turn on broadcast for the focused pane (Alt+Cmd+B; Ctrl+Alt+B elsewhere) or for every pane of a tab (Alt+Cmd+I; Ctrl+Alt+I), in any tabs, and what you type or paste into one selected pane is typed into the others too. Selected panes show a Broadcast badge, and a button in the tab strip shows the count and turns it all off.
 - Snippets. A library of named commands with folders (`ops/web`) and search over name, folder and text, kept in `snippets.json` in the app data folder. `{{name}}` and `{{name:default}}` are asked for when sending. A snippet goes to the focused pane, every pane of the tab, or the broadcast panes, with or without a final Enter. Open it from the tab strip or with Shift+Cmd+S (Ctrl+Alt+S elsewhere).
 - Split panes. A tab can be split side by side (Cmd+D) or stacked (Shift+Cmd+D; Ctrl+Shift+D and Ctrl+Alt+D elsewhere), repeatedly. Drag a divider or use the shortcuts to move focus (Alt+Cmd+arrows) and resize (Ctrl+Cmd+arrows); all are rebindable in Settings. Each pane is its own shell, and for an SSH tab its own login. Cmd+W closes the focused pane, and the tab when it is the last one. A saved session reopens with the layout it was closed with (split shape and sizes; every pane connects again). Files and Tunnels follow the focused pane.

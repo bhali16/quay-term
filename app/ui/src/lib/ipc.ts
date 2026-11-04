@@ -17,6 +17,7 @@ import type { SecretUpdate } from "./bindings/SecretUpdate";
 import type { SessionInput } from "./bindings/SessionInput";
 import type { Entry } from "./bindings/Entry";
 import type { BackupReport } from "./bindings/BackupReport";
+import type { VaultStatus } from "./bindings/VaultStatus";
 import type { Snippet } from "./bindings/Snippet";
 import type { SftpOpened } from "./bindings/SftpOpened";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
@@ -139,3 +140,5 @@ export const snippetDelete = (id: number) => invoke<void>("snippet_delete", { id
 export const vaultExport = (path: string, password: string, withSecrets: boolean) =>
   invoke<BackupReport>("vault_export", { path, password, withSecrets });
 export const vaultImport = (path: string, password: string) => invoke<BackupReport>("vault_import", { path, password });
+export const vaultStatus = () => invoke<VaultStatus>("vault_status");
+export const vaultUnlock = (password: string) => invoke<void>("vault_unlock", { password });

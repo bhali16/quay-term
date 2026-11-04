@@ -7,9 +7,15 @@
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { getDiagnostics, vaultExport, vaultImport } from "./ipc";
   import type { BackupReport } from "./bindings/BackupReport";
+  import type { VaultStatus } from "./bindings/VaultStatus";
   import type { Diagnostics } from "./bindings/Diagnostics";
 
-  let { onclose, onimported }: { onclose: () => void; onimported?: () => void } = $props();
+  let {
+    onclose,
+    onimported,
+    vault = null,
+    onunlock,
+  }: { onclose: () => void; onimported?: () => void; vault?: VaultStatus | null; onunlock?: () => void } = $props();
 
   let error = $state<string | null>(null);
   let recording = $state<Action | null>(null);
@@ -169,6 +175,18 @@
             {/each}
           </div>
         {:else if tab === "backup"}
+          <h3>Saved passwords</h3>
+          {#if vault?.mode === "keychain"}
+            <p class="blurb">Kept in the system keychain.</p>
+          {:else if vault}
+            <p class="blurb">
+              This computer has no system keychain, so they are kept in a file locked with a master password.
+              {vault.mode === "unlocked" ? "It is unlocked for this launch." : "It is locked."}
+            </p>
+            {#if vault.mode === "locked"}
+              <div class="brow"><button class="copy" onclick={onunlock}>{vault.is_new ? "Set a master password…" : "Unlock…"}</button></div>
+            {/if}
+          {/if}
           <h3>Move to another machine</h3>
           <p class="blurb">Saves your sessions, folders, jump hosts, tunnels and snippets in one file, locked with a master password (Argon2id and ChaCha20-Poly1305). Importing adds what is missing and never changes what you have.</p>
           <label>
