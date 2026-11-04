@@ -4,9 +4,13 @@
 //! options are ignored), `Include`, and the options quay-term understands:
 //! `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump`. As in OpenSSH,
 //! the first value found for an option wins, so a trailing `Host *` block
-//! supplies defaults for the hosts above it.
+//! supplies defaults for the hosts above it. `LocalForward`, `RemoteForward`
+//! and `DynamicForward` add up instead: every matching block contributes, and
+//! each becomes a saved tunnel that does not start on its own.
 
 use std::path::{Path, PathBuf};
+
+use quay_core::{TunnelKind, TunnelSpec};
 
 use crate::model::{AuthKind, SessionInput};
 
@@ -19,6 +23,7 @@ pub struct ImportedHost {
     pub user: Option<String>,
     pub identity_file: Option<String>,
     pub proxy_jump: Option<String>,
+    pub tunnels: Vec<TunnelSpec>,
 }
 
 impl ImportedHost {
@@ -44,7 +49,7 @@ impl ImportedHost {
             color: None,
             tags,
             jump_id: None,
-            tunnels: Vec::new(),
+            tunnels: self.tunnels.clone(),
         }
     }
 }
@@ -61,6 +66,8 @@ struct Block {
     /// Patterns from the `Host` line; empty for `Match` blocks.
     patterns: Vec<String>,
     opts: Vec<(String, String)>,
+    /// `LocalForward` and friends, with all their arguments, in file order.
+    forwards: Vec<(String, Vec<String>)>,
 }
 
 /// Parse config text. `Include` lines are ignored; use [`read_ssh_config`]
@@ -70,6 +77,7 @@ pub fn parse_ssh_config(text: &str) -> Vec<ImportedHost> {
     let mut blocks = vec![Block {
         patterns: vec!["*".into()],
         opts: vec![],
+        forwards: vec![],
     }];
     for line in text.lines() {
         let line = line.trim();
@@ -83,11 +91,18 @@ pub fn parse_ssh_config(text: &str) -> Vec<ImportedHost> {
             "host" => blocks.push(Block {
                 patterns: args,
                 opts: vec![],
+                forwards: vec![],
             }),
             "match" => blocks.push(Block {
                 patterns: vec![],
                 opts: vec![],
+                forwards: vec![],
             }),
+            "localforward" | "remoteforward" | "dynamicforward" => {
+                if let Some(b) = blocks.last_mut() {
+                    b.forwards.push((key, args));
+                }
+            }
             _ => {
                 if let (Some(b), Some(v)) = (blocks.last_mut(), args.first()) {
                     b.opts.push((key, v.clone()));
@@ -126,7 +141,85 @@ fn resolve(alias: &str, blocks: &[Block]) -> ImportedHost {
         user: first("user"),
         identity_file: first("identityfile"),
         proxy_jump: first("proxyjump").filter(|p| !p.eq_ignore_ascii_case("none")),
+        tunnels: forwards_for(alias, blocks),
     }
+}
+
+/// Every forward that applies to `alias`, without repeats.
+fn forwards_for(alias: &str, blocks: &[Block]) -> Vec<TunnelSpec> {
+    let mut out: Vec<TunnelSpec> = Vec::new();
+    for (key, args) in blocks
+        .iter()
+        .filter(|b| applies(&b.patterns, alias))
+        .flat_map(|b| b.forwards.iter())
+    {
+        if let Some(t) = parse_forward(key, args) {
+            if !out.contains(&t) {
+                out.push(t);
+            }
+        }
+    }
+    out
+}
+
+/// `[address:]port` as used by the listening side. `*` means every interface.
+fn parse_listen(spec: &str) -> Option<(String, u16)> {
+    let (host, port) = split_host_port(spec)?;
+    let host = match host.as_deref() {
+        None | Some("") | Some("localhost") => "127.0.0.1".to_string(),
+        Some("*") => "0.0.0.0".to_string(),
+        Some(h) => h.to_string(),
+    };
+    Some((host, port))
+}
+
+/// `host:port` (or the older `host/port`) as used by the destination side.
+fn parse_dest(spec: &str) -> Option<(String, u16)> {
+    let (host, port) = match split_host_port(spec) {
+        Some((Some(h), p)) if !h.is_empty() => (h, p),
+        _ => {
+            let (h, p) = spec.split_once('/')?;
+            (h.to_string(), p.parse().ok()?)
+        }
+    };
+    Some((host, port))
+}
+
+/// Split `host:port`, `[v6]:port` or a bare `port`.
+fn split_host_port(spec: &str) -> Option<(Option<String>, u16)> {
+    if let Some(rest) = spec.strip_prefix('[') {
+        let (host, port) = rest.split_once("]:")?;
+        return Some((Some(host.to_string()), port.parse().ok()?));
+    }
+    match spec.rsplit_once(':') {
+        Some((host, port)) => Some((Some(host.to_string()), port.parse().ok()?)),
+        None => Some((None, spec.parse().ok()?)),
+    }
+}
+
+/// One forward line, or `None` for forms we cannot represent (Unix sockets,
+/// a remote forward with no destination, a malformed port).
+fn parse_forward(key: &str, args: &[String]) -> Option<TunnelSpec> {
+    let (bind_host, bind_port) = parse_listen(args.first()?)?;
+    let (kind, dest) = match key {
+        "dynamicforward" => (TunnelKind::Dynamic, None),
+        "localforward" => (TunnelKind::Local, Some(parse_dest(args.get(1)?)?)),
+        "remoteforward" => (TunnelKind::Remote, Some(parse_dest(args.get(1)?)?)),
+        _ => return None,
+    };
+    let has_dest = dest.is_some();
+    let (dest_host, dest_port) = dest.unwrap_or_default();
+    if has_dest && (dest_host.is_empty() || dest_port == 0) {
+        return None;
+    }
+    Some(TunnelSpec {
+        kind,
+        bind_host,
+        bind_port,
+        dest_host,
+        dest_port,
+        auto_start: false,
+    })
 }
 
 /// Does a `Host` line with these patterns apply to `alias`?
@@ -295,6 +388,42 @@ Match host foo
     }
 
     #[test]
+    fn forwards_become_tunnels_that_do_not_auto_start() {
+        let hosts = parse_ssh_config(
+            "Host db\n  HostName d.example\n\
+             \x20 LocalForward 5433 localhost:5432\n\
+             \x20 LocalForward *:8080 web.internal/80\n\
+             \x20 RemoteForward 127.0.0.1:9000 [::1]:3000\n\
+             \x20 DynamicForward 1080\n\
+             \x20 LocalForward nonsense\n\
+             \x20 RemoteForward 9001\n\
+             Host *\n  LocalForward 5433 localhost:5432\n  DynamicForward 1081\n\
+             Host other\n  HostName o.example\n",
+        );
+        let t = &find(&hosts, "db").tunnels;
+        let local = |bind_host: &str, bind_port, dest_host: &str, dest_port| TunnelSpec {
+            kind: TunnelKind::Local,
+            bind_host: bind_host.into(),
+            bind_port,
+            dest_host: dest_host.into(),
+            dest_port,
+            auto_start: false,
+        };
+        assert_eq!(t.len(), 5, "{t:?}");
+        assert_eq!(t[0], local("127.0.0.1", 5433, "localhost", 5432));
+        assert_eq!(t[1], local("0.0.0.0", 8080, "web.internal", 80));
+        assert_eq!(
+            (t[2].kind, t[2].bind_port, t[2].dest_host.as_str()),
+            (TunnelKind::Remote, 9000, "::1")
+        );
+        assert_eq!((t[3].kind, t[3].bind_port), (TunnelKind::Dynamic, 1080));
+        assert_eq!((t[4].kind, t[4].bind_port), (TunnelKind::Dynamic, 1081));
+        // Host * adds to every host; the repeat of 5433 is not doubled up.
+        let other = &find(&hosts, "other").tunnels;
+        assert_eq!(other.len(), 2);
+    }
+
+    #[test]
     fn lists_concrete_aliases_only() {
         let hosts = parse_ssh_config(SAMPLE);
         let names: Vec<_> = hosts.iter().map(|h| h.alias.as_str()).collect();
@@ -332,6 +461,7 @@ Match host foo
         let blocks = [Block {
             patterns: vec!["*.example.com".into(), "!skip.example.com".into()],
             opts: vec![],
+            forwards: vec![],
         }];
         assert!(applies(&blocks[0].patterns, "a.example.com"));
         assert!(!applies(&blocks[0].patterns, "skip.example.com"));

@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Importing `~/.ssh/config` now brings in `LocalForward`, `RemoteForward` and `DynamicForward` lines as saved tunnels, including those from `Host *` blocks and `Include` files. They are saved with Auto start off, so nothing opens a port until you start it. Forms that cannot be represented (Unix sockets, a remote forward with no destination) are skipped.
+
 ### Changed
 - A jump host with a password but none saved no longer stops the connection. You are asked for its password before the tab opens, with the same "save in the keychain" choice, one prompt per such hop. The Files panel reuses it if it has to sign in again.
 
