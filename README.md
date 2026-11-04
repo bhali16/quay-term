@@ -2,7 +2,7 @@
 
 Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Windows. Built with Rust and Tauri.
 
-> **Status:** early (0.2.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
+> **Status:** early (0.2.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, signed in-app updates, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
 
 ## Installing
 
@@ -12,20 +12,28 @@ The installers are not code-signed or notarized yet, so your OS will warn on fir
 - **Windows:** SmartScreen may show "Windows protected your PC"; choose More info, then Run anyway.
 - **Linux:** make the `.AppImage` executable (`chmod +x`) or install the `.deb`/`.rpm`.
 
+### Updating
+
+From 0.2.1 on, quay-term can update itself. Open Settings > About and choose Check for updates; if there is a newer version, choose Install and restart. By default it also checks a few seconds after launch and tells you if something newer exists, and nothing is downloaded until you click. Updates are signed, and the app refuses any that do not match the project's key. To stop the launch check, untick Check for updates when quay-term starts in Settings > Terminal. Versions older than 0.2.1 need one manual install first.
+
 ## Goals
 
 One app to manage terminals, SSH sessions and remote files on any desktop OS.
 
-What it does today (since v0.1.0):
+What it does today (v0.2):
 
-- Local shell tabs
-- SSH connections (password, key, agent) with known-hosts verification
-- Saved sessions, folders, tags and `~/.ssh/config` import
-- Secrets stored in the OS keychain
-- Basic SFTP browser with a transfer queue
-- Tabbed window with a collapsible session sidebar
-- Five built-in themes, bundled fonts and font settings
-- Installers for macOS, Linux and Windows
+- **Terminals:** local shell tabs, split panes inside a tab (the layout comes back with a saved session), and typing broadcast to selected panes
+- **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification
+- **Jump hosts:** chain `ProxyJump` hosts per saved session or from `~/.ssh/config`, with a host-key check at every hop
+- **Port forwards:** local, remote and dynamic (SOCKS5) tunnels over a tab's connection, saved with the session and optionally started automatically
+- **Sessions:** saved sessions with folders, tags and search, and `~/.ssh/config` import (hosts, `ProxyJump` and forwards)
+- **Files:** SFTP browser with a transfer queue, sharing the terminal tab's login so a host asks for a code once
+- **Snippets:** a library of reusable commands with `{{variables}}`, folders and search
+- **Secrets:** stored in the OS keychain, or in a master-password file on machines without one
+- **Backup:** encrypted export and import of sessions, secrets and snippets in one file (Argon2id and ChaCha20-Poly1305)
+- **Updates:** signed in-app updates (Settings > About)
+- Five built-in themes, bundled fonts, configurable shortcuts
+- Installers for macOS (Apple silicon and Intel), Linux and Windows
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the milestones.
 
