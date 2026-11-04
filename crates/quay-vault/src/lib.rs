@@ -4,6 +4,10 @@
 //! keychain and are addressed by saved-session id, so no secret ever appears
 //! in the session database or config files.
 
+pub mod archive;
+mod filestore;
+pub use filestore::{FallbackStore, FileStore, Mode};
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -35,16 +39,19 @@ impl SecretKey {
         Self { session_id, kind }
     }
 
-    fn account(&self) -> String {
+    pub(crate) fn account(&self) -> String {
         format!("session:{}:{}", self.session_id, self.kind.as_str())
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum VaultError {
     /// The platform has no usable keychain (e.g. a headless Linux box).
     #[error("the system keychain is not available: {0}")]
     Unavailable(String),
+    /// The master-password file is not unlocked yet.
+    #[error("the secret vault is locked; unlock it in Settings > Backup")]
+    Locked,
     #[error("keychain error: {0}")]
     Other(String),
 }

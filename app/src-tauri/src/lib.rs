@@ -1,30 +1,37 @@
+mod backup;
 mod library;
 mod sftp;
+mod snippets;
+mod tunnels;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{mpsc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 use quay_core::{AppInfo, HostKeyPrompt, Session, SessionExit, SshTarget, TermSize};
 use quay_pty::{PtySession, SpawnOptions};
 use quay_sessions::{Folder, SavedSession, SessionInput};
-use quay_ssh::{ConnectOptions, SshSession};
-use quay_vault::KeychainStore;
+use quay_ssh::{ConnectOptions, Connection, SshSession};
+use quay_vault::{FallbackStore, FileStore, KeychainStore};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use library::{ImportResult, Library, LibraryView, SecretUpdate};
+use library::{ImportResult, Library, LibraryView, Route, SecretUpdate};
 use sftp::Sftps;
+use tunnels::Tunnels;
 
 /// How long the user has to answer a host-key prompt.
 const TRUST_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Open terminal sessions (local or SSH), keyed by the id handed to the frontend.
 #[derive(Default)]
-struct Sessions {
+pub(crate) struct Sessions {
     next_id: AtomicU32,
     map: Mutex<HashMap<u32, Box<dyn Session>>>,
+    /// The SSH connection behind each SSH tab, so the Files panel can reuse
+    /// the tab's login. Removed when the shell ends.
+    pub(crate) conns: Mutex<HashMap<u32, Arc<Connection>>>,
 }
 
 /// Host-key prompts waiting for the user's answer.
@@ -32,6 +39,26 @@ struct Sessions {
 pub(crate) struct Prompts {
     next_id: AtomicU32,
     pub(crate) waiting: Mutex<HashMap<u32, mpsc::Sender<bool>>>,
+    /// Keyboard-interactive answers; `None` means the user cancelled.
+    pub(crate) answers: Mutex<HashMap<u32, mpsc::Sender<Option<Vec<String>>>>>,
+}
+
+/// Shown to the user when the server asks keyboard-interactive questions.
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub(crate) struct AuthPrompt {
+    pub prompt_id: u32,
+    pub host: String,
+    pub port: u16,
+    pub instructions: String,
+    pub prompts: Vec<AuthPromptField>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub(crate) struct AuthPromptField {
+    pub text: String,
+    pub echo: bool,
 }
 
 pub(crate) fn err(e: impl std::fmt::Display) -> String {
@@ -44,14 +71,11 @@ pub(crate) fn err(e: impl std::fmt::Display) -> String {
 pub(crate) fn verifier(
     app: &AppHandle,
     prompts: &Prompts,
-    host: &str,
-    port: u16,
 ) -> (
     u32,
     impl FnMut(&quay_ssh::HostKeyInfo) -> bool + Send + 'static,
 ) {
     let app = app.clone();
-    let host = host.to_string();
     let prompt_id = prompts.next_id.fetch_add(1, Ordering::Relaxed) + 1;
     let (answer_tx, answer_rx) = mpsc::channel::<bool>();
     prompts.waiting.lock().unwrap().insert(prompt_id, answer_tx);
@@ -60,8 +84,8 @@ pub(crate) fn verifier(
             "ssh-host-key-prompt",
             HostKeyPrompt {
                 prompt_id,
-                host: host.clone(),
-                port,
+                host: info.host.clone(),
+                port: info.port,
                 key_type: info.key_type.clone(),
                 fingerprint: info.fingerprint.clone(),
             },
@@ -69,6 +93,47 @@ pub(crate) fn verifier(
         answer_rx.recv_timeout(TRUST_TIMEOUT).unwrap_or(false)
     };
     (prompt_id, verify)
+}
+
+/// Build a [`quay_ssh::Challenger`] that asks the UI (event `ssh-auth-prompt`)
+/// and waits for `ssh_auth_response`. Call `forget_prompt` when the connect is over.
+pub(crate) fn challenger(
+    app: &AppHandle,
+    prompts: &Prompts,
+    prompt_id: u32,
+) -> quay_ssh::Challenger {
+    let app = app.clone();
+    let (tx, rx) = mpsc::channel();
+    prompts.answers.lock().unwrap().insert(prompt_id, tx);
+    let rx = Mutex::new(rx);
+    quay_ssh::Challenger::new(move |c| {
+        let _ = app.emit(
+            "ssh-auth-prompt",
+            AuthPrompt {
+                prompt_id,
+                host: c.host.clone(),
+                port: c.port,
+                instructions: c.instructions.clone(),
+                prompts: c
+                    .prompts
+                    .iter()
+                    .map(|p| AuthPromptField {
+                        text: p.text.clone(),
+                        echo: p.echo,
+                    })
+                    .collect(),
+            },
+        );
+        rx.lock()
+            .unwrap()
+            .recv_timeout(TRUST_TIMEOUT)
+            .unwrap_or(None)
+    })
+}
+
+pub(crate) fn forget_prompt(prompts: &Prompts, prompt_id: u32) {
+    prompts.waiting.lock().unwrap().remove(&prompt_id);
+    prompts.answers.lock().unwrap().remove(&prompt_id);
 }
 
 #[tauri::command]
@@ -118,7 +183,16 @@ async fn open_ssh_session(
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
-    start_ssh(app, &sessions, &prompts, target, cols, rows, on_output).await
+    start_ssh(
+        app,
+        &sessions,
+        &prompts,
+        target.into(),
+        cols,
+        rows,
+        on_output,
+    )
+    .await
 }
 
 /// Connect to a saved session. The stored secret is read from the keychain
@@ -137,47 +211,76 @@ async fn open_saved_session(
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
-    let target = library.target_for(id, secret, remember)?;
-    start_ssh(app, &sessions, &prompts, target, cols, rows, on_output).await
+    let route = library.route_for(id, secret, remember)?;
+    start_ssh(app, &sessions, &prompts, route, cols, rows, on_output).await
 }
 
 async fn start_ssh(
     app: AppHandle,
     sessions: &Sessions,
     prompts: &Prompts,
-    target: SshTarget,
+    route: Route,
     cols: u16,
     rows: u16,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     let id = sessions.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    let (prompt_id, verify) = verifier(&app, prompts, &target.host, target.port);
+    let app_for_tunnels = app.clone();
+    let (prompt_id, verify) = verifier(&app, prompts);
+    let Route {
+        target,
+        jumps,
+        auto_tunnels,
+    } = route;
     let dest = format!("{}@{}:{}", target.user, target.host, target.port);
-    log::info!("ssh connect {dest}");
+    if jumps.is_empty() {
+        log::info!("ssh connect {dest}");
+    } else {
+        let via: Vec<_> = jumps
+            .iter()
+            .map(|j| format!("{}:{}", j.host, j.port))
+            .collect();
+        log::info!("ssh connect {dest} via {}", via.join(" > "));
+    }
+    let mut opts = ConnectOptions::new(target);
+    opts.jumps = jumps;
+    opts.challenger = Some(challenger(&app, prompts, prompt_id));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        SshSession::connect(
-            &ConnectOptions::new(target),
+        let mut verify = verify;
+        let conn = Arc::new(Connection::connect(&opts, &mut verify)?);
+        let session = SshSession::open(
+            conn.clone(),
             TermSize { cols, rows },
-            verify,
             move |chunk| {
                 let _ = on_output.send(InvokeResponseBody::Raw(chunk));
             },
             move |reason| {
+                app.state::<Tunnels>().stop_session(id);
+                app.state::<Sessions>().conns.lock().unwrap().remove(&id);
                 let _ = app.emit("session-exit", SessionExit { id, reason });
             },
-        )
+        )?;
+        Ok::<_, quay_ssh::SshError>((session, conn))
     })
     .await
     .map_err(err)?;
-    prompts.waiting.lock().unwrap().remove(&prompt_id);
+    forget_prompt(prompts, prompt_id);
 
-    let session = result.map_err(|e| {
+    let (session, conn) = result.map_err(|e| {
         log::warn!("ssh connect {dest} failed: {e}");
         err(e)
     })?;
     log::info!("ssh connected {dest} (session {id})");
+    sessions.conns.lock().unwrap().insert(id, conn);
     sessions.map.lock().unwrap().insert(id, Box::new(session));
+    if !auto_tunnels.is_empty() {
+        let app2 = app_for_tunnels;
+        tauri::async_runtime::spawn_blocking(move || {
+            let (sessions, tunnels) = (app2.state::<Sessions>(), app2.state::<Tunnels>());
+            tunnels::start_auto(&sessions, &tunnels, id, auto_tunnels);
+        });
+    }
     Ok(id)
 }
 
@@ -251,6 +354,14 @@ fn ssh_trust_response(prompts: State<'_, Prompts>, prompt_id: u32, trust: bool) 
     }
 }
 
+/// The user's answer to an `ssh-auth-prompt` event; `None` cancels the sign-in.
+#[tauri::command]
+fn ssh_auth_response(prompts: State<'_, Prompts>, prompt_id: u32, answers: Option<Vec<String>>) {
+    if let Some(tx) = prompts.answers.lock().unwrap().get(&prompt_id) {
+        let _ = tx.send(answers);
+    }
+}
+
 #[tauri::command]
 fn session_write(state: State<'_, Sessions>, id: u32, data: Vec<u8>) -> Result<(), String> {
     let mut map = state.map.lock().unwrap();
@@ -270,9 +381,11 @@ fn session_resize(state: State<'_, Sessions>, id: u32, cols: u16, rows: u16) -> 
 }
 
 #[tauri::command]
-fn session_close(state: State<'_, Sessions>, id: u32) {
+fn session_close(state: State<'_, Sessions>, tunnels: State<'_, Tunnels>, id: u32) {
+    tunnels.stop_session(id);
     // Dropping the session ends it (kills the child / closes the channel).
     state.map.lock().unwrap().remove(&id);
+    state.conns.lock().unwrap().remove(&id);
 }
 
 /// Where settings.json lives, kept in managed state.
@@ -333,17 +446,25 @@ pub fn run() {
                     tauri_plugin_log::TargetKind::Stdout,
                 ))
                 .max_file_size(1_000_000)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
         .manage(Sessions::default())
         .manage(Prompts::default())
         .manage(Sftps::default())
+        .manage(Tunnels::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
-            let library = Library::open(&dir.join("sessions.db"), Box::new(KeychainStore::new()))?;
+            // Secrets go to the OS keychain; with none (headless Linux) they go to a master-password file.
+            let secrets = FallbackStore::new(
+                KeychainStore::new(),
+                FileStore::new(dir.join("secrets.vault")),
+            );
+            app.manage(secrets.clone());
+            let library = Library::open(&dir.join("sessions.db"), Box::new(secrets))?;
             app.manage(library);
+            app.manage(snippets::Snippets::open(dir.join("snippets.json")));
             app.manage(SettingsPath(dir.join("settings.json")));
             log::info!(
                 "quay-term {} starting on {}",
@@ -360,6 +481,7 @@ pub fn run() {
             open_local_session,
             open_ssh_session,
             ssh_trust_response,
+            ssh_auth_response,
             open_saved_session,
             library_load,
             session_save,
@@ -375,6 +497,17 @@ pub fn run() {
             session_close,
             sftp::sftp_open,
             sftp::sftp_open_saved,
+            sftp::sftp_open_shared,
+            tunnels::tunnel_start,
+            tunnels::tunnel_stop,
+            tunnels::tunnel_list,
+            backup::vault_status,
+            backup::vault_unlock,
+            backup::vault_export,
+            backup::vault_import,
+            snippets::snippets_load,
+            snippets::snippet_save,
+            snippets::snippet_delete,
             sftp::sftp_list,
             sftp::sftp_canonical,
             sftp::sftp_mkdir,

@@ -2,6 +2,19 @@
 export type Action =
   | "new_tab"
   | "close_tab"
+  | "broadcast_pane"
+  | "broadcast_tab"
+  | "snippets"
+  | "split_right"
+  | "split_down"
+  | "focus_left"
+  | "focus_right"
+  | "focus_up"
+  | "focus_down"
+  | "resize_left"
+  | "resize_right"
+  | "resize_up"
+  | "resize_down"
   | "next_tab"
   | "prev_tab"
   | "toggle_sidebar"
@@ -13,7 +26,20 @@ export type Action =
 
 export const actionLabels: Record<Action, string> = {
   new_tab: "New local tab",
-  close_tab: "Close tab",
+  close_tab: "Close pane or tab",
+  broadcast_pane: "Send typing to this pane too (toggle)",
+  broadcast_tab: "Send typing to all panes of this tab (toggle)",
+  snippets: "Open snippets",
+  split_right: "Split pane right",
+  split_down: "Split pane down",
+  focus_left: "Focus pane to the left",
+  focus_right: "Focus pane to the right",
+  focus_up: "Focus pane above",
+  focus_down: "Focus pane below",
+  resize_left: "Move divider left",
+  resize_right: "Move divider right",
+  resize_up: "Move divider up",
+  resize_down: "Move divider down",
   next_tab: "Next tab",
   prev_tab: "Previous tab",
   toggle_sidebar: "Toggle sessions sidebar",
@@ -31,6 +57,19 @@ const M = isMac ? "Cmd" : "Ctrl+Shift";
 export const defaultBindings: Record<Action, string> = {
   new_tab: `${M}+T`,
   close_tab: `${M}+W`,
+  broadcast_pane: isMac ? "Alt+Cmd+B" : "Ctrl+Alt+B",
+  broadcast_tab: isMac ? "Alt+Cmd+I" : "Ctrl+Alt+I",
+  snippets: isMac ? "Shift+Cmd+S" : "Ctrl+Alt+S",
+  split_right: `${M}+D`,
+  split_down: isMac ? "Shift+Cmd+D" : "Ctrl+Alt+D",
+  focus_left: isMac ? "Alt+Cmd+ArrowLeft" : "Ctrl+Alt+ArrowLeft",
+  focus_right: isMac ? "Alt+Cmd+ArrowRight" : "Ctrl+Alt+ArrowRight",
+  focus_up: isMac ? "Alt+Cmd+ArrowUp" : "Ctrl+Alt+ArrowUp",
+  focus_down: isMac ? "Alt+Cmd+ArrowDown" : "Ctrl+Alt+ArrowDown",
+  resize_left: isMac ? "Ctrl+Cmd+ArrowLeft" : "Ctrl+Alt+Shift+ArrowLeft",
+  resize_right: isMac ? "Ctrl+Cmd+ArrowRight" : "Ctrl+Alt+Shift+ArrowRight",
+  resize_up: isMac ? "Ctrl+Cmd+ArrowUp" : "Ctrl+Alt+Shift+ArrowUp",
+  resize_down: isMac ? "Ctrl+Cmd+ArrowDown" : "Ctrl+Alt+Shift+ArrowDown",
   next_tab: "Ctrl+Tab",
   prev_tab: "Ctrl+Shift+Tab",
   toggle_sidebar: `${M}+B`,

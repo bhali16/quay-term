@@ -41,12 +41,31 @@ pub struct ImportResult {
     pub skipped: u32,
 }
 
-pub struct Library {
-    store: Mutex<SessionStore>,
-    vault: Box<dyn SecretStore>,
+/// Where to connect: the target and the jump hosts to go through first.
+#[derive(Debug, Clone)]
+pub struct Route {
+    pub target: SshTarget,
+    pub jumps: Vec<SshTarget>,
+    /// Saved tunnels to start once connected.
+    pub auto_tunnels: Vec<quay_core::TunnelSpec>,
 }
 
-fn secret_kind(auth: AuthKind) -> Option<SecretKind> {
+impl From<SshTarget> for Route {
+    fn from(target: SshTarget) -> Self {
+        Self {
+            target,
+            jumps: Vec::new(),
+            auto_tunnels: Vec::new(),
+        }
+    }
+}
+
+pub struct Library {
+    pub(crate) store: Mutex<SessionStore>,
+    pub(crate) vault: Box<dyn SecretStore>,
+}
+
+pub(crate) fn secret_kind(auth: AuthKind) -> Option<SecretKind> {
     match auth {
         AuthKind::Password => Some(SecretKind::Password),
         AuthKind::Key => Some(SecretKind::Passphrase),
@@ -54,7 +73,7 @@ fn secret_kind(auth: AuthKind) -> Option<SecretKind> {
     }
 }
 
-fn err(e: impl std::fmt::Display) -> String {
+pub(crate) fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
@@ -64,6 +83,11 @@ impl Library {
             store: Mutex::new(SessionStore::open(db).map_err(err)?),
             vault,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_for_test() -> Self {
+        Self::in_memory(Box::new(quay_vault::MemoryStore::default()))
     }
 
     #[cfg(test)]
@@ -200,6 +224,68 @@ impl Library {
     /// Build a connection target for a saved session. `secret` overrides the
     /// stored one (used when the user just typed it) and is saved if
     /// `remember` is set.
+    /// The saved session plus its chain of jump hosts. Jump hosts sign in with
+    /// what is stored for them; there is no chance to type a secret for one.
+    pub fn route_for(
+        &self,
+        id: i64,
+        secret: Option<String>,
+        remember: bool,
+    ) -> Result<Route, String> {
+        let target = self.target_for(id, secret, remember)?;
+        let (chain, auto_tunnels) = {
+            let store = self.store.lock().unwrap();
+            let chain = store.jump_chain(id).map_err(err)?;
+            let tunnels = store
+                .get_session(id)
+                .map_err(err)?
+                .map(|s| s.input.tunnels)
+                .unwrap_or_default();
+            (chain, tunnels)
+        };
+        let auto_tunnels = auto_tunnels.into_iter().filter(|t| t.auto_start).collect();
+        let jumps = chain
+            .iter()
+            .map(|hop| self.stored_target(hop))
+            .collect::<Result<_, _>>()?;
+        Ok(Route {
+            target,
+            jumps,
+            auto_tunnels,
+        })
+    }
+
+    /// A target built only from stored credentials.
+    fn stored_target(&self, s: &SavedSession) -> Result<SshTarget, String> {
+        let secret = match secret_kind(s.input.auth) {
+            Some(kind) if s.has_secret => {
+                self.vault.get(SecretKey::new(s.id, kind)).map_err(err)?
+            }
+            _ => None,
+        };
+        let auth = match s.input.auth {
+            AuthKind::Password => SshAuth::Password {
+                password: secret.ok_or_else(|| {
+                    format!(
+                        "The jump host \"{}\" has no saved password. Connect to it once and choose to save it.",
+                        s.input.name
+                    )
+                })?,
+            },
+            AuthKind::Key => SshAuth::Key {
+                path: s.input.key_path.clone().unwrap_or_default(),
+                passphrase: secret,
+            },
+            AuthKind::Agent => SshAuth::Agent,
+        };
+        Ok(SshTarget {
+            host: s.input.host.clone(),
+            port: s.input.port,
+            user: s.input.user.clone(),
+            auth,
+        })
+    }
+
     pub fn target_for(
         &self,
         id: i64,
@@ -265,6 +351,8 @@ mod tests {
             key_path: (auth == AuthKind::Key).then(|| "~/.ssh/id".to_string()),
             color: None,
             tags: vec![],
+            jump_id: None,
+            tunnels: vec![],
         }
     }
 
@@ -448,6 +536,45 @@ mod tests {
         l.delete(s.id).unwrap();
         assert!(vault.get(key).unwrap().is_none());
         assert!(l.load(None).unwrap().sessions.is_empty());
+    }
+
+    #[test]
+    fn route_includes_jump_hosts_with_their_own_credentials() {
+        let l = lib();
+        let mut jump = input(AuthKind::Password);
+        jump.name = "bastion".into();
+        jump.host = "b.example".into();
+        let bastion = l
+            .save(
+                None,
+                &jump,
+                SecretUpdate::Set {
+                    value: "hop-pw".into(),
+                },
+            )
+            .unwrap();
+        let mut inner = input(AuthKind::Agent);
+        inner.jump_id = Some(bastion.id);
+        let inner = l.save(None, &inner, SecretUpdate::Unchanged).unwrap();
+
+        let r = l.route_for(inner.id, None, false).unwrap();
+        assert_eq!(r.target.host, "h.example");
+        assert_eq!(r.jumps.len(), 1);
+        assert_eq!(r.jumps[0].host, "b.example");
+        assert_eq!(password_of(&r.jumps[0]), Some("hop-pw"));
+    }
+
+    #[test]
+    fn a_jump_host_without_a_saved_password_is_explained() {
+        let l = lib();
+        let mut jump = input(AuthKind::Password);
+        jump.name = "bastion".into();
+        let bastion = l.save(None, &jump, SecretUpdate::Unchanged).unwrap();
+        let mut inner = input(AuthKind::Agent);
+        inner.jump_id = Some(bastion.id);
+        let inner = l.save(None, &inner, SecretUpdate::Unchanged).unwrap();
+        let e = l.route_for(inner.id, None, false).unwrap_err();
+        assert!(e.contains("bastion") && e.contains("saved password"), "{e}");
     }
 
     #[test]

@@ -3,6 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import type { Settings } from "./bindings/Settings";
 import type { Diagnostics } from "./bindings/Diagnostics";
 import type { AppInfo } from "./bindings/AppInfo";
+import type { AuthPrompt } from "./bindings/AuthPrompt";
+import type { TunnelInfo } from "./bindings/TunnelInfo";
+import type { TunnelSpec } from "./bindings/TunnelSpec";
 import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 import type { SessionExit } from "./bindings/SessionExit";
 import type { SshTarget } from "./bindings/SshTarget";
@@ -13,6 +16,9 @@ import type { SavedSession } from "./bindings/SavedSession";
 import type { SecretUpdate } from "./bindings/SecretUpdate";
 import type { SessionInput } from "./bindings/SessionInput";
 import type { Entry } from "./bindings/Entry";
+import type { BackupReport } from "./bindings/BackupReport";
+import type { VaultStatus } from "./bindings/VaultStatus";
+import type { Snippet } from "./bindings/Snippet";
 import type { SftpOpened } from "./bindings/SftpOpened";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
 
@@ -79,6 +85,12 @@ export const sshTrustResponse = (promptId: number, trust: boolean) =>
 export const onHostKeyPrompt = (cb: (p: HostKeyPrompt) => void) =>
   listen<HostKeyPrompt>("ssh-host-key-prompt", (e) => cb(e.payload));
 
+export const sshAuthResponse = (promptId: number, answers: string[] | null) =>
+  invoke<void>("ssh_auth_response", { promptId, answers });
+
+export const onAuthPrompt = (cb: (p: AuthPrompt) => void) =>
+  listen<AuthPrompt>("ssh-auth-prompt", (e) => cb(e.payload));
+
 export const sessionWrite = (id: number, data: Uint8Array) =>
   invoke<void>("session_write", { id, data: Array.from(data) });
 
@@ -94,6 +106,8 @@ export const onSessionExit = (cb: (exit: SessionExit) => void) =>
 export const sftpOpen = (target: SshTarget) => invoke<SftpOpened>("sftp_open", { target });
 export const sftpOpenSaved = (id: number, secret: string | null) =>
   invoke<SftpOpened>("sftp_open_saved", { id, secret });
+/** Open SFTP on the connection behind a terminal tab, so the host needs no second login. */
+export const sftpOpenShared = (session: number) => invoke<SftpOpened>("sftp_open_shared", { session });
 export const sftpList = (id: number, path: string) => invoke<Entry[]>("sftp_list", { id, path });
 export const sftpCanonical = (id: number, path: string) => invoke<string>("sftp_canonical", { id, path });
 export const sftpMkdir = (id: number, path: string) => invoke<void>("sftp_mkdir", { id, path });
@@ -108,7 +122,23 @@ export const sftpClose = (id: number) => invoke<void>("sftp_close", { id });
 export const onSftpTransfer = (cb: (t: SftpTransfer) => void) =>
   listen<SftpTransfer>("sftp-transfer", (e) => cb(e.payload));
 
+// ---- tunnels (port forwards on a terminal tab's connection) ----
+export const tunnelStart = (session: number, spec: TunnelSpec) => invoke<TunnelInfo>("tunnel_start", { session, spec });
+export const tunnelStop = (id: number) => invoke<void>("tunnel_stop", { id });
+export const tunnelList = (session: number) => invoke<TunnelInfo[]>("tunnel_list", { session });
+
 // ---- settings and diagnostics ----
 export const settingsLoad = () => invoke<Settings>("settings_load");
 export const settingsSave = (settings: Settings) => invoke<Settings>("settings_save", { settings });
 export const getDiagnostics = () => invoke<Diagnostics>("get_diagnostics");
+
+export const snippetsLoad = () => invoke<Snippet[]>("snippets_load");
+export const snippetSave = (id: number | null, name: string, folder: string, body: string) =>
+  invoke<Snippet>("snippet_save", { id, name, folder, body });
+export const snippetDelete = (id: number) => invoke<void>("snippet_delete", { id });
+
+export const vaultExport = (path: string, password: string, withSecrets: boolean) =>
+  invoke<BackupReport>("vault_export", { path, password, withSecrets });
+export const vaultImport = (path: string, password: string) => invoke<BackupReport>("vault_import", { path, password });
+export const vaultStatus = () => invoke<VaultStatus>("vault_status");
+export const vaultUnlock = (password: string) => invoke<void>("vault_unlock", { password });

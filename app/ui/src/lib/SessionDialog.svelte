@@ -8,6 +8,8 @@
   import type { SavedSession } from "./bindings/SavedSession";
   import type { SecretUpdate } from "./bindings/SecretUpdate";
   import type { SessionInput } from "./bindings/SessionInput";
+  import type { TunnelSpec } from "./bindings/TunnelSpec";
+  import type { TunnelKind } from "./bindings/TunnelKind";
 
   export type Result = {
     input: SessionInput;
@@ -21,6 +23,7 @@
     session = null,
     defaultFolderId = null,
     folders,
+    sessions = [],
     error = null,
     onsubmit,
     oncancel,
@@ -29,6 +32,8 @@
     /** Folder preselected for a new session. */
     defaultFolderId?: number | null;
     folders: Folder[];
+    /** All saved sessions, to pick a jump host from. */
+    sessions?: SavedSession[];
     error?: string | null;
     onsubmit: (r: Result) => void;
     oncancel: () => void;
@@ -50,6 +55,18 @@
   let color = $state<string | null>(s?.color ?? null);
   let folderId = $state<number | null>(s ? s.folder_id : untrack(() => defaultFolderId));
   let tags = $state((s?.tags ?? []).join(", "));
+  let jumpId = $state<number | null>(s?.jump_id ?? null);
+  let tunnels = $state<TunnelSpec[]>((s?.tunnels ?? []).map((t) => ({ ...t })));
+
+  const kindLabels: Record<TunnelKind, string> = { local: "Local", remote: "Remote", dynamic: "SOCKS5" };
+  function addTunnel() {
+    tunnels.push({ kind: "local", bind_host: "127.0.0.1", bind_port: 8080, dest_host: "localhost", dest_port: 80, auto_start: false });
+  }
+  const tunnelsValid = $derived(
+    tunnels.every(
+      (t) => t.bind_port >= 0 && t.bind_port < 65536 && (t.kind === "dynamic" || (t.dest_host.trim() !== "" && t.dest_port > 0 && t.dest_port < 65536)),
+    ),
+  );
   let secret = $state("");
   let saveSecret = $state(true);
   let clearSecret = $state(false);
@@ -68,9 +85,13 @@
     return out;
   });
 
+  /** Sessions that can be a jump host: anything but this one. Loops are refused on save. */
+  const jumpOptions = $derived(sessions.filter((x) => x.id !== s?.id));
+  const jumpChosen = $derived(jumpOptions.find((x) => x.id === jumpId) ?? null);
+
   const secretLabel = $derived(auth === "password" ? "Password" : "Key passphrase (if any)");
   const valid = $derived(
-    host.trim() !== "" && user.trim() !== "" && port > 0 && port < 65536 && (auth !== "key" || keyPath.trim() !== ""),
+    host.trim() !== "" && user.trim() !== "" && port > 0 && port < 65536 && (auth !== "key" || keyPath.trim() !== "") && tunnelsValid,
   );
 
   function submit(connect: boolean) {
@@ -85,6 +106,8 @@
       key_path: auth === "key" ? keyPath.trim() : null,
       color,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      jump_id: jumpId,
+      tunnels: $state.snapshot(tunnels),
     };
     const typed = auth !== "agent" && secret !== "";
     const update: SecretUpdate =
@@ -104,6 +127,21 @@
       <label class="narrow">Port <input type="number" bind:value={port} min="1" max="65535" /></label>
     </div>
     <label>User <input class="mono" bind:value={user} autocomplete="username" /></label>
+    <label>
+      Connect via
+      <select bind:value={jumpId}>
+        <option value={null}>Directly</option>
+        {#each jumpOptions as j (j.id)}
+          <option value={j.id}>{j.name} ({j.user}@{j.host})</option>
+        {/each}
+      </select>
+    </label>
+    {#if jumpChosen}
+      <p class="note">
+        <Icon name="lock" size={14} />Signs in to {jumpChosen.name} first, with the credentials saved for it
+        {jumpChosen.auth === "password" && !jumpChosen.has_secret ? " - it has no saved password yet, so save one there" : ""}
+      </p>
+    {/if}
     <label>
       Authentication
       <select bind:value={auth}>
@@ -145,6 +183,32 @@
       </label>
     </div>
     <label>Tags <input bind:value={tags} placeholder="prod, eu (comma separated)" /></label>
+    <div class="tunnels">
+      <div class="thead">
+        <span>Tunnels</span>
+        <button type="button" class="small" onclick={addTunnel}><Icon name="plus" size={14} />Add</button>
+      </div>
+      {#each tunnels as t, i (i)}
+        <div class="trow">
+          <select bind:value={t.kind} aria-label="Tunnel type">
+            {#each Object.entries(kindLabels) as [k, label] (k)}<option value={k}>{label}</option>{/each}
+          </select>
+          <input class="num" type="number" min="0" max="65535" bind:value={t.bind_port} aria-label="Port to listen on" title={t.kind === "remote" ? "Port on the server" : "Port on this computer"} />
+          {#if t.kind !== "dynamic"}
+            <span class="arrow">→</span>
+            <input class="mono dest" bind:value={t.dest_host} aria-label="Destination host" autocapitalize="off" spellcheck="false" />
+            <input class="num" type="number" min="1" max="65535" bind:value={t.dest_port} aria-label="Destination port" />
+          {:else}
+            <span class="arrow dim">proxy</span>
+          {/if}
+          <label class="auto" title="Start when this session connects"><input type="checkbox" bind:checked={t.auto_start} />Auto</label>
+          <button type="button" class="small" aria-label="Remove tunnel" onclick={() => tunnels.splice(i, 1)}><Icon name="x" size={14} /></button>
+        </div>
+      {/each}
+      {#if tunnels.length === 0}
+        <p class="note">Port forwards saved with this session. Mark one Auto to start it on connect.</p>
+      {/if}
+    </div>
     <div class="swatches" role="group" aria-label="Colour">
       <button type="button" class="none" class:sel={color === null} aria-label="No colour" onclick={() => (color = null)}>∅</button>
       {#each swatches as c (c)}
@@ -182,5 +246,60 @@
   /* var(--fg), not white: the dialog surface is white in the light themes. */
   .swatches .sel {
     border-color: var(--fg);
+  }
+  .tunnels {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .thead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--dim);
+  }
+  .trow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .trow select {
+    width: 84px;
+    flex: none;
+  }
+  .trow .num {
+    width: 68px;
+    flex: none;
+  }
+  .trow .dest {
+    flex: 1;
+    min-width: 0;
+  }
+  .arrow {
+    color: var(--dim);
+  }
+  .auto {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    font-size: 12px;
+  }
+  .small {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    background: none;
+    border: 0;
+    color: var(--dim);
+    cursor: pointer;
+    border-radius: 4px;
+    font: inherit;
+  }
+  .small:hover {
+    background: var(--hover);
+    color: var(--fg);
   }
 </style>

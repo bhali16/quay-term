@@ -34,6 +34,8 @@ pub enum SshError {
     },
     #[error("The host key was not trusted, so the connection was cancelled.")]
     HostKeyRejected,
+    #[error("Sign-in was cancelled.")]
+    AuthCancelled,
     #[error("Could not check known hosts ({}): {detail}", .path.display())]
     KnownHosts { path: PathBuf, detail: String },
     #[error("Authentication failed: the server rejected the password for \"{user}\".")]
@@ -54,8 +56,18 @@ pub enum SshError {
         wanted: &'static str,
         offered: Vec<String>,
     },
+    /// A failure while going through a jump host, named so the user knows which hop.
+    #[error("Jump host {host}:{port}: {source}")]
+    JumpHost {
+        host: String,
+        port: u16,
+        source: Box<SshError>,
+    },
     #[error("Could not open a shell on the server: {0}")]
     Channel(String),
+    /// A tunnel could not be started; the message says why.
+    #[error("{0}")]
+    Tunnel(String),
     #[error("SSH error: {0}")]
     Other(String),
 }
@@ -64,23 +76,4 @@ impl From<SshError> for quay_core::Error {
     fn from(e: SshError) -> Self {
         quay_core::Error::Other(e.to_string())
     }
-}
-
-/// Codes from libssh2 that we map to friendlier errors.
-pub(crate) mod code {
-    pub const AUTHENTICATION_FAILED: i32 = -18;
-    pub const PUBLICKEY_UNVERIFIED: i32 = -19;
-    pub const FILE: i32 = -16;
-}
-
-pub(crate) fn session_code(e: &ssh2::Error) -> Option<i32> {
-    match e.code() {
-        ssh2::ErrorCode::Session(c) => Some(c),
-        _ => None,
-    }
-}
-
-/// libssh2's EAGAIN: the non-blocking call must be retried later.
-pub(crate) fn would_block(e: &ssh2::Error) -> bool {
-    session_code(e) == Some(-37)
 }

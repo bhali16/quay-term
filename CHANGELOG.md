@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-04
+
+### Added
+- Encrypted export and import (Settings > Backup). Sessions, folders, jump hosts, tunnels and snippets, and optionally saved passwords and key passphrases, go into one file sealed with a master password (Argon2id key derivation, ChaCha20-Poly1305 encryption). Importing only adds what is missing: a session with the same name, host, port and user is kept as it is, and links between sessions and folders are rebuilt.
+- A secret vault for computers with no system keychain (a headless Linux box). Saved passwords go into a file locked with a master password, asked for once per launch. The system keychain is still used wherever it exists.
+- An Intel macOS installer, next to the Apple silicon one.
+- Multi-exec. Turn on broadcast for the focused pane (Alt+Cmd+B; Ctrl+Alt+B elsewhere) or for every pane of a tab (Alt+Cmd+I; Ctrl+Alt+I), in any tabs, and what you type or paste into one selected pane is typed into the others too. Selected panes show a Broadcast badge, and a button in the tab strip shows the count and turns it all off.
+- Snippets. A library of named commands with folders (`ops/web`) and search over name, folder and text, kept in `snippets.json` in the app data folder. `{{name}}` and `{{name:default}}` are asked for when sending. A snippet goes to the focused pane, every pane of the tab, or the broadcast panes, with or without a final Enter. Open it from the tab strip or with Shift+Cmd+S (Ctrl+Alt+S elsewhere).
+- Split panes. A tab can be split side by side (Cmd+D) or stacked (Shift+Cmd+D; Ctrl+Shift+D and Ctrl+Alt+D elsewhere), repeatedly. Drag a divider or use the shortcuts to move focus (Alt+Cmd+arrows) and resize (Ctrl+Cmd+arrows); all are rebindable in Settings. Each pane is its own shell, and for an SSH tab its own login. Cmd+W closes the focused pane, and the tab when it is the last one. A saved session reopens with the layout it was closed with (split shape and sizes; every pane connects again). Files and Tunnels follow the focused pane.
+- Tunnels (port forwards) over a terminal tab's SSH connection, from a new Tunnels panel next to Files: local (a port here leads to a host the server can reach), remote (a port on the server leads back to a host you can reach) and dynamic (a SOCKS5 proxy). Each shows open connections and bytes moved, and a busy port or a server that refuses remote forwarding is explained. They listen on loopback unless you allow other devices, which the panel flags. Tunnels can be saved with a session in the session editor, and the ones marked Auto start when it connects. A tunnel stops when its tab's shell ends.
+- Jump hosts. A saved session can connect through another saved session ("Connect via" in the session editor), and chains work: each hop signs in with its own saved credentials, and each host key is checked and remembered under its own name. The host-key and sign-in prompts say which hop is asking, and an error names the jump host that failed. Importing `~/.ssh/config` links `ProxyJump` (aliases, `user@host:port`, and comma-separated chains) to the imported sessions; a jump it cannot resolve keeps the `proxyjump` tag. Loops and chains longer than 8 are refused.
+- Sign-in prompts for servers that ask for more than a password (one-time codes, a second factor). The password is still sent automatically to a lone password prompt; everything else is shown in a dialog. This works for the terminal and the Files panel.
+- Frontend unit tests (vitest) for keyboard shortcut handling, run in CI.
+
+### Changed
+- The Files panel reuses its terminal tab's SSH login instead of signing in again, so a host with a password prompt, a one-time code or a host-key question asks once. If the tab's connection is gone, the panel signs in on its own as before. The connection stays open until both the shell and the panel are done with it.
+- SSH and SFTP now run on russh and russh-sftp (pure Rust) instead of libssh2; there is no OpenSSL or C SSH library in the build any more.
+- Terminal SSH sessions use the new connection layer. Host keys are checked per connection, so jump hosts and tunnels can follow. A host recorded in known_hosts with a key of another type is still refused, and the recorded key type is now requested first, as OpenSSH does.
+- The webview now has a Content Security Policy (scripts, styles, fonts and images from the app only).
+- Logs keep the five most recent rotated files instead of one.
+
+### Fixed
+- SFTP transfers use 256 KB chunks instead of 32 KB, which is several times faster on high-latency connections.
+- A saved session with an auth method this version does not know is reported as an error instead of silently turning into ssh-agent auth.
+
 ## [0.1.2] - 2026-10-12
 
 ### Added

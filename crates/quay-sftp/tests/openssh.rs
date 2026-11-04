@@ -165,3 +165,74 @@ fn queue_reports_progress_and_completion() {
     assert_eq!((last.done, last.total), (500_000, 500_000));
     assert_eq!(last.name, "q.bin");
 }
+
+/// A terminal tab and the Files panel share one login: one host-key prompt,
+/// both work at once, and the panel outlives the shell.
+#[test]
+fn shell_and_sftp_share_one_connection() {
+    use quay_core::{Session, TermSize};
+    use quay_ssh::{Connection, SshSession};
+    use std::sync::Mutex;
+
+    let var = |k: &str| std::env::var(k).ok();
+    let (Some(host), Some(port), Some(user), Some(password)) = (
+        var("QUAY_TEST_SSH_HOST"),
+        var("QUAY_TEST_SSH_PORT"),
+        var("QUAY_TEST_SSH_USER"),
+        var("QUAY_TEST_SSH_PASSWORD"),
+    ) else {
+        eprintln!("skipped: QUAY_TEST_SSH_HOST not set");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let mut opts = ConnectOptions::new(SshTarget {
+        host,
+        port: port.parse().unwrap(),
+        user,
+        auth: SshAuth::Password { password },
+    });
+    opts.known_hosts = Some(dir.path().join("known_hosts"));
+
+    let prompts = Mutex::new(0);
+    let conn = Arc::new(
+        Connection::connect(&opts, &mut |_| {
+            *prompts.lock().unwrap() += 1;
+            true
+        })
+        .unwrap(),
+    );
+
+    let out = Arc::new(Mutex::new(Vec::new()));
+    let sink = out.clone();
+    let (exit_tx, exit_rx) = mpsc::channel();
+    let mut shell = SshSession::open(
+        conn.clone(),
+        TermSize { cols: 80, rows: 24 },
+        move |chunk| sink.lock().unwrap().extend(chunk),
+        move |reason| {
+            let _ = exit_tx.send(reason);
+        },
+    )
+    .unwrap();
+    let files = SftpClient::open(conn.clone()).unwrap();
+    assert_eq!(
+        *prompts.lock().unwrap(),
+        1,
+        "one login, one host-key prompt"
+    );
+
+    // Both work at the same time.
+    shell.write(b"echo shared-$((6*7))\n").unwrap();
+    assert!(!files.home().unwrap().is_empty());
+    let end = std::time::Instant::now() + Duration::from_secs(10);
+    while !String::from_utf8_lossy(&out.lock().unwrap()).contains("shared-42") {
+        assert!(std::time::Instant::now() < end, "shell never answered");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // The shell ends; the connection stays up for the Files panel.
+    shell.write(b"exit\n").unwrap();
+    assert_eq!(exit_rx.recv_timeout(Duration::from_secs(10)).unwrap(), None);
+    assert!(!conn.is_closed(), "the panel still holds the connection");
+    assert!(files.list(&files.home().unwrap()).is_ok());
+}

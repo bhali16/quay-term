@@ -1,3 +1,4 @@
+use quay_core::TunnelSpec;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -19,11 +20,13 @@ impl AuthKind {
         }
     }
 
-    pub(crate) fn parse(s: &str) -> Self {
+    /// `None` for a value this version does not know (e.g. written by a newer one).
+    pub(crate) fn parse(s: &str) -> Option<Self> {
         match s {
-            "password" => Self::Password,
-            "key" => Self::Key,
-            _ => Self::Agent,
+            "password" => Some(Self::Password),
+            "key" => Some(Self::Key),
+            "agent" => Some(Self::Agent),
+            _ => None,
         }
     }
 }
@@ -55,6 +58,14 @@ pub struct SessionInput {
     /// Display colour as a CSS hex string such as `#3b6fd8`.
     pub color: Option<String>,
     pub tags: Vec<String>,
+    /// Another saved session to connect through (a jump host or bastion).
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub jump_id: Option<i64>,
+    /// Port forwards that belong to this session; the ones marked
+    /// `auto_start` start when it connects.
+    #[serde(default)]
+    pub tunnels: Vec<TunnelSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
