@@ -21,7 +21,7 @@ export const themes: Theme[] = [
     dark: true,
     ui: { bg: "#1e1f24", bgAlt: "#202127", bgDeep: "#16171b", surface: "#2b2d36", hover: "#33353e", border: "#44464f", input: "#111111", fg: "#e6e6e6", accent: "#3b6fd8", dim: "#9297a6", green: "#4ec9a0", red: "#f06b6b", yellow: "#e5c07b" },
     term: {
-      background: "#1e1f24", foreground: "#e6e6e6", cursor: "#e6e6e6", selectionBackground: "#3b6fd855",
+      background: "#1e1f24", foreground: "#e6e6e6", cursor: "#e6e6e6", selectionBackground: "#3b6fd899", selectionInactiveBackground: "#3b6fd855",
       ...ansi(["#2b2d36", "#f06b6b", "#4ec9a0", "#e5c07b", "#5b8cff", "#c678dd", "#56b6c2", "#c9ccd6", "#5c6070", "#ff8585", "#6fe0b8", "#f0d195", "#7aa2ff", "#d896ec", "#78cfd9", "#ffffff"]),
     },
   },
@@ -31,7 +31,7 @@ export const themes: Theme[] = [
     dark: false,
     ui: { bg: "#fafafa", bgAlt: "#ececf0", bgDeep: "#dcdce2", surface: "#ffffff", hover: "#e2e2e8", border: "#c4c4cc", input: "#ffffff", fg: "#1f2328", accent: "#2f5fc4", dim: "#566069", green: "#1a7f37", red: "#cf222e", yellow: "#9a6700" },
     term: {
-      background: "#fafafa", foreground: "#1f2328", cursor: "#1f2328", selectionBackground: "#2f5fc433",
+      background: "#fafafa", foreground: "#1f2328", cursor: "#1f2328", selectionBackground: "#2f5fc455",
       ...ansi(["#24292f", "#cf222e", "#116329", "#9a6700", "#0969da", "#8250df", "#1b7c83", "#6e7781", "#57606a", "#a40e26", "#1a7f37", "#7d4e00", "#218bff", "#a475f9", "#3192aa", "#8c959f"]),
     },
   },

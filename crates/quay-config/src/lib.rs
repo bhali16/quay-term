@@ -33,6 +33,8 @@ pub struct Settings {
     pub font_size: u32,
     pub cursor_blink: bool,
     pub scrollback: u32,
+    /// Copy selected text to the clipboard as soon as the mouse is released.
+    pub copy_on_select: bool,
     /// Look for a newer release shortly after launch. Nothing is installed without a click.
     pub check_for_updates: bool,
     /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
@@ -49,6 +51,7 @@ impl Default for Settings {
             font_size: 14,
             cursor_blink: true,
             scrollback: 5000,
+            copy_on_select: true,
             check_for_updates: true,
             keybindings: BTreeMap::new(),
         }

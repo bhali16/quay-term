@@ -10,6 +10,10 @@ theme: string,
  */
 font_family: string, font_size: number, cursor_blink: boolean, scrollback: number, 
 /**
+ * Copy selected text to the clipboard as soon as the mouse is released.
+ */
+copy_on_select: boolean, 
+/**
  * Look for a newer release shortly after launch. Nothing is installed without a click.
  */
 check_for_updates: boolean, 
