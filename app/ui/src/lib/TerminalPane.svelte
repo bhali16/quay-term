@@ -3,6 +3,8 @@
   import { onMount } from "svelte";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
+  import { WebLinksAddon } from "@xterm/addon-web-links";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import "@xterm/xterm/css/xterm.css";
   import {
     openLocalSession,
@@ -174,6 +176,13 @@
     });
     fit = new FitAddon();
     term.loadAddon(fit);
+    // Ctrl/Cmd+click opens http(s) links in the system browser; a plain click still selects.
+    term.loadAddon(
+      new WebLinksAddon((e, uri) => {
+        if (!(isMac ? e.metaKey : e.ctrlKey)) return;
+        if (/^https?:\/\//i.test(uri)) openUrl(uri).catch(() => {});
+      }),
+    );
     term.open(host);
     fit.fit();
     term.textarea?.addEventListener("focus", () => onfocus?.());
