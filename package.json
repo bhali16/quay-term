@@ -8,6 +8,9 @@
     "build": "vite build --config app/ui/vite.config.ts app/ui",
     "check": "svelte-check --workspace app/ui --tsconfig ./tsconfig.json",
     "tauri": "tauri",
+    "setup:dev": "vite --config app/setup/ui/vite.config.ts app/setup/ui",
+    "setup:build": "vite build --config app/setup/ui/vite.config.ts app/setup/ui",
+    "setup:check": "svelte-check --workspace app/setup/ui --tsconfig ./tsconfig.json",
     "test": "vitest run --root app/ui"
   },
   "dependencies": {

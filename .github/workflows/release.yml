@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds installers on all three OSes (Windows: a per-user NSIS setup.exe, no admin prompt) and attaches them
+# Pushing a tag like v0.1.0 builds installers on all three OSes (Windows: a branded setup app wrapping a per-user NSIS installer) and attaches them
 # to a draft GitHub Release, with a signed latest.json that installed copies read to
 # find updates. Review the draft, then publish it by hand; installed copies only see
 # the update once it is published. Needs the repository secrets
@@ -41,6 +41,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
       - run: npm ci
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs the update bundles; the matching public key is in tauri.conf.json.
@@ -49,7 +50,24 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: quay-term ${{ github.ref_name }}
-          releaseBody: See CHANGELOG.md for what changed. Installers are unsigned; see the README for first-run steps on macOS and Windows.
+          releaseBody: See CHANGELOG.md for what changed. On Windows, download Quay-Term-Setup.exe. Installers are unsigned; see the README for first-run steps on macOS and Windows.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+      # Windows only: wrap the NSIS installer tauri-action just built in the branded setup
+      # app (app/setup), and attach it to the same draft release. The plain *-setup.exe
+      # stays in the release because installed copies fetch it for in-app updates.
+      - name: Build the branded Windows setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $payload = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          npm run setup:build
+          $env:QUAY_SETUP_PAYLOAD = $payload
+          cargo build --release -p quay-setup
+          Copy-Item target/release/quay-setup.exe Quay-Term-Setup.exe
+          gh api --method POST `
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.tauri.outputs.releaseId }}/assets?name=Quay-Term-Setup.exe" `
+            -H "Content-Type: application/octet-stream" --input Quay-Term-Setup.exe

@@ -4090,6 +4090,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "quay-setup"
+version = "0.3.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+]
+
+[[package]]
 name = "quay-sftp"
 version = "0.3.0"
 dependencies = [

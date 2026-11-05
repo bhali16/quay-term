@@ -20,8 +20,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run setup:check
       - run: npm test
       - run: npm run build
+      - run: npm run setup:build
 
   rust:
     name: Rust (${{ matrix.os }})
@@ -48,6 +50,7 @@ jobs:
       # tauri::generate_context! needs the built frontend at compile time
       - run: npm ci
       - run: npm run build
+      - run: npm run setup:build
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy

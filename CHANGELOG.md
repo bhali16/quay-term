@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Changed
-- Windows now ships a single branded setup `.exe` (NSIS) in the app's colors and icon, installing per user with no admin prompt. The separate `.msi` is no longer built.
+- Windows has a new setup app, `Quay-Term-Setup.exe`, built with the same theme and fonts as the app: install or update in one click, choose a folder, and open Quay Term when done. It installs per user with no admin prompt. The separate `.msi` is no longer built.
 
 ## [0.3.0] - 2026-11-05
 

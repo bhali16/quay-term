@@ -9,6 +9,7 @@ members = [
     "crates/quay-sessions",
     "crates/quay-config",
     "app/src-tauri",
+    "app/setup",
 ]
 
 [workspace.package]

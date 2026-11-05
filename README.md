@@ -9,7 +9,7 @@ Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Window
 The installers are not code-signed or notarized yet, so your OS will warn on first launch.
 
 - **macOS:** drag Quay Term to Applications, then right-click it, choose Open and confirm. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine "/Applications/Quay Term.app"` and open it again.
-- **Windows:** SmartScreen may show "Windows protected your PC"; choose More info, then Run anyway.
+- **Windows:** download `Quay-Term-Setup.exe`. SmartScreen may show "Windows protected your PC"; choose More info, then Run anyway.
 - **Linux:** make the `.AppImage` executable (`chmod +x`) or install the `.deb`/`.rpm`.
 
 ### Updating

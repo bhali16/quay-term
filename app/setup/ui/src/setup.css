@@ -1,0 +1,52 @@
+/* Quay Dark, the app's default theme (app/ui/src/lib/themes.ts). */
+:root {
+  --bg: #1e1f24;
+  --bg-alt: #202127;
+  --bg-deep: #16171b;
+  --surface: #2b2d36;
+  --hover: #33353e;
+  --border: #44464f;
+  --input: #111111;
+  --fg: #e6e6e6;
+  --dim: #9297a6;
+  --accent: #3b6fd8;
+  --green: #4ec9a0;
+  --red: #f06b6b;
+  --font-ui: "DM Sans", system-ui, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-family: var(--font-ui);
+  color-scheme: dark;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
