@@ -689,9 +689,9 @@
   .host:hover {
     filter: brightness(1.12);
   }
+  /* A soft ring in the host's own colour, so the current one reads without a harsh white outline. */
   .host.current {
-    outline: 2px solid var(--fg);
-    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--bg-alt), 0 0 0 4px color-mix(in srgb, var(--c) 50%, transparent);
   }
   .host .live {
     position: absolute;
