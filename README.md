@@ -32,6 +32,9 @@ What it does today (v0.2):
 - **Secrets:** stored in the OS keychain, or in a master-password file on machines without one
 - **Backup:** encrypted export and import of sessions, secrets and snippets in one file (Argon2id and ChaCha20-Poly1305)
 - **Updates:** signed in-app updates (Settings > About)
+- **Command palette:** Cmd/Ctrl+K searches actions, sessions, snippets and tabs
+- **Environments:** colour and prod/staging badges on saved sessions, tab connection state, and a reconnect bar
+- **Command marks:** prompt jumping, copy last output and exit-code bars for local zsh/bash (and remote ones on request)
 - **Clipboard:** copy on select, Ctrl+C copies a selection, right-click pastes (Windows/Linux), Ctrl+click opens links
 - Five built-in themes, bundled fonts, configurable shortcuts
 - Installers for macOS (Apple silicon and Intel), Linux and Windows

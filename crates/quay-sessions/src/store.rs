@@ -27,7 +27,7 @@ pub struct ImportSummary {
     pub skipped: usize,
 }
 
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 /// Longest chain of jump hosts we follow; a longer one is almost surely a mistake.
 pub const MAX_JUMPS: usize = 8;
@@ -108,6 +108,12 @@ impl SessionStore {
                  );",
             )?;
             conn.pragma_update(None, "user_version", 3)?;
+            version = 3;
+        }
+        if version < 4 {
+            // Environment label (prod, staging, ...) shown as a badge on the tab.
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN env TEXT;")?;
+            conn.pragma_update(None, "user_version", 4)?;
         }
         Ok(Self { conn })
     }
@@ -119,8 +125,8 @@ impl SessionStore {
         self.check_jump(None, input.jump_id)?;
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO sessions (name, folder_id, host, port, user, auth, key_path, color, jump_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO sessions (name, folder_id, host, port, user, auth, key_path, color, jump_id, env)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 input.name,
                 input.folder_id,
@@ -130,7 +136,8 @@ impl SessionStore {
                 input.auth.as_str(),
                 input.key_path,
                 input.color,
-                input.jump_id
+                input.jump_id,
+                input.env
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -150,7 +157,7 @@ impl SessionStore {
         let tx = self.conn.transaction()?;
         let changed = tx.execute(
             "UPDATE sessions SET name=?2, folder_id=?3, host=?4, port=?5, user=?6,
-                                 auth=?7, key_path=?8, color=?9, jump_id=?10 WHERE id=?1",
+                                 auth=?7, key_path=?8, color=?9, jump_id=?10, env=?11 WHERE id=?1",
             params![
                 id,
                 input.name,
@@ -161,7 +168,8 @@ impl SessionStore {
                 input.auth.as_str(),
                 input.key_path,
                 input.color,
-                input.jump_id
+                input.jump_id,
+                input.env
             ],
         )?;
         if changed == 0 {
@@ -290,7 +298,7 @@ impl SessionStore {
 
     fn query_sessions(&self, filter: &str, args: Vec<String>) -> Result<Vec<SavedSession>> {
         let sql = format!(
-            "SELECT s.id, s.name, s.folder_id, s.host, s.port, s.user, s.auth, s.key_path, s.color, s.has_secret, s.jump_id
+            "SELECT s.id, s.name, s.folder_id, s.host, s.port, s.user, s.auth, s.key_path, s.color, s.has_secret, s.jump_id, s.env
              FROM sessions s {filter} ORDER BY s.name COLLATE NOCASE, s.id"
         );
         let mut stmt = self.conn.prepare(&sql)?;
@@ -318,6 +326,7 @@ impl SessionStore {
                         color: r.get(8)?,
                         tags: vec![],
                         jump_id: r.get(10)?,
+                        env: r.get(11)?,
                         tunnels: vec![],
                     },
                     has_secret: r.get(9)?,
@@ -584,6 +593,10 @@ fn clean(input: &SessionInput) -> Result<SessionInput> {
     if out.auth == AuthKind::Key && out.key_path.is_none() {
         return Err(Error::Invalid("choose a private key file".into()));
     }
+    out.env = out
+        .env
+        .map(|e| e.trim().chars().take(8).collect::<String>())
+        .filter(|e| !e.is_empty());
     // Tags: trimmed, no empties, no case-insensitive duplicates.
     let mut tags: Vec<String> = Vec::new();
     for t in out.tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
@@ -661,10 +674,23 @@ mod tests {
             auth: AuthKind::Agent,
             key_path: None,
             color: None,
+            env: None,
             tags: vec![],
             jump_id: None,
             tunnels: vec![],
         }
+    }
+
+    #[test]
+    fn env_label_is_trimmed_capped_and_kept() {
+        let mut s = SessionStore::open_in_memory().unwrap();
+        let mut i = input("db", "db.example.com");
+        i.env = Some("  production-eu  ".into());
+        let made = s.create_session(&i).unwrap();
+        assert_eq!(made.input.env.as_deref(), Some("producti"));
+        i.env = Some("   ".into());
+        let upd = s.update_session(made.id, &i).unwrap();
+        assert_eq!(upd.input.env, None);
     }
 
     #[test]

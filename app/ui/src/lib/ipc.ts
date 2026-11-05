@@ -31,11 +31,12 @@ export const getAppInfo = () => invoke<AppInfo>("get_app_info");
 export function openLocalSession(
   cols: number,
   rows: number,
+  integration: boolean,
   onOutput: (data: Uint8Array) => void,
 ): Promise<number> {
   const channel = new Channel<ArrayBuffer>();
   channel.onmessage = (buf) => onOutput(new Uint8Array(buf));
-  return invoke<number>("open_local_session", { cols, rows, onOutput: channel });
+  return invoke<number>("open_local_session", { cols, rows, integration, onOutput: channel });
 }
 
 /** Connect over SSH; rejects with a user-readable message. */

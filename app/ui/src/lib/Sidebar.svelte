@@ -664,13 +664,16 @@
     background: var(--border);
   }
   .railhosts {
+    /* Full rail width: as a centred flex item it shrinks to the 30px button, and this scroll
+       box then clips the status dot that hangs off the button's corner. */
+    align-self: stretch;
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    padding: 2px 0;
+    padding: 4px 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -689,9 +692,16 @@
   .host:hover {
     filter: brightness(1.12);
   }
-  .host.current {
-    outline: 2px solid var(--fg);
-    outline-offset: 2px;
+  /* The current host gets a slim bar on the rail's edge (no frame around the button). */
+  .host.current::before {
+    content: "";
+    position: absolute;
+    left: -7px;
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--c);
   }
   .host .live {
     position: absolute;

@@ -37,6 +37,13 @@ pub struct Settings {
     pub copy_on_select: bool,
     /// Look for a newer release shortly after launch. Nothing is installed without a click.
     pub check_for_updates: bool,
+    /// Show a hint bar with shortcuts when a session has ended.
+    pub show_hints: bool,
+    /// Mark prompts and commands in local shells (OSC 133) so the terminal can jump between
+    /// them and copy their output. Remote shells are never touched without a request.
+    pub shell_integration: bool,
+    /// Draw a green or red bar beside each finished command.
+    pub block_gutter: bool,
     /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
     pub keybindings: BTreeMap<String, String>,
 }
@@ -53,6 +60,9 @@ impl Default for Settings {
             scrollback: 5000,
             copy_on_select: true,
             check_for_updates: true,
+            show_hints: true,
+            shell_integration: true,
+            block_gutter: true,
             keybindings: BTreeMap::new(),
         }
     }

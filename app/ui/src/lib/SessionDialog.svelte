@@ -53,6 +53,7 @@
   let auth = $state<AuthKind>(s?.auth ?? "password");
   let keyPath = $state(s?.key_path ?? "~/.ssh/id_ed25519");
   let color = $state<string | null>(s?.color ?? null);
+  let env = $state(s?.env ?? "");
   let folderId = $state<number | null>(s ? s.folder_id : untrack(() => defaultFolderId));
   let tags = $state((s?.tags ?? []).join(", "));
   let jumpId = $state<number | null>(s?.jump_id ?? null);
@@ -105,6 +106,7 @@
       auth,
       key_path: auth === "key" ? keyPath.trim() : null,
       color,
+      env: env.trim() || null,
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
       jump_id: jumpId,
       tunnels: $state.snapshot(tunnels),
@@ -182,6 +184,8 @@
         </select>
       </label>
     </div>
+    <label>Environment <input bind:value={env} maxlength="8" list="env-presets" placeholder="prod, staging, dev (optional badge)" autocapitalize="off" spellcheck="false" /></label>
+    <datalist id="env-presets"><option value="prod"></option><option value="staging"></option><option value="dev"></option></datalist>
     <label>Tags <input bind:value={tags} placeholder="prod, eu (comma separated)" /></label>
     <div class="tunnels">
       <div class="thead">

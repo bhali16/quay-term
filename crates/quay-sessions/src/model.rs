@@ -57,6 +57,9 @@ pub struct SessionInput {
     pub key_path: Option<String>,
     /// Display colour as a CSS hex string such as `#3b6fd8`.
     pub color: Option<String>,
+    /// Short environment label such as `prod` or `staging`, shown as a badge.
+    #[serde(default)]
+    pub env: Option<String>,
     pub tags: Vec<String>,
     /// Another saved session to connect through (a jump host or bastion).
     #[serde(default)]

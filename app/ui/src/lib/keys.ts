@@ -22,7 +22,15 @@ export type Action =
   | "settings"
   | "zoom_in"
   | "zoom_out"
-  | "zoom_reset";
+  | "zoom_reset"
+  | "palette"
+  | "prev_prompt"
+  | "next_prompt"
+  | "copy_last_output"
+  | "select_last_output"
+  | "copy_last_command"
+  | "rerun_last"
+  | "enable_integration";
 
 export const actionLabels: Record<Action, string> = {
   new_tab: "New local tab",
@@ -48,6 +56,14 @@ export const actionLabels: Record<Action, string> = {
   zoom_in: "Increase font size",
   zoom_out: "Decrease font size",
   zoom_reset: "Reset font size",
+  palette: "Command palette",
+  prev_prompt: "Jump to previous prompt",
+  next_prompt: "Jump to next prompt",
+  copy_last_output: "Copy output of last command",
+  select_last_output: "Select output of last command",
+  copy_last_command: "Copy last command",
+  rerun_last: "Type last command again (no Enter)",
+  enable_integration: "Enable command marks in this remote shell",
 };
 
 export const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
@@ -78,6 +94,14 @@ export const defaultBindings: Record<Action, string> = {
   zoom_in: isMac ? "Cmd+=" : "Ctrl+Shift+=",
   zoom_out: isMac ? "Cmd+-" : "Ctrl+Shift+-",
   zoom_reset: isMac ? "Cmd+0" : "Ctrl+Shift+0",
+  palette: isMac ? "Cmd+K" : "Ctrl+Shift+P",
+  prev_prompt: isMac ? "Cmd+ArrowUp" : "Ctrl+Shift+ArrowUp",
+  next_prompt: isMac ? "Cmd+ArrowDown" : "Ctrl+Shift+ArrowDown",
+  copy_last_output: isMac ? "Shift+Cmd+O" : "Ctrl+Alt+O",
+  select_last_output: isMac ? "Alt+Cmd+O" : "Ctrl+Alt+Shift+O",
+  copy_last_command: isMac ? "Alt+Shift+Cmd+C" : "Ctrl+Alt+Shift+C",
+  rerun_last: isMac ? "Shift+Cmd+R" : "Ctrl+Alt+R",
+  enable_integration: isMac ? "Alt+Shift+Cmd+I" : "Ctrl+Alt+Shift+I",
 };
 
 const MODS = ["Ctrl", "Alt", "Shift", "Cmd"] as const;

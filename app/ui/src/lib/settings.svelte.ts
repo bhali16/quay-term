@@ -14,6 +14,9 @@ const fallback: Settings = {
   scrollback: 5000,
   copy_on_select: true,
   check_for_updates: true,
+  show_hints: true,
+  shell_integration: true,
+  block_gutter: true,
   keybindings: {},
 };
 

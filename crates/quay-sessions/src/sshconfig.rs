@@ -47,6 +47,7 @@ impl ImportedHost {
             },
             key_path: self.identity_file.clone(),
             color: None,
+            env: None,
             tags,
             jump_id: None,
             tunnels: self.tunnels.clone(),
