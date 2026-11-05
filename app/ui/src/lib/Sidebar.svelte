@@ -669,8 +669,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 4px 0;
+    gap: 12px;
+    /* Room below the last button for its open-tab dot. */
+    padding: 4px 0 10px;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -700,13 +701,13 @@
     border-radius: 2px;
     background: var(--c);
   }
-  /* Inside the button's corner, so nothing clips it and no ring has to blend with the rail. */
+  /* Open in a tab: a small dot centred under the button, like an app in the dock. */
   .host .live {
     position: absolute;
-    right: 3px;
-    bottom: 3px;
-    width: 8px;
-    height: 8px;
-    box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.28);
+    left: 50%;
+    bottom: -6px;
+    width: 5px;
+    height: 5px;
+    transform: translateX(-50%);
   }
 </style>
