@@ -18,3 +18,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde.workspace = true
+
+[features]
+# Serve the bundled UI instead of the dev server. The Tauri CLI turns this on for you;
+# the release workflow builds with plain cargo, so it has to be on by default.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
