@@ -48,6 +48,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          # The repo has two Tauri projects (app/src-tauri and app/setup); without this the
+          # CLI may pick the setup app.
+          projectPath: app/src-tauri
           tagName: ${{ github.ref_name }}
           releaseName: quay-term ${{ github.ref_name }}
           releaseBody: See CHANGELOG.md for what changed. On Windows, download Quay-Term-Setup.exe. Installers are unsigned; see the README for first-run steps on macOS and Windows.
