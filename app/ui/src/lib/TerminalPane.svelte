@@ -268,6 +268,7 @@
         const text = blockText(b, !e.altKey);
         if (!text) return;
         void writeClipboard(text);
+        flashCopied(text);
         btn.innerHTML = CHECK_ICON;
         btn.style.color = settings.theme.ui.green;
         setTimeout(() => {
@@ -477,7 +478,19 @@
     const onMouseUp = () => {
       if (settings.value.copy_on_select && term.hasSelection()) copySelection();
     };
-    host.addEventListener("mouseup", onMouseUp);
+    // The drag can end outside the pane (dragging past the edge to select many lines), so the
+    // release is caught on the window, but only for a drag that started in this pane.
+    let selecting = false;
+    const onMouseDown = (e: MouseEvent) => {
+      selecting = e.button === 0;
+    };
+    const onWindowMouseUp = () => {
+      if (!selecting) return;
+      selecting = false;
+      onMouseUp();
+    };
+    host.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mouseup", onWindowMouseUp);
     // Right-click pastes on Windows/Linux (PuTTY-style); macOS keeps the native context menu.
     const onContext = (e: MouseEvent) => {
       if (isMac) return;
@@ -508,7 +521,8 @@
     return () => {
       clearTimeout(copiedTimer);
       ro.disconnect();
-      host.removeEventListener("mouseup", onMouseUp);
+      host.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", onWindowMouseUp);
       host.removeEventListener("contextmenu", onContext);
       host.removeEventListener("paste", onPaste, true);
       if (id !== null) sessionClose(id);
@@ -554,7 +568,8 @@
     position: absolute;
     top: 5px;
     right: 14px;
-    z-index: 1;
+    /* Above xterm's decorations (the block copy buttons sit at z-index 6). */
+    z-index: 8;
     display: flex;
     gap: 6px;
     pointer-events: none;
