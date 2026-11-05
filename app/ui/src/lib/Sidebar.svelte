@@ -669,9 +669,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    /* Room below the last button for its open-tab dot. */
-    padding: 4px 0 10px;
+    gap: 6px;
+    padding: 2px 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -701,13 +700,13 @@
     border-radius: 2px;
     background: var(--c);
   }
-  /* Open in a tab: a small dot centred under the button, like an app in the dock. */
   .host .live {
     position: absolute;
-    left: 50%;
-    bottom: -6px;
-    width: 5px;
-    height: 5px;
-    transform: translateX(-50%);
+    right: -3px;
+    bottom: -3px;
+    box-sizing: border-box;
+    border: 2px solid var(--bg-alt);
+    width: 11px;
+    height: 11px;
   }
 </style>
