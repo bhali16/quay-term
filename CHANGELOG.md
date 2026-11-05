@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-05
+
 ### Changed
 - Windows has a new setup app, `Quay-Term-Setup.exe`, built with the same theme and fonts as the app: install or update in one click, choose a folder, and open Quay Term when done. It installs per user with no admin prompt. The separate `.msi` is no longer built.
 
