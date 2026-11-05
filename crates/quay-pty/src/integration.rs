@@ -7,6 +7,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+#[cfg(unix)]
 use portable_pty::CommandBuilder;
 
 const FILES: &[(&str, &str)] = &[
@@ -34,11 +35,13 @@ pub fn install(dir: &Path) -> io::Result<()> {
 }
 
 /// Single-quote `s` for a POSIX shell.
+#[cfg(unix)]
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Adjust how `shell` starts so it loads the integration. Does nothing for other shells.
+#[cfg(unix)]
 pub(crate) fn configure(cmd: &mut CommandBuilder, shell: &str, dir: &Path) {
     let name = Path::new(shell)
         .file_stem()
