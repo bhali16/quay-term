@@ -360,6 +360,9 @@
     opening
       .then((sid) => {
         id = sid;
+        // The pane may have been resized while the session was opening; resizes in that window
+        // were dropped, which leaves the shell with a stale width (and zsh showing a stray "%").
+        sessionResize(sid, term.cols, term.rows);
         onstatus?.("connected");
         onconnected?.();
       })
