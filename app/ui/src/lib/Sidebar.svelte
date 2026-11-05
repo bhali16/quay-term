@@ -670,8 +670,7 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    /* Room for the status dot, which hangs off the button's corner; the scroll box would clip it. */
-    padding: 6px 0;
+    padding: 4px 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -701,13 +700,13 @@
     border-radius: 2px;
     background: var(--c);
   }
+  /* Inside the button's corner, so nothing clips it and no ring has to blend with the rail. */
   .host .live {
     position: absolute;
-    right: -3px;
-    bottom: -3px;
-    box-sizing: border-box;
-    border: 2px solid var(--bg-alt);
-    width: 11px;
-    height: 11px;
+    right: 3px;
+    bottom: 3px;
+    width: 8px;
+    height: 8px;
+    box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.28);
   }
 </style>
