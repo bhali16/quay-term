@@ -5,10 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-05
+
 ### Changed
 - Copying a selection (copy on select, Ctrl/Cmd+C) now shows a short "Copied" label in the top right of the pane, with the line count for several lines.
 
 ### Added
+- Desktop notifications: when quay-term is in the background, you are told when a command that ran longer than a threshold finishes (15 seconds by default) and when a session disconnects. Turn it off or change the threshold under Settings > Terminal. Long-command alerts need command marks.
 - Command palette (Cmd+K, or Ctrl+Shift+P on Windows and Linux): one search box for actions, saved sessions, snippets and open tabs. Type `>`, `@`, `!` or `/` first to search only actions, sessions, snippets or tabs.
 - Saved sessions can carry an environment label (prod, staging, dev, or your own, up to 8 characters). The label shows as a badge on the tab and the pane, the session colour underlines the tab and the top of the pane, and pasting several lines into a `prod` session asks first.
 - Tabs show connection state: a pulsing dot while connecting, green when connected, a hollow red dot when disconnected, and a blue dot when a background tab has new output.
