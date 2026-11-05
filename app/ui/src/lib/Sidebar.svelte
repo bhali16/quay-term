@@ -669,8 +669,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 2px 0;
+    gap: 8px;
+    /* Room for the status dot, which hangs off the button's corner; the scroll box would clip it. */
+    padding: 6px 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -689,9 +690,16 @@
   .host:hover {
     filter: brightness(1.12);
   }
-  /* A soft ring in the host's own colour, so the current one reads without a harsh white outline. */
-  .host.current {
-    box-shadow: 0 0 0 2px var(--bg-alt), 0 0 0 4px color-mix(in srgb, var(--c) 50%, transparent);
+  /* The current host gets a slim bar on the rail's edge (no frame around the button). */
+  .host.current::before {
+    content: "";
+    position: absolute;
+    left: -7px;
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--c);
   }
   .host .live {
     position: absolute;
