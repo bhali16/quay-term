@@ -35,3 +35,6 @@ app/src-tauri/gen/
 
 # Local promo video project (Remotion), not part of the repo
 promo/
+
+# Local feature-idea notes, not part of the repo
+docs/FEATURE_IDEAS.md

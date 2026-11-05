@@ -7,6 +7,7 @@
   export type Target = "focused" | "tab" | "broadcast";
   let {
     snippets,
+    initial = null,
     tabPanes,
     broadcast,
     onsend,
@@ -15,6 +16,8 @@
     onclose,
   }: {
     snippets: Snippet[];
+    /** Open straight into this snippet's fill form (chosen from the command palette). */
+    initial?: Snippet | null;
     /** Panes in the current tab. */
     tabPanes: number;
     /** Panes currently selected for broadcast. */
@@ -44,6 +47,9 @@
     target = broadcast > 0 ? "broadcast" : "focused";
     mode = "fill";
   }
+  $effect.pre(() => {
+    if (initial && mode === "list" && !current) pick(initial);
+  });
   function send() {
     if (!current) return;
     onsend(toInput(fill(current.body, values), enter), target);

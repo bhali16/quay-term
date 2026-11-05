@@ -15,7 +15,11 @@ key_path: string | null,
 /**
  * Display colour as a CSS hex string such as `#3b6fd8`.
  */
-color: string | null, tags: Array<string>, 
+color: string | null, 
+/**
+ * Short environment label such as `prod` or `staging`, shown as a badge.
+ */
+env: string | null, tags: Array<string>, 
 /**
  * Another saved session to connect through (a jump host or bastion).
  */

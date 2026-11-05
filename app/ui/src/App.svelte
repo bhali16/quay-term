@@ -30,6 +30,9 @@
   import type { LibraryView } from "./lib/bindings/LibraryView";
   import type { SavedSession } from "./lib/bindings/SavedSession";
   import TerminalPane from "./lib/TerminalPane.svelte";
+  import type { PaneStatus } from "./lib/TerminalPane.svelte";
+  import Palette from "./lib/Palette.svelte";
+  import type { PaletteItem } from "./lib/Palette.svelte";
   import FilePanel from "./lib/FilePanel.svelte";
   import TunnelPanel from "./lib/TunnelPanel.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
@@ -44,7 +47,7 @@
   import type { Target } from "./lib/SnippetDialog.svelte";
   import type { Snippet } from "./lib/bindings/Snippet";
   import { settings } from "./lib/settings.svelte";
-  import { actionFor, isMac, type Action } from "./lib/keys";
+  import { actionFor, actionLabels, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
@@ -64,6 +67,10 @@
     layout: P.Node;
     focus: number;
     panes: Record<number, TerminalPane>;
+    /** Connection state of each pane, reported by the pane itself. */
+    status: Record<number, PaneStatus>;
+    /** Output arrived while this tab was in the background. */
+    activity: boolean;
   };
 
   let info = $state<AppInfo | null>(null);
@@ -126,7 +133,7 @@
     const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
     // A saved session comes back with the split layout it was last closed with.
     const layout = (saved && loadShape(saved.id)) || { leaf: ++paneCounter };
-    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], panes: {} });
+    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], panes: {}, status: {}, activity: false });
     activeKey = key;
   }
 
@@ -162,6 +169,7 @@
     const order = P.leaves(tab.layout);
     setLayout(tab, next);
     delete tab.panes[id];
+    delete tab.status[id];
     broadcast = broadcast.filter((b) => b !== id);
     if (tab.focus === id) tab.focus = P.leaves(next)[Math.min(order.indexOf(id), order.length - 2)];
   }
@@ -307,6 +315,105 @@
   };
 
   const activeTab = $derived(tabs.find((t) => t.key === activeKey));
+  // A tab you switch to has nothing unseen any more.
+  $effect(() => {
+    if (activeTab) activeTab.activity = false;
+  });
+
+  // ---- session colour, environment and connection state ----
+  const savedOf = (tab: Tab) => (tab.saved ? library.sessions.find((x) => x.id === tab.saved!.id) : undefined);
+  const envOf = (tab: Tab) => savedOf(tab)?.env ?? null;
+  const colorOf = (tab: Tab) => savedOf(tab)?.color ?? null;
+  type TabState = "connecting" | "connected" | "ended" | "local";
+  function stateOf(tab: Tab): TabState {
+    const all = P.leaves(tab.layout).map((id) => tab.status[id]);
+    const remote = !!(tab.ssh || tab.saved);
+    if (all.length && all.every((s) => s === "ended")) return "ended";
+    if (all.some((s) => s === "connecting" || s === undefined)) return remote ? "connecting" : "local";
+    return remote ? "connected" : "local";
+  }
+  const stateLabel: Record<TabState, string> = { connecting: "Connecting", connected: "Connected", ended: "Disconnected", local: "" };
+
+  // ---- command palette ----
+  let showPalette = $state(false);
+  let paletteSessions = $state<SavedSession[]>([]);
+  let snippetPick = $state<Snippet | null>(null);
+  const RECENT_KEY = "quay.palette.recent";
+  function readRecent(): string[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+      return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(0, 8) : [];
+    } catch {
+      return [];
+    }
+  }
+  let recent = $state<string[]>(readRecent());
+  function remember(id: string) {
+    recent = [id, ...recent.filter((x) => x !== id)].slice(0, 8);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+    } catch {
+      /* recents are optional */
+    }
+  }
+  function openPalette() {
+    showPalette = true;
+    paletteSessions = library.sessions;
+    // The sidebar search may have narrowed `library`; the palette searches everything.
+    libraryLoad().then((l) => (paletteSessions = l.sessions)).catch(() => {});
+  }
+  const paletteItems = $derived.by((): PaletteItem[] => {
+    const acts = (Object.keys(actionLabels) as Action[])
+      .filter((a) => a !== "palette")
+      .map((a): PaletteItem => ({ id: `action:${a}`, group: "Actions", title: actionLabels[a], hint: settings.bindings[a], run: () => runAction(a) }));
+    const extra: PaletteItem[] = [
+      { id: "cmd:ssh", group: "Actions", title: "New SSH connection…", run: () => (connecting = true) },
+      { id: "cmd:session", group: "Actions", title: "New saved session…", run: () => ((dialogError = null), (editing_session = { session: null, folderId: null })) },
+      { id: "cmd:import", group: "Actions", title: "Import hosts from ~/.ssh/config", run: doImport },
+      { id: "cmd:tunnels", group: "Actions", title: "Toggle tunnels panel", run: () => activeTab && (activeTab.ssh || activeTab.saved) && (activeTab.tunnels = !activeTab.tunnels) },
+    ];
+    const sess = paletteSessions.map((s): PaletteItem => ({
+      id: `session:${s.id}`,
+      group: "Sessions",
+      title: s.name,
+      subtitle: `${s.user}@${s.host}${s.port === 22 ? "" : `:${s.port}`}${s.tags.length ? `  ·  ${s.tags.join(", ")}` : ""}${s.env ? `  ·  ${s.env}` : ""}`,
+      run: () => connectSaved(s),
+    }));
+    const snips = snippets.map((sn): PaletteItem => ({
+      id: `snippet:${sn.id}`,
+      group: "Snippets",
+      title: sn.name,
+      subtitle: sn.body.split("\n")[0].slice(0, 80),
+      run: () => ((snippetPick = sn), (showSnippets = true)),
+    }));
+    const open = tabs.map((t): PaletteItem => ({
+      id: `tab:${t.key}`,
+      group: "Tabs",
+      title: t.title,
+      subtitle: t.key === activeKey ? "current tab" : t.ssh ? `${t.ssh.user}@${t.ssh.host}` : t.saved ? "saved session" : "local shell",
+      run: () => (activeKey = t.key),
+    }));
+    return [...acts, ...extra, ...sess, ...snips, ...open];
+  });
+  function runPalette(item: PaletteItem) {
+    showPalette = false;
+    remember(item.id);
+    // Let the palette unmount first so focus returns to the terminal, not to the closing dialog.
+    queueMicrotask(() => {
+      item.run();
+      if (!showSnippets && !editing_session && !connecting) requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal());
+    });
+  }
+
+  // ---- command marks ----
+  const NO_MARKS =
+    "No command marks in this pane yet. Local zsh and bash get them automatically (Settings > Terminal); for a remote shell, run \"Enable command marks in this remote shell\" from the palette.";
+  function paneAction(fn: (p: TerminalPane) => unknown) {
+    const p = focusedPane(activeTab);
+    if (!p) return;
+    if (!p.hasMarks()) return toast(NO_MARKS);
+    return fn(p);
+  }
 
   function connectSsh(target: SshTarget) {
     connecting = false;
@@ -361,6 +468,28 @@
       case "zoom_in": return zoom(1);
       case "zoom_out": return zoom(-1);
       case "zoom_reset": return settings.update({ ...settings.value, font_size: 14 });
+      case "palette": return showPalette ? (showPalette = false) : openPalette();
+      case "prev_prompt": return paneAction((p) => p.prevPrompt() || toast("No earlier prompt."));
+      case "next_prompt": return paneAction((p) => p.nextPrompt());
+      case "copy_last_output":
+        return paneAction((p) => {
+          const n = p.copyLastOutput();
+          toast(n === null ? "No finished command yet." : n === 0 ? "The last command printed nothing." : `Copied ${n} line${n === 1 ? "" : "s"} of output.`, n ? "success" : "info");
+        });
+      case "select_last_output": return paneAction((p) => p.selectLastOutput() || toast("No output to select."));
+      case "copy_last_command":
+        return paneAction((p) => {
+          const c = p.copyLastCommand();
+          toast(c ? `Copied: ${c.length > 60 ? c.slice(0, 60) + "…" : c}` : "No finished command yet.", c ? "success" : "info");
+        });
+      case "rerun_last": return paneAction((p) => p.retypeLast() ?? toast("No command to type again."));
+      case "enable_integration": {
+        const p = focusedPane(activeTab);
+        if (!p || p.isEnded() || p.sessionId() === null) return toast("This pane is not connected.");
+        if (!(activeTab?.ssh || activeTab?.saved)) return toast("Local shells get command marks automatically when the setting is on.");
+        p.enableIntegration();
+        return toast("Typed a one-line hook into this shell (bash or zsh). It defines functions for this session only and writes no files.");
+      }
     }
   }
   function zoom(d: number) {
@@ -443,7 +572,10 @@
   <div class="col">
   <nav class="tabs" data-tauri-drag-region>
     {#each tabs as tab (tab.key)}
-      <div class="tab" class:active={tab.key === activeKey}>
+      {@const st = stateOf(tab)}
+      {@const tcolor = colorOf(tab)}
+      {@const tenv = envOf(tab)}
+      <div class="tab" class:active={tab.key === activeKey} style:--tc={tcolor ?? "transparent"}>
         {#if editing === tab.key}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -454,8 +586,14 @@
           />
         {:else}
           <button class="label" onclick={() => (activeKey = tab.key)} ondblclick={() => (editing = tab.key)}>
-            {#if tab.ssh || tab.saved}<span class="sshdot" title="SSH session"></span>{/if}
+            {#if st !== "local" || tab.ssh || tab.saved}
+              <span class="sshdot {st}" role="img" aria-label={stateLabel[st] || "Local shell"} title={stateLabel[st] || "Local shell"}></span>
+            {:else if st === "local" && Object.values(tab.status).length && Object.values(tab.status).every((x) => x === "ended")}
+              <span class="sshdot ended" role="img" aria-label="Exited" title="Exited"></span>
+            {/if}
             <span class="ttl">{tab.title}</span>
+            {#if tenv}<span class="envpill" class:prod={/^prod/i.test(tenv)} style:--c={tcolor ?? "var(--accent)"}>{tenv}</span>{/if}
+            {#if tab.activity}<span class="activity" role="img" aria-label="New output" title="New output"></span>{/if}
           </button>
         {/if}
         <button class="close" aria-label="Close tab" onclick={() => closeTab(tab.key)}>×</button>
@@ -506,6 +644,12 @@
                 broadcasting={broadcast.includes(p.id)}
                 ssh={tab.ssh}
                 saved={tab.saved}
+                env={envOf(tab)}
+                color={colorOf(tab)}
+                confirmPaste={/^prod/i.test(envOf(tab) ?? "")}
+                onstatus={(s) => (tab.status[p.id] = s)}
+                onactivity={() => (tab.activity = true)}
+                onfiles={tab.ssh || tab.saved ? () => (tab.files = true) : undefined}
                 onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
               />
             </div>
@@ -587,13 +731,17 @@
   {#if showSnippets}
     <SnippetDialog
       {snippets}
+      initial={snippetPick}
       tabPanes={activeTab ? P.leaves(activeTab.layout).length : 0}
       broadcast={broadcast.length}
       onsend={sendSnippet}
       onsave={saveSnippet}
       ondelete={removeSnippet}
-      onclose={() => (showSnippets = false)}
+      onclose={() => ((showSnippets = false), (snippetPick = null))}
     />
+  {/if}
+  {#if showPalette}
+    <Palette items={paletteItems} {recent} onrun={runPalette} onclose={() => ((showPalette = false), requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal()))} />
   {/if}
   {#if showUnlock && vault}
     <UnlockDialog isNew={vault.is_new} ondone={() => ((showUnlock = false), loadVault(), refresh())} oncancel={() => (showUnlock = false)} />
@@ -701,8 +849,53 @@
     flex: none;
     width: 7px;
     height: 7px;
+    box-sizing: border-box;
     border-radius: 50%;
     background: var(--green);
+  }
+  .sshdot.connecting {
+    background: var(--yellow);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .sshdot.ended {
+    background: transparent;
+    border: 1.5px solid var(--red);
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.3;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sshdot.connecting {
+      animation: none;
+    }
+  }
+  .envpill {
+    flex: none;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--c);
+    color: var(--on-accent, #fff);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .envpill.prod {
+    background: var(--red);
+    color: var(--bg);
+  }
+  .activity {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  /* The session colour underlines its tab. */
+  .tab {
+    box-shadow: inset 0 -2px 0 var(--tc, transparent);
   }
   button,
   input {

@@ -4,6 +4,9 @@
 //! dedicated thread and coalesced into batches (~8 ms) before being handed to
 //! the caller, so a busy program cannot flood the UI with tiny events.
 
+mod integration;
+pub use integration::install as install_shell_integration;
+
 use std::io::{Read, Write};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -34,6 +37,9 @@ pub struct SpawnOptions {
     pub program: Option<String>,
     pub args: Vec<String>,
     pub size: TermSize,
+    /// Where the shell integration scripts live (see [`install_shell_integration`]).
+    /// Applied to zsh and bash only; `None` starts the shell untouched.
+    pub integration_dir: Option<std::path::PathBuf>,
 }
 
 /// The user's default shell for this platform.
@@ -88,7 +94,12 @@ impl PtySession {
         // user's profile (PATH, prompt, LS_COLORS) is loaded even when the app was
         // launched from the Dock with a minimal environment.
         let default = opts.program.is_none();
-        let mut cmd = CommandBuilder::new(opts.program.unwrap_or_else(default_shell));
+        let shell = opts.program.unwrap_or_else(default_shell);
+        let mut cmd = CommandBuilder::new(&shell);
+        #[cfg(unix)]
+        if let Some(dir) = opts.integration_dir.as_deref() {
+            integration::configure(&mut cmd, &shell, dir);
+        }
         #[cfg(not(windows))]
         if default && opts.args.is_empty() {
             cmd.arg("-l");
@@ -234,6 +245,7 @@ mod tests {
             program: Some(program.to_string()),
             args: args.into_iter().map(String::from).collect(),
             size: TermSize { cols: 80, rows: 24 },
+            integration_dir: None,
         }
     }
 
@@ -275,6 +287,96 @@ mod tests {
         let mut batches = Vec::new();
         batch_output(rx, |b| batches.push(b));
         assert_eq!(batches, vec![b"abcdef".to_vec()]);
+    }
+
+    /// A real interactive shell, started the way the app starts it, must emit the command marks.
+    #[cfg(unix)]
+    fn marks_from(shell: &str, args: &[&str]) -> Option<Vec<u8>> {
+        if !std::path::Path::new(shell).exists() {
+            return None;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "quay-pty-e2e-{}-{}",
+            shell.replace('/', "_"),
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        install_shell_integration(&dir).unwrap();
+        let out = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = out.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut s = PtySession::spawn(
+            SpawnOptions {
+                program: Some(shell.to_string()),
+                args: args.iter().map(|a| a.to_string()).collect(),
+                size: TermSize { cols: 80, rows: 24 },
+                integration_dir: Some(dir.clone()),
+            },
+            move |c| sink.lock().unwrap().extend(c),
+            move || {
+                let _ = tx.send(());
+            },
+        )
+        .unwrap();
+        // Give the shell time to read its startup files, then run a command and leave.
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        s.write(b"echo quaytest\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        s.write(b"exit\n").unwrap();
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(10));
+        let _ = std::fs::remove_dir_all(&dir);
+        let bytes = out.lock().unwrap().clone();
+        Some(bytes)
+    }
+
+    #[cfg(unix)]
+    fn has(bytes: &[u8], needle: &[u8]) -> bool {
+        bytes.windows(needle.len()).any(|w| w == needle)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn zsh_started_with_integration_emits_marks() {
+        let Some(out) = marks_from("/bin/zsh", &["-i"]) else {
+            return;
+        };
+        for mark in [
+            &b"\x1b]133;A\x07"[..],
+            b"\x1b]133;C\x07",
+            b"\x1b]133;D;0\x07",
+        ] {
+            assert!(
+                has(&out, mark),
+                "missing {:?} in {:?}",
+                String::from_utf8_lossy(mark),
+                String::from_utf8_lossy(&out)
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn modern_bash_started_with_integration_emits_marks() {
+        // PS0 needs bash 4.4+; the macOS system bash is 3.2 and simply gets no command marks.
+        let modern = std::process::Command::new("/bin/bash")
+            .args(["-c", "[[ ${BASH_VERSINFO[0]} -gt 4 || ( ${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -ge 4 ) ]]"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !modern {
+            return;
+        }
+        let Some(out) = marks_from("/bin/bash", &["--norc", "-i"]) else {
+            return;
+        };
+        for mark in [&b"\x1b]133;C\x07"[..], b"\x1b]133;D;0\x07"] {
+            assert!(
+                has(&out, mark),
+                "missing {:?} in {:?}",
+                String::from_utf8_lossy(mark),
+                String::from_utf8_lossy(&out)
+            );
+        }
     }
 
     #[test]

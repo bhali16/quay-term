@@ -173,6 +173,18 @@
             <input type="checkbox" checked={settings.value.check_for_updates} onchange={(e) => patch({ check_for_updates: e.currentTarget.checked })} />
             Check for updates when quay-term starts
           </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.show_hints} onchange={(e) => patch({ show_hints: e.currentTarget.checked })} />
+            Show a reconnect bar when a session ends
+          </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.shell_integration} onchange={(e) => patch({ shell_integration: e.currentTarget.checked })} />
+            Mark prompts and commands in new local zsh and bash shells (jump between prompts, copy output)
+          </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.block_gutter} onchange={(e) => patch({ block_gutter: e.currentTarget.checked })} />
+            Show a green or red bar beside finished commands
+          </label>
         {:else if tab === "shortcuts"}
           <div class="keys">
             {#each actions as a (a)}

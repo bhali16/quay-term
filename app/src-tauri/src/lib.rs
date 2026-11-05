@@ -149,14 +149,27 @@ fn open_local_session(
     state: State<'_, Sessions>,
     cols: u16,
     rows: u16,
+    integration: bool,
     on_output: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+    // Prompt and command marks for the shell; if the scripts cannot be written the shell
+    // simply starts without them.
+    let integration_dir = integration
+        .then(|| {
+            app.path()
+                .app_data_dir()
+                .ok()
+                .map(|d| d.join("shell-integration"))
+        })
+        .flatten()
+        .filter(|d| quay_pty::install_shell_integration(d).is_ok());
     let session = PtySession::spawn(
         SpawnOptions {
             program: None,
             args: vec![],
             size: TermSize { cols, rows },
+            integration_dir,
         },
         move |chunk| {
             let _ = on_output.send(InvokeResponseBody::Raw(chunk));

@@ -402,6 +402,7 @@ mod tests {
             auth,
             key_path: (auth == AuthKind::Key).then(|| "~/.ssh/id".to_string()),
             color: None,
+            env: None,
             tags: vec![],
             jump_id: None,
             tunnels: vec![],

@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Command palette (Cmd+K, or Ctrl+Shift+P on Windows and Linux): one search box for actions, saved sessions, snippets and open tabs. Type `>`, `@`, `!` or `/` first to search only actions, sessions, snippets or tabs.
+- Saved sessions can carry an environment label (prod, staging, dev, or your own, up to 8 characters). The label shows as a badge on the tab and the pane, the session colour underlines the tab and the top of the pane, and pasting several lines into a `prod` session asks first.
+- Tabs show connection state: a pulsing dot while connecting, green when connected, a hollow red dot when disconnected, and a blue dot when a background tab has new output.
+- When a session ends, a bar offers Reconnect (or press Enter or R), Files and Dismiss. A local shell that exits can be restarted the same way. Turn the bar off under Settings > Terminal.
+- Command marks: local zsh and bash shells now mark prompts and commands (OSC 133), without changing your dotfiles. A green or red bar shows beside each finished command, and new actions jump to the previous or next prompt, copy or select the last command's output, copy the last command, and type it again without running it. For a remote bash or zsh, run "Enable command marks in this remote shell" from the palette; it types a one-line hook that defines functions for that session only and writes no files. Turn the feature off under Settings > Terminal. bash older than 4.4 (the macOS system bash) gets no command marks, and fish 4 and newer emits them itself.
+
 ## [0.2.3] - 2026-11-04
 
 ### Added

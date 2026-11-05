@@ -18,6 +18,19 @@ copy_on_select: boolean,
  */
 check_for_updates: boolean, 
 /**
+ * Show a hint bar with shortcuts when a session has ended.
+ */
+show_hints: boolean, 
+/**
+ * Mark prompts and commands in local shells (OSC 133) so the terminal can jump between
+ * them and copy their output. Remote shells are never touched without a request.
+ */
+shell_integration: boolean, 
+/**
+ * Draw a green or red bar beside each finished command.
+ */
+block_gutter: boolean, 
+/**
  * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
  */
 keybindings: { [key in string]: string }, };

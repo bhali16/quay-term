@@ -278,6 +278,7 @@ mod tests {
             auth: AuthKind::Password,
             key_path: None,
             color: None,
+            env: None,
             tags: vec![],
             jump_id: jump,
             tunnels: vec![],
