@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a tag like v0.1.0 builds installers on all three OSes and attaches them
+# Pushing a tag like v0.1.0 builds installers on all three OSes (Windows: a per-user NSIS setup.exe, no admin prompt) and attaches them
 # to a draft GitHub Release, with a signed latest.json that installed copies read to
 # find updates. Review the draft, then publish it by hand; installed copies only see
 # the update once it is published. Needs the repository secrets
