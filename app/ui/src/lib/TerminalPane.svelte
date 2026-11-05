@@ -118,9 +118,20 @@
       term?.focus();
     }
   }
+  // A short "Copied" pill so a copy that happens on its own (copy on select) is never silent.
+  let copied = $state<string | null>(null);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  function flashCopied(text: string) {
+    const lines = text.replace(/\n+$/, "").split("\n").length;
+    copied = lines > 1 ? `Copied ${lines} lines` : "Copied";
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copied = null), 1400);
+  }
   function copySelection() {
     const text = term.getSelection();
-    if (text) void writeClipboard(text);
+    if (!text) return;
+    void writeClipboard(text);
+    flashCopied(text);
   }
   /** Several lines pasted into a production session wait for a confirmation first. */
   const needsConfirm = (text: string) => confirmPaste && /[\r\n]/.test(text.replace(/[\r\n]+$/, ""));
@@ -495,6 +506,7 @@
     ro.observe(host);
 
     return () => {
+      clearTimeout(copiedTimer);
       ro.disconnect();
       host.removeEventListener("mouseup", onMouseUp);
       host.removeEventListener("contextmenu", onContext);
@@ -510,6 +522,7 @@
   {#if color}<span class="strip" style:background={color}></span>{/if}
   <div class="badges">
     {#if env}<span class="env" class:prod={/^prod/i.test(env)} style:--c={color ?? "var(--accent)"} title="Environment: {env}">{env}</span>{/if}
+    {#if copied}<span class="copied" role="status">{copied}</span>{/if}
     {#if broadcasting}<span class="bcast" title="What you type here is also sent to the other selected panes">Broadcast</span>{/if}
   </div>
   {#if pendingPaste !== null}
@@ -615,6 +628,26 @@
     font: inherit;
     font-size: 11px;
     color: var(--dim);
+  }
+  .copied {
+    padding: 1px 8px;
+    border-radius: 4px;
+    background: var(--green);
+    color: var(--bg);
+    font-size: 11px;
+    font-weight: 600;
+    animation: copied-in 0.12s ease-out;
+  }
+  @keyframes copied-in {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .copied {
+      animation: none;
+    }
   }
   .bcast {
     padding: 1px 7px;

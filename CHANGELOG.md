@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Copying a selection (copy on select, Ctrl/Cmd+C) now shows a short "Copied" label in the top right of the pane, with the line count for several lines.
+
 ### Added
 - Command palette (Cmd+K, or Ctrl+Shift+P on Windows and Linux): one search box for actions, saved sessions, snippets and open tabs. Type `>`, `@`, `!` or `/` first to search only actions, sessions, snippets or tabs.
 - Saved sessions can carry an environment label (prod, staging, dev, or your own, up to 8 characters). The label shows as a badge on the tab and the pane, the session colour underlines the tab and the top of the pane, and pasting several lines into a `prod` session asks first.
