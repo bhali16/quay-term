@@ -185,6 +185,23 @@
             <input type="checkbox" checked={settings.value.block_gutter} onchange={(e) => patch({ block_gutter: e.currentTarget.checked })} />
             Show a green or red bar beside finished commands
           </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.notifications} onchange={(e) => patch({ notifications: e.currentTarget.checked })} />
+            Notify me when a long command finishes or a session drops while quay-term is in the background
+          </label>
+          {#if settings.value.notifications}
+            <label class="check">
+              <input
+                type="number"
+                min="1"
+                max="3600"
+                style="width: 4.5rem"
+                value={settings.value.notify_after_secs}
+                onchange={(e) => patch({ notify_after_secs: Math.max(1, Math.min(3600, Math.round(+e.currentTarget.value) || 15)) })}
+              />
+              seconds before a command counts as long
+            </label>
+          {/if}
         {:else if tab === "shortcuts"}
           <div class="keys">
             {#each actions as a (a)}

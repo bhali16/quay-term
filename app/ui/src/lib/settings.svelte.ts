@@ -17,6 +17,8 @@ const fallback: Settings = {
   show_hints: true,
   shell_integration: true,
   block_gutter: true,
+  notifications: true,
+  notify_after_secs: 15,
   keybindings: {},
 };
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
   import {
     folderCreate,
     folderDelete,
@@ -126,6 +127,30 @@
     } catch (e) {
       say(e);
     }
+  }
+
+  // ---- desktop notifications (only while the window is in the background) ----
+  async function notify(title: string, body: string) {
+    if (!settings.value.notifications || document.hasFocus()) return;
+    try {
+      let ok = await isPermissionGranted();
+      if (!ok) ok = (await requestPermission()) === "granted";
+      if (ok) sendNotification({ title, body });
+    } catch {
+      /* notifications are a convenience; never break the terminal */
+    }
+  }
+  function formatDuration(ms: number): string {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+  }
+  function commandDone(tabTitle: string, c: { command: string; exit: number | null; ms: number }) {
+    if (c.ms < settings.value.notify_after_secs * 1000) return;
+    const cmd = c.command.trim().slice(0, 80) || "Command";
+    const status = c.exit === null || c.exit === 0 ? "finished" : `failed (exit ${c.exit})`;
+    notify(tabTitle, `${cmd} ${status} after ${formatDuration(c.ms)}`);
   }
 
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
@@ -523,7 +548,12 @@
     });
     const unlisten = [
       onSessionExit(({ id, reason }) => {
-        for (const t of tabs) for (const p of Object.values(t.panes)) if (p?.sessionId() === id) p.notifyExited(reason);
+        for (const t of tabs)
+          for (const p of Object.values(t.panes))
+            if (p?.sessionId() === id) {
+              p.notifyExited(reason);
+              if (reason || t.ssh || t.saved) notify(t.title, reason ? `Disconnected: ${reason}` : "Session ended");
+            }
       }),
       onHostKeyPrompt((p) => (trustPrompt = p)),
       onAuthPrompt((p) => (authPrompt = p)),
@@ -649,6 +679,7 @@
                 confirmPaste={/^prod/i.test(envOf(tab) ?? "")}
                 onstatus={(s) => (tab.status[p.id] = s)}
                 onactivity={() => (tab.activity = true)}
+                oncommand={(c) => commandDone(tab.title, c)}
                 onfiles={tab.ssh || tab.saved ? () => (tab.files = true) : undefined}
                 onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
               />

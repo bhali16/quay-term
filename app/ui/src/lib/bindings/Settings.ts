@@ -31,6 +31,15 @@ shell_integration: boolean,
  */
 block_gutter: boolean, 
 /**
+ * Send a desktop notification when a long command finishes or a session drops while the
+ * window is in the background.
+ */
+notifications: boolean, 
+/**
+ * A command must run at least this many seconds to count as long.
+ */
+notify_after_secs: number, 
+/**
  * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
  */
 keybindings: { [key in string]: string }, };

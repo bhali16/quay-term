@@ -44,6 +44,11 @@ pub struct Settings {
     pub shell_integration: bool,
     /// Draw a green or red bar beside each finished command.
     pub block_gutter: bool,
+    /// Send a desktop notification when a long command finishes or a session drops while the
+    /// window is in the background.
+    pub notifications: bool,
+    /// A command must run at least this many seconds to count as long.
+    pub notify_after_secs: u32,
     /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
     pub keybindings: BTreeMap<String, String>,
 }
@@ -63,6 +68,8 @@ impl Default for Settings {
             show_hints: true,
             shell_integration: true,
             block_gutter: true,
+            notifications: true,
+            notify_after_secs: 15,
             keybindings: BTreeMap::new(),
         }
     }
