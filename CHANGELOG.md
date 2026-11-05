@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - When a session ends, a bar offers Reconnect (or press Enter or R), Files and Dismiss. A local shell that exits can be restarted the same way. Turn the bar off under Settings > Terminal.
 - Command marks: local zsh and bash shells now mark prompts and commands (OSC 133), without changing your dotfiles. A green or red bar shows beside each finished command, and new actions jump to the previous or next prompt, copy or select the last command's output, copy the last command, and type it again without running it. For a remote bash or zsh, run "Enable command marks in this remote shell" from the palette; it types a one-line hook that defines functions for that session only and writes no files. Each finished command also gets a small copy button on its first row: click it to copy the command and its output, or Alt-click to copy the output only. Turn the feature off under Settings > Terminal. bash older than 4.4 (the macOS system bash) gets no command marks, and fish 4 and newer emits them itself.
 
+### Fixed
+- A stray % no longer appears when a session opens: the current terminal size is sent once the session is ready, so a resize during startup is not lost.
+
 ## [0.2.3] - 2026-11-04
 
 ### Added
