@@ -219,11 +219,63 @@
       }
     }
   }
+  /** Text of a finished block: its command, then its output (or the output alone). */
+  function blockText(b: Block<IMarker>, withCommand: boolean): string {
+    const r = outputRange(b);
+    const output = r && r[1] > r[0] ? readRange(r[0], 0, r[1]) : "";
+    return withCommand && b.command ? (output ? `${b.command}\n${output}` : b.command) : output;
+  }
+  const COPY_ICON =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const CHECK_ICON =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+  /** A small copy button on the first row of a finished block. */
+  function addCopyButton(b: Block<IMarker>, start: IMarker) {
+    const deco = term.registerDecoration({ marker: start, x: 0, width: 1, height: 1 });
+    deco?.onRender((el) => {
+      if (el.dataset.quay) return;
+      el.dataset.quay = "1";
+      el.style.left = "auto";
+      el.style.right = "2px";
+      el.style.width = "22px";
+      el.style.height = "20px";
+      el.style.pointerEvents = "auto";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "quay-copy";
+      btn.innerHTML = COPY_ICON;
+      btn.title = "Copy command and output (Alt-click: output only)";
+      btn.setAttribute("aria-label", "Copy command and output");
+      btn.style.cssText =
+        "all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:22px;height:20px;border-radius:5px;cursor:pointer;color:inherit;opacity:0.35;background:" +
+        settings.theme.ui.surface;
+      btn.onmouseenter = () => (btn.style.opacity = "1");
+      btn.onmouseleave = () => (btn.style.opacity = "0.35");
+      btn.onmousedown = (e) => e.stopPropagation();
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const text = blockText(b, !e.altKey);
+        if (!text) return;
+        void writeClipboard(text);
+        btn.innerHTML = CHECK_ICON;
+        btn.style.color = settings.theme.ui.green;
+        setTimeout(() => {
+          btn.innerHTML = COPY_ICON;
+          btn.style.color = "inherit";
+        }, 1200);
+        term.focus();
+      };
+      el.style.color = settings.theme.ui.dim;
+      el.appendChild(btn);
+    });
+  }
   function decorate(b: Block<IMarker>) {
     const start = b.prompt ?? b.out;
-    if (!settings.value.block_gutter || !start || !b.end || start.isDisposed) return;
+    if (!start || !b.end || start.isDisposed) return;
     const height = b.end.line - start.line;
     if (height < 1) return;
+    addCopyButton(b, start);
+    if (!settings.value.block_gutter) return;
     const ok = b.exit === null || b.exit === 0;
     const deco = term.registerDecoration({ marker: start, x: 0, width: 1, height });
     deco?.onRender((el) => {
@@ -258,7 +310,7 @@
     const b = tracker.lastFinished();
     const r = b && outputRange(b);
     if (!r || r[1] <= r[0]) return b ? 0 : null;
-    void writeClipboard(readRange(r[0], 0, r[1]));
+    void writeClipboard(blockText(b, false));
     return r[1] - r[0];
   }
   export function copyLastCommand(): string | null {
