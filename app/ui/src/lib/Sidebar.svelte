@@ -664,13 +664,16 @@
     background: var(--border);
   }
   .railhosts {
+    /* Full rail width: as a centred flex item it shrinks to the 30px button, and this scroll
+       box then clips the status dot that hangs off the button's corner. */
+    align-self: stretch;
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    padding: 2px 0;
+    padding: 4px 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
