@@ -43,7 +43,10 @@
     onstatus,
     onactivity,
     onfiles,
+    oncommand,
   }: {
+    /** A command finished (needs shell integration marks). */
+    oncommand?: (c: { command: string; exit: number | null; ms: number }) => void;
     active: boolean;
     ssh?: SshTarget | null;
     saved?: Saved | null;
@@ -214,7 +217,10 @@
       case "D": {
         const mk = m();
         const b = mk && tracker.commandEnd(mk, parseExit(arg), nowMs());
-        if (b) decorate(b);
+        if (b) {
+          decorate(b);
+          if (b.startedAt !== null && b.endedAt !== null) oncommand?.({ command: b.command, exit: b.exit, ms: b.endedAt - b.startedAt });
+        }
         break;
       }
     }
