@@ -2,14 +2,14 @@
 
 Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Windows. Built with Rust and Tauri.
 
-> **Status:** early (0.2.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, signed in-app updates, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
+> **Status:** early (0.3.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, signed in-app updates, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
 
 ## Installing
 
 The installers are not code-signed or notarized yet, so your OS will warn on first launch.
 
 - **macOS:** drag Quay Term to Applications, then right-click it, choose Open and confirm. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine "/Applications/Quay Term.app"` and open it again.
-- **Windows:** download `Quay-Term-Setup.exe`. SmartScreen may show "Windows protected your PC"; choose More info, then Run anyway.
+- **Windows:** download `Quay-Term-Setup.exe` and run it. It installs just for you, with no administrator prompt, and lets you pick the folder. Updating later is the same file, or use the in-app updater. SmartScreen may show "Windows protected your PC"; choose More info, then Run anyway.
 - **Linux:** make the `.AppImage` executable (`chmod +x`) or install the `.deb`/`.rpm`.
 
 ### Updating
@@ -37,7 +37,7 @@ What it does today (v0.2):
 - **Command marks:** prompt jumping, copy last output and exit-code bars for local zsh/bash (and remote ones on request)
 - **Clipboard:** copy on select, Ctrl+C copies a selection, right-click pastes (Windows/Linux), Ctrl+click opens links
 - Five built-in themes, bundled fonts, configurable shortcuts
-- Installers for macOS (Apple silicon and Intel), Linux and Windows
+- Installers for macOS (Apple silicon and Intel), Linux and Windows, with a themed setup app on Windows
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the milestones.
 

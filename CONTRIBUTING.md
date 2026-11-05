@@ -25,7 +25,9 @@ Checks that CI runs:
 
 ```bash
 npm run check          # svelte-check
+npm run setup:check    # svelte-check for the Windows setup UI
 npm run build          # frontend build (needed before compiling the app crate)
+npm run setup:build    # setup UI build (needed before compiling the quay-setup crate)
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
@@ -36,6 +38,7 @@ cargo test --workspace
 - `crates/quay-*`: Rust library crates (core, pty, ssh, sftp, vault, sessions, config). UI-free and unit-testable.
 - `app/src-tauri`: Tauri backend that exposes crate functionality as commands.
 - `app/ui`: Svelte + TypeScript frontend with xterm.js.
+- `app/setup`: the branded Windows setup app (Tauri + Svelte in `app/setup/ui`). It embeds the NSIS installer that the main app builds; set `QUAY_SETUP_PAYLOAD` to that installer's path when building it, or it builds without a payload for UI work (`npm run setup:dev` previews the UI in a browser). Use `npm run tauri` for the main app and `npm run tauri:setup` for the setup app.
 - TypeScript types for IPC are generated from Rust by `ts-rs` into `app/ui/src/lib/bindings` when you run `cargo test`. Commit the generated files.
 
 ## Pull requests
