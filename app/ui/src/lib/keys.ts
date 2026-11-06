@@ -8,6 +8,7 @@ export type Action =
   | "split_right"
   | "split_down"
   | "zoom_pane"
+  | "mute_pane"
   | "focus_left"
   | "focus_right"
   | "focus_up"
@@ -43,6 +44,7 @@ export const actionLabels: Record<Action, string> = {
   split_right: "Split pane right",
   split_down: "Split pane down",
   zoom_pane: "Zoom pane to fill the tab (toggle)",
+  mute_pane: "Mute alerts from this pane (toggle)",
   focus_left: "Focus pane to the left",
   focus_right: "Focus pane to the right",
   focus_up: "Focus pane above",
@@ -83,6 +85,7 @@ export const defaultBindings: Record<Action, string> = {
   split_right: `${M}+D`,
   split_down: isMac ? "Shift+Cmd+D" : "Ctrl+Alt+D",
   zoom_pane: isMac ? "Shift+Cmd+Enter" : "Ctrl+Shift+Enter",
+  mute_pane: isMac ? "Alt+Shift+Cmd+M" : "Ctrl+Alt+Shift+M",
   focus_left: isMac ? "Alt+Cmd+ArrowLeft" : "Ctrl+Alt+ArrowLeft",
   focus_right: isMac ? "Alt+Cmd+ArrowRight" : "Ctrl+Alt+ArrowRight",
   focus_up: isMac ? "Alt+Cmd+ArrowUp" : "Ctrl+Alt+ArrowUp",

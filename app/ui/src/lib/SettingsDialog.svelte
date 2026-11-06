@@ -6,6 +6,8 @@
   import { themes } from "./themes";
   import { actionLabels, defaultBindings, describe, type Action } from "./keys";
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+  import { sendNotification } from "@tauri-apps/plugin-notification";
+  import { ensurePermission, type Permission } from "./notify";
   import { getDiagnostics, vaultExport, vaultImport } from "./ipc";
   import type { BackupReport } from "./bindings/BackupReport";
   import type { VaultStatus } from "./bindings/VaultStatus";
@@ -19,6 +21,16 @@
   }: { onclose: () => void; onimported?: () => void; vault?: VaultStatus | null; onunlock?: () => void } = $props();
 
   let error = $state<string | null>(null);
+  // Result of the last permission request, so a refusal is explained here instead of failing silently.
+  let permission = $state<Permission | null>(null);
+  async function setNotifications(on: boolean) {
+    patch({ notifications: on });
+    permission = on ? await ensurePermission() : null;
+  }
+  async function testNotification() {
+    permission = await ensurePermission();
+    if (permission === "granted") sendNotification({ title: "quay-term", body: "Notifications are working." });
+  }
   let recording = $state<Action | null>(null);
   let diag = $state<Diagnostics | null>(null);
   let copied = $state(false);
@@ -196,9 +208,10 @@
             <input type="checkbox" checked={settings.value.block_gutter} onchange={(e) => patch({ block_gutter: e.currentTarget.checked })} />
             Show a green or red bar beside finished commands
           </label>
+          <h3>Notifications</h3>
           <label class="check">
-            <input type="checkbox" checked={settings.value.notifications} onchange={(e) => patch({ notifications: e.currentTarget.checked })} />
-            Notify me when a long command finishes or a session drops while quay-term is in the background
+            <input type="checkbox" checked={settings.value.notifications} onchange={(e) => setNotifications(e.currentTarget.checked)} />
+            Notify me when a long command finishes or a session drops while quay-term or that tab is in the background
           </label>
           {#if settings.value.notifications}
             <label class="check">
@@ -212,6 +225,22 @@
               />
               seconds before a command counts as long
             </label>
+            <label class="check">
+              <input type="checkbox" checked={settings.value.notify_show_command} onchange={(e) => patch({ notify_show_command: e.currentTarget.checked })} />
+              Show the first words of the command in the notification (output is never included)
+            </label>
+            <p class="hint">
+              Mute one pane with "{actionLabels.mute_pane}" ({settings.bindings.mute_pane}). Clicking a notification brings that tab forward.
+              Command alerts need command marks (Mark prompts and commands, above).
+            </p>
+            <button onclick={testNotification}>Send a test notification</button>
+            {#if permission === "denied"}
+              <p class="hint warn" role="status">
+                The system has notifications blocked for quay-term, so none will appear. Allow them in your system notification settings, then send a test.
+              </p>
+            {:else if permission === "unknown"}
+              <p class="hint warn" role="status">Could not check notification permission on this system.</p>
+            {/if}
           {/if}
         {:else if tab === "shortcuts"}
           <div class="keys">

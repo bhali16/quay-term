@@ -156,6 +156,9 @@ body {
   color: var(--dim);
   font-size: 12px;
 }
+.dlg .hint.warn {
+  color: var(--red);
+}
 
 /* One look for every dropdown: no native chrome, a plain chevron. */
 select {

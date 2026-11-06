@@ -59,10 +59,12 @@ pub struct Settings {
     /// Draw a green or red bar beside each finished command.
     pub block_gutter: bool,
     /// Send a desktop notification when a long command finishes or a session drops while the
-    /// window is in the background.
+    /// window or the tab is in the background. Off until the user opts in.
     pub notifications: bool,
     /// A command must run at least this many seconds to count as long.
     pub notify_after_secs: u32,
+    /// Put the first words of the command in the notification. Off shows only "Command finished".
+    pub notify_show_command: bool,
     /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
     pub keybindings: BTreeMap<String, String>,
     /// Focus the pane under the mouse pointer without clicking it.
@@ -85,8 +87,9 @@ impl Default for Settings {
             show_hints: true,
             shell_integration: true,
             block_gutter: true,
-            notifications: true,
+            notifications: false,
             notify_after_secs: 15,
+            notify_show_command: true,
             keybindings: BTreeMap::new(),
             focus_follows_mouse: false,
             tab_layout: TabLayout::Horizontal,
@@ -189,6 +192,19 @@ mod tests {
         let s = Settings::load(&p);
         assert_eq!(s.tab_layout, TabLayout::Horizontal);
         assert_eq!(s.font_size, 18);
+    }
+
+    #[test]
+    fn notifications_are_opt_in_and_show_the_command_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(!s.notifications);
+        assert!(s.notify_show_command);
+        std::fs::write(&p, r#"{"notifications": true, "notify_show_command": false}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(s.notifications && !s.notify_show_command);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+  import { onAction, sendNotification } from "@tauri-apps/plugin-notification";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { commandBody, ensurePermission, isLong, shouldNotify } from "./lib/notify";
   import {
     folderCreate,
     folderDelete,
@@ -142,28 +144,48 @@
     }
   }
 
-  // ---- desktop notifications (only while the window is in the background) ----
-  async function notify(title: string, body: string) {
-    if (!settings.value.notifications || document.hasFocus()) return;
+  // ---- desktop notifications (window or tab in the background, pane not muted) ----
+  // Panes whose alerts are off. Pane ids are unique across tabs.
+  let muted = $state<number[]>([]);
+  const toggleMute = (id: number) => (muted = muted.includes(id) ? muted.filter((m) => m !== id) : [...muted, id]);
+  // What a click on a notification should show; the plugin reports the notification id back.
+  const notified = new Map<number, { tab: number; pane: number }>();
+  let notifyId = 0;
+  let lastNotified: { tab: number; pane: number } | null = null;
+  async function notify(tab: Tab, pane: number, title: string, body: string) {
+    if (!shouldNotify({ enabled: settings.value.notifications, windowFocused: document.hasFocus(), tabActive: tab.key === activeKey, muted: muted.includes(pane) })) return;
+    // Permission refused: say nothing here; Settings shows the note.
+    if ((await ensurePermission()) !== "granted") return;
     try {
-      let ok = await isPermissionGranted();
-      if (!ok) ok = (await requestPermission()) === "granted";
-      if (ok) sendNotification({ title, body });
+      const id = ++notifyId;
+      lastNotified = { tab: tab.key, pane };
+      notified.set(id, lastNotified);
+      if (notified.size > 50) notified.delete(notified.keys().next().value!);
+      sendNotification({ id, title, body });
     } catch {
       /* notifications are a convenience; never break the terminal */
     }
   }
-  function formatDuration(ms: number): string {
-    const s = Math.round(ms / 1000);
-    if (s < 60) return `${s}s`;
-    const m = Math.floor(s / 60);
-    return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+  /** Click on a notification: bring the window forward and select the tab and pane it came from. */
+  async function showNotified(id: number | undefined) {
+    const t = (id !== undefined ? notified.get(id) : undefined) ?? lastNotified;
+    try {
+      const w = getCurrentWindow();
+      await w.show();
+      await w.unminimize();
+      await w.setFocus();
+    } catch {
+      /* the tab switch below still helps */
+    }
+    const tab = t && tabs.find((x) => x.key === t.tab);
+    if (!tab) return;
+    activeKey = tab.key;
+    if (tab.panes[t.pane]) tab.focus = t.pane;
   }
-  function commandDone(tabTitle: string, c: { command: string; exit: number | null; ms: number }) {
-    if (c.ms < settings.value.notify_after_secs * 1000) return;
-    const cmd = c.command.trim().slice(0, 80) || "Command";
-    const status = c.exit === null || c.exit === 0 ? "finished" : `failed (exit ${c.exit})`;
-    notify(tabTitle, `${cmd} ${status} after ${formatDuration(c.ms)}`);
+  function commandDone(tab: Tab, pane: number, c: { command: string; exit: number | null; ms: number }) {
+    if (!isLong(c.ms, settings.value.notify_after_secs)) return;
+    const body = commandBody({ ...c, session: tab.title, showCommand: settings.value.notify_show_command });
+    notify(tab, pane, c.exit === null || c.exit === 0 ? "Command finished" : "Command failed", body);
   }
 
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
@@ -215,6 +237,7 @@
     delete tab.panes[id];
     delete tab.status[id];
     broadcast = broadcast.filter((b) => b !== id);
+    muted = muted.filter((m) => m !== id);
     if (tab.focus === id) tab.focus = P.leaves(next)[Math.min(order.indexOf(id), order.length - 2)];
   }
   function moveFocus(tab: Tab, dir: P.Dir) {
@@ -552,6 +575,7 @@
     if (i < 0) return;
     const gone = P.leaves(tabs[i].layout);
     broadcast = broadcast.filter((b) => !gone.includes(b));
+    muted = muted.filter((m) => !gone.includes(m));
     tabs.splice(i, 1);
     if (activeKey === key) activeKey = tabs[Math.min(i, tabs.length - 1)]?.key ?? 0;
     if (tabs.length === 0) newTab();
@@ -567,6 +591,7 @@
       case "snippets": return (showSnippets = !showSnippets);
       case "split_right": return activeTab && splitPane(activeTab, "row");
       case "split_down": return activeTab && splitPane(activeTab, "col");
+      case "mute_pane": return activeTab && toggleMute(activeTab.focus);
       case "zoom_pane": return activeTab && toggleZoom(activeTab);
       case "focus_left": return activeTab && moveFocus(activeTab, "left");
       case "focus_right": return activeTab && moveFocus(activeTab, "right");
@@ -659,14 +684,15 @@
     const unlisten = [
       onSessionExit(({ id, reason }) => {
         for (const t of tabs)
-          for (const p of Object.values(t.panes))
+          for (const [pid, p] of Object.entries(t.panes))
             if (p?.sessionId() === id) {
               p.notifyExited(reason);
-              if (reason || t.ssh || t.saved) notify(t.title, reason ? `Disconnected: ${reason}` : "Session ended");
+              if (reason || t.ssh || t.saved) notify(t, Number(pid), t.title, reason ? `Disconnected: ${reason}` : "Session ended");
             }
       }),
       onHostKeyPrompt((p) => (trustPrompt = p)),
       onAuthPrompt((p) => (authPrompt = p)),
+      onAction((e) => showNotified(e.notification?.id)).then((l) => () => l.unregister()),
     ];
     return () => {
       clearInterval(pollTunnels);
@@ -801,8 +827,15 @@
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div class="grip" title="Drag onto another pane's edge to move this pane" onpointerdown={(e) => dragPane(e, tab, p.id)}></div>
               {/if}
-              {#if zoomed === p.id}
-                <button class="zoombadge" title="Zoomed. Click or press {settings.bindings.zoom_pane} to restore" onclick={() => (tab.zoom = null)}>Zoomed</button>
+              {#if zoomed === p.id || muted.includes(p.id)}
+                <div class="leafbadges">
+                  {#if zoomed === p.id}
+                    <button class="zoombadge" title="Zoomed. Click or press {settings.bindings.zoom_pane} to restore" onclick={() => (tab.zoom = null)}>Zoomed</button>
+                  {/if}
+                  {#if muted.includes(p.id)}
+                    <button class="zoombadge mutebadge" title="Alerts from this pane are off. Click or press {settings.bindings.mute_pane} to turn them on" onclick={() => toggleMute(p.id)}>Muted</button>
+                  {/if}
+                </div>
               {/if}
               <TerminalPane
                 bind:this={tab.panes[p.id]}
@@ -819,7 +852,7 @@
                 confirmPaste={/^prod/i.test(envOf(tab) ?? "")}
                 onstatus={(s) => (tab.status[p.id] = s)}
                 onactivity={() => (tab.activity = true)}
-                oncommand={(c) => commandDone(tab.title, c)}
+                oncommand={(c) => commandDone(tab, p.id, c)}
                 onsnippet={addCommandSnippet}
                 onfiles={tab.ssh || tab.saved ? () => (tab.files = true) : undefined}
                 onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
@@ -1378,12 +1411,19 @@
     background: color-mix(in srgb, var(--accent) 28%, transparent);
     border: 2px solid var(--accent);
   }
-  .zoombadge {
-    all: unset;
+  .leafbadges {
     position: absolute;
     top: 5px;
     left: 10px;
     z-index: 8;
+    display: flex;
+    gap: 6px;
+  }
+  .mutebadge {
+    background: var(--dim);
+  }
+  .zoombadge {
+    all: unset;
     padding: 1px 7px;
     border-radius: 4px;
     background: var(--accent);
