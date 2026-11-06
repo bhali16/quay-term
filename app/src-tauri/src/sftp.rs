@@ -57,9 +57,16 @@ pub struct SftpTransfer {
 }
 
 /// Wrap a connected client in a transfer queue and register it.
-fn register(app: &AppHandle, sftps: &Sftps, client: SftpClient) -> Result<SftpOpened, String> {
+///
+/// `home` is resolved by the caller on a blocking thread: `SftpClient` methods block on the
+/// SSH runtime, which panics if called from an async task (the command would then never answer).
+fn register(
+    app: &AppHandle,
+    sftps: &Sftps,
+    client: SftpClient,
+    home: String,
+) -> Result<SftpOpened, String> {
     let id = sftps.next_id.fetch_add(1, Ordering::Relaxed) + 1;
-    let home = client.home().map_err(err)?;
     let client = Arc::new(client);
     let emit_app = app.clone();
     let queue = TransferQueue::new(client.clone(), move |event| {
@@ -83,12 +90,16 @@ async fn open(
     let mut opts = ConnectOptions::new(route.target);
     opts.jumps = route.jumps;
     opts.challenger = Some(challenger(&app, prompts, prompt_id));
-    let result =
-        tauri::async_runtime::spawn_blocking(move || SftpClient::connect(&opts, &mut verify))
-            .await
-            .map_err(err)?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let client = SftpClient::connect(&opts, &mut verify)?;
+        let home = client.home()?;
+        Ok::<_, quay_sftp::SftpError>((client, home))
+    })
+    .await
+    .map_err(err)?;
     forget_prompt(prompts, prompt_id);
-    register(&app, sftps, result.map_err(err)?)
+    let (client, home) = result.map_err(err)?;
+    register(&app, sftps, client, home)
 }
 
 /// Open SFTP on the connection behind terminal tab `session`: no second login.
@@ -107,11 +118,15 @@ pub async fn sftp_open_shared(
         .cloned()
         .filter(|c| !c.is_closed())
         .ok_or("The terminal connection is closed.")?;
-    let client = tauri::async_runtime::spawn_blocking(move || SftpClient::open(conn))
-        .await
-        .map_err(err)?
-        .map_err(err)?;
-    register(&app, &sftps, client)
+    let (client, home) = tauri::async_runtime::spawn_blocking(move || {
+        let client = SftpClient::open(conn)?;
+        let home = client.home()?;
+        Ok::<_, quay_sftp::SftpError>((client, home))
+    })
+    .await
+    .map_err(err)?
+    .map_err(err)?;
+    register(&app, &sftps, client, home)
 }
 
 #[tauri::command]

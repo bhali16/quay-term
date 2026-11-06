@@ -26,6 +26,7 @@
   import Sidebar from "./lib/Sidebar.svelte";
   import SessionDialog from "./lib/SessionDialog.svelte";
   import type { Result as SessionResult } from "./lib/SessionDialog.svelte";
+  import type { SessionInput } from "./lib/bindings/SessionInput";
   import PasswordPrompt from "./lib/PasswordPrompt.svelte";
   import { updates } from "./lib/updates.svelte";
   import type { LibraryView } from "./lib/bindings/LibraryView";
@@ -230,7 +231,9 @@
   let toasts = $state<Toast[]>([]);
   let toastId = 0;
   let sidebarOpen = $state(readSidebarPref());
-  let editing_session = $state<{ session: SavedSession | null; folderId: number | null } | null>(null);
+  let editing_session = $state<{ session: SavedSession | null; folderId: number | null; draft?: SshTarget | null } | null>(null);
+  /** Right-click menu on a tab. */
+  let tabMenu = $state<{ x: number; y: number; key: number } | null>(null);
   let dialogError = $state<string | null>(null);
   let passwordFor = $state<SavedSession | null>(null);
   let jumpFor = $state<{
@@ -394,6 +397,9 @@
     const extra: PaletteItem[] = [
       { id: "cmd:ssh", group: "Actions", title: "New SSH connection…", run: () => (connecting = true) },
       { id: "cmd:session", group: "Actions", title: "New saved session…", run: () => ((dialogError = null), (editing_session = { session: null, folderId: null })) },
+      ...(activeTab?.ssh && !activeTab.saved
+        ? [{ id: "cmd:save-connection", group: "Actions" as const, title: "Save this connection…", run: () => saveConnection(activeTab) }]
+        : []),
       { id: "cmd:import", group: "Actions", title: "Import hosts from ~/.ssh/config", run: doImport },
       { id: "cmd:tunnels", group: "Actions", title: "Toggle tunnels panel", run: () => activeTab && (activeTab.ssh || activeTab.saved) && (activeTab.tunnels = !activeTab.tunnels) },
     ];
@@ -440,9 +446,43 @@
     return fn(p);
   }
 
-  function connectSsh(target: SshTarget) {
+  async function connectSsh(target: SshTarget, keep: { save: boolean; keepSecret: boolean }) {
     connecting = false;
-    newTab(target);
+    if (!keep.save) return newTab(target);
+    const a = target.auth;
+    const typed = a.method === "password" ? a.password : a.method === "key" ? (a.passphrase ?? "") : "";
+    const input: SessionInput = {
+      name: "",
+      folder_id: null,
+      host: target.host,
+      port: target.port,
+      user: target.user,
+      auth: a.method,
+      key_path: a.method === "key" ? a.path : null,
+      color: null,
+      env: null,
+      tags: [],
+      jump_id: null,
+      tunnels: [],
+    };
+    const store = keep.keepSecret && typed !== "";
+    try {
+      const saved = await sessionSave(null, input, store ? { action: "set", value: typed } : { action: "unchanged" });
+      await refresh();
+      toast(`Saved ${saved.name} to sessions.`, "success");
+      connectSaved(saved, !store && typed !== "" ? typed : null);
+    } catch (e) {
+      // Saving is a convenience: still open the connection that was asked for.
+      say(`Could not save the session: ${e}`);
+      newTab(target);
+    }
+  }
+
+  /** Open the session editor prefilled from an open quick-connect tab. */
+  function saveConnection(tab: Tab | undefined) {
+    if (!tab?.ssh) return;
+    dialogError = null;
+    editing_session = { session: null, folderId: null, draft: tab.ssh };
   }
 
   function answerTrust(trust: boolean) {
@@ -564,7 +604,7 @@
   });
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window onkeydowncapture={(e) => e.key === "Escape" && tabMenu && ((tabMenu = null), e.stopPropagation())} {onkeydown} />
 
 <main class:mac={isMac} class:rail={!sidebarOpen}>
   <!-- One button for both states, next to the traffic lights, so it never moves when the sidebar does. -->
@@ -605,7 +645,13 @@
       {@const st = stateOf(tab)}
       {@const tcolor = colorOf(tab)}
       {@const tenv = envOf(tab)}
-      <div class="tab" class:active={tab.key === activeKey} style:--tc={tcolor ?? "transparent"}>
+      <div
+        class="tab"
+        role="presentation"
+        class:active={tab.key === activeKey}
+        style:--tc={tcolor ?? "transparent"}
+        oncontextmenu={(e) => (e.preventDefault(), (tabMenu = { x: e.clientX, y: e.clientY, key: tab.key }))}
+      >
         {#if editing === tab.key}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -712,11 +758,23 @@
     {/each}
   </div>
   </div>
+  {#if tabMenu}
+    {@const mt = tabs.find((t) => t.key === tabMenu!.key)}
+    <div class="tabmenu-bg" role="presentation" onclick={() => (tabMenu = null)} oncontextmenu={(e) => (e.preventDefault(), (tabMenu = null))}></div>
+    <div class="tabmenu" role="menu" style:left="{tabMenu.x}px" style:top="{tabMenu.y}px">
+      {#if mt?.ssh && !mt.saved}
+        <button role="menuitem" onclick={() => ((tabMenu = null), saveConnection(mt))}>Save this connection…</button>
+      {/if}
+      <button role="menuitem" onclick={() => ((editing = tabMenu!.key), (tabMenu = null))}>Rename tab</button>
+      <button role="menuitem" onclick={() => (closeTab(tabMenu!.key), (tabMenu = null))}>Close tab</button>
+    </div>
+  {/if}
   {#if editing_session}
     {#key editing_session}
       <SessionDialog
         session={editing_session.session}
         defaultFolderId={editing_session.folderId}
+        draft={editing_session.draft ?? null}
         folders={library.folders}
         sessions={library.sessions}
         error={dialogError}
@@ -855,6 +913,35 @@
     nav {
       transition: none;
     }
+  }
+  .tabmenu-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+  .tabmenu {
+    position: fixed;
+    z-index: 41;
+    min-width: 180px;
+    padding: 4px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .tabmenu button {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: 5px;
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .tabmenu button:hover {
+    background: var(--hover);
   }
   .tab {
     display: flex;

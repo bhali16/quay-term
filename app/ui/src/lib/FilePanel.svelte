@@ -65,15 +65,31 @@
   const join = (dir: string, name: string) => (dir.endsWith("/") ? dir + name : `${dir}/${name}`);
   const parent = (p: string) => p.replace(/\/[^/]+\/?$/, "") || "/";
 
+  /** A server that never answers must not leave the panel on "Connecting…" for ever. */
+  function withTimeout<T>(p: Promise<T>, ms = 45000): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject("The server did not answer the SFTP request in time."), ms);
+      p.then(resolve, reject).finally(() => clearTimeout(t));
+    });
+  }
+
   async function connect() {
     status = "connecting";
     error = null;
     try {
-      // Reuse the terminal's login when it is still connected; otherwise sign in again.
+      // Reuse the terminal's login when it is still connected. Sign in again only when that login
+      // is gone: if the server refused SFTP, a second login would fail the same way and hide why.
       const tid = terminalId?.() ?? null;
-      const shared = tid === null ? null : await sftpOpenShared(tid).catch(() => null);
+      let shared: Awaited<ReturnType<typeof sftpOpenShared>> | null = null;
+      if (tid !== null) {
+        try {
+          shared = await withTimeout(sftpOpenShared(tid));
+        } catch (e) {
+          if (!`${e}`.includes("connection is closed")) throw e;
+        }
+      }
       const opened =
-        shared ?? (saved ? await sftpOpenSaved(saved.id, saved.secret ?? null, saved.jumps ?? []) : await sftpOpen(ssh!));
+        shared ?? (await withTimeout(saved ? sftpOpenSaved(saved.id, saved.secret ?? null, saved.jumps ?? []) : sftpOpen(ssh!)));
       conn = opened.id;
       status = "ready";
       await go(opened.home);

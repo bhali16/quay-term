@@ -10,6 +10,7 @@
   import type { SessionInput } from "./bindings/SessionInput";
   import type { TunnelSpec } from "./bindings/TunnelSpec";
   import type { TunnelKind } from "./bindings/TunnelKind";
+  import type { SshTarget } from "./bindings/SshTarget";
 
   export type Result = {
     input: SessionInput;
@@ -22,6 +23,7 @@
   let {
     session = null,
     defaultFolderId = null,
+    draft = null,
     folders,
     sessions = [],
     error = null,
@@ -31,6 +33,8 @@
     session?: SavedSession | null;
     /** Folder preselected for a new session. */
     defaultFolderId?: number | null;
+    /** An open connection to keep: prefills a new session with its host, user and sign-in. */
+    draft?: SshTarget | null;
     folders: Folder[];
     /** All saved sessions, to pick a jump host from. */
     sessions?: SavedSession[];
@@ -47,11 +51,12 @@
     return session;
   }
   let name = $state(s?.name ?? "");
-  let host = $state(s?.host ?? "");
-  let port = $state(s?.port ?? 22);
-  let user = $state(s?.user ?? "");
-  let auth = $state<AuthKind>(s?.auth ?? "password");
-  let keyPath = $state(s?.key_path ?? "~/.ssh/id_ed25519");
+  const d = untrack(() => draft);
+  let host = $state(s?.host ?? d?.host ?? "");
+  let port = $state(s?.port ?? d?.port ?? 22);
+  let user = $state(s?.user ?? d?.user ?? "");
+  let auth = $state<AuthKind>(s?.auth ?? d?.auth.method ?? "password");
+  let keyPath = $state(s?.key_path ?? (d?.auth.method === "key" ? d.auth.path : "~/.ssh/id_ed25519"));
   let color = $state<string | null>(s?.color ?? null);
   let env = $state(s?.env ?? "");
   let folderId = $state<number | null>(s ? s.folder_id : untrack(() => defaultFolderId));
@@ -68,7 +73,7 @@
       (t) => t.bind_port >= 0 && t.bind_port < 65536 && (t.kind === "dynamic" || (t.dest_host.trim() !== "" && t.dest_port > 0 && t.dest_port < 65536)),
     ),
   );
-  let secret = $state("");
+  let secret = $state(d?.auth.method === "password" ? d.auth.password : d?.auth.method === "key" ? (d.auth.passphrase ?? "") : "");
   let saveSecret = $state(true);
   let clearSecret = $state(false);
   const hadSecret = s?.has_secret ?? false;
@@ -122,7 +127,7 @@
 
 <div class="dlg-backdrop" role="presentation">
   <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit(true))} aria-label="Session">
-    <h2>{session ? "Edit session" : "New session"}</h2>
+    <h2>{session ? "Edit session" : draft ? "Save this connection" : "New session"}</h2>
     <label>Name <input bind:value={name} placeholder="Optional, defaults to user@host" /></label>
     <div class="row">
       <label class="grow">Host <input class="mono" use:focus bind:value={host} placeholder="example.com" /></label>

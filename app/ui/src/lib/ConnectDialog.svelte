@@ -3,7 +3,14 @@
   import { focus } from "./focus";
   import type { SshTarget } from "./bindings/SshTarget";
 
-  let { onconnect, oncancel }: { onconnect: (t: SshTarget) => void; oncancel: () => void } = $props();
+  let {
+    onconnect,
+    oncancel,
+  }: {
+    /** `save` asks for the connection to be kept as a saved session; `keepSecret` also keeps its password or passphrase. */
+    onconnect: (t: SshTarget, save: { save: boolean; keepSecret: boolean }) => void;
+    oncancel: () => void;
+  } = $props();
 
   let host = $state("");
   let port = $state(22);
@@ -12,6 +19,8 @@
   let password = $state("");
   let keyPath = $state("~/.ssh/id_ed25519");
   let passphrase = $state("");
+  let save = $state(false);
+  let keepSecret = $state(true);
 
   const valid = $derived(host.trim() !== "" && user.trim() !== "" && port > 0 && port < 65536);
 
@@ -24,7 +33,7 @@
         : method === "key"
           ? { method, path: keyPath, passphrase: passphrase || null }
           : { method };
-    onconnect({ host: host.trim(), port, user: user.trim(), auth });
+    onconnect({ host: host.trim(), port, user: user.trim(), auth }, { save, keepSecret });
   }
 </script>
 
@@ -51,6 +60,10 @@
     {:else if method === "key"}
       <KeyFileField bind:value={keyPath} />
       <label>Passphrase (if any) <input type="password" bind:value={passphrase} /></label>
+    {/if}
+    <label class="check"><input type="checkbox" bind:checked={save} /> Save to sessions</label>
+    {#if save && method !== "agent"}
+      <label class="check"><input type="checkbox" bind:checked={keepSecret} /> Save the {method === "key" ? "passphrase" : "password"} in the system keychain</label>
     {/if}
     <div class="actions">
       <button type="button" onclick={oncancel}>Cancel</button>
