@@ -42,8 +42,34 @@ Order matters: jump hosts and tunnels share one piece of plumbing (a way to open
 2. Does the encrypted vault replace the OS keychain or sit beside it? Recommended: beside it, keychain stays the default, the vault is for export and for systems without a keychain.
 3. Code signing and notarization (Apple Developer account, Windows certificate) for v0.2 or later?
 
+## v0.3
+
+Definition of done: a user can find any action or saved session from one search box, tell production from other hosts at a glance, recover from a dropped session in one key, jump between commands and copy their output, and get told when a long job finishes.
+
+| Milestone | Scope |
+|---|---|
+| F1 Command palette | One search box for actions, sessions, snippets and open tabs, with `>` `@` `!` `/` prefixes and recents. Done |
+| F2 Color and environment badge | Per-session color and env label, multiline paste confirm for `prod`. Done |
+| F4 Disconnected hint bar | Reconnect or restart from a bar in the pane, keeping scrollback. Done |
+| F5 Shell integration and blocks | OSC 133 command marks for local zsh and bash (opt-in snippet for remote shells), prompt jumping, copy or select a command's output, right-click menu per command. Collapsing output was dropped: xterm maps the mouse by row height. Done |
+| Saved connections | Save a quick connection to sessions from the connect dialog or an open tab. Done |
+
+## v0.4
+
+Definition of done: a user with many panes and sessions can zoom into one, rearrange panes by dragging, see each tab's state at a glance, and be alerted about finished jobs without being nagged.
+
+| Milestone | Scope |
+|---|---|
+| F10 Pane zoom and drag | `zoom_pane` toggle (other panes keep running), drag a pane's top strip onto another pane's edge, grid lines between panes, `focus_follows_mouse` setting. Done |
+| F3 Tab status and tab bar | State, activity and port-forward indicators on tabs; `tab_layout` setting with a vertical rail showing host and env. Done |
+| F6 Notifications | Opt-in, alerts for background windows and tabs, per-pane mute, hide the command text, click to focus the tab, test button and permission note in Settings. Done |
+
+## Next
+
+- F7 cross-session history search, F8 snippet upgrade (choice lists, per-session defaults, save from a block), F9 input assist, F11 optional AI helper (on hold until the privacy position is settled).
+
 ## Later
 
-- v0.3+: serial, Telnet, X11 forwarding, RDP, VNC, remote editor, plugins
+- v0.5+: serial, Telnet, X11 forwarding, RDP, VNC, remote editor, plugins
 
 Track progress in [GitHub issues](https://github.com/bhali16/quay-term/issues).
