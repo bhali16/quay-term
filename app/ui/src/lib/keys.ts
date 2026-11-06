@@ -30,6 +30,7 @@ export type Action =
   | "select_last_output"
   | "copy_last_command"
   | "rerun_last"
+  | "select_block"
   | "enable_integration";
 
 export const actionLabels: Record<Action, string> = {
@@ -63,6 +64,7 @@ export const actionLabels: Record<Action, string> = {
   select_last_output: "Select output of last command",
   copy_last_command: "Copy last command",
   rerun_last: "Type last command again (no Enter)",
+  select_block: "Select output of the command in view",
   enable_integration: "Enable command marks in this remote shell",
 };
 
@@ -101,6 +103,7 @@ export const defaultBindings: Record<Action, string> = {
   select_last_output: isMac ? "Alt+Cmd+O" : "Ctrl+Alt+Shift+O",
   copy_last_command: isMac ? "Alt+Shift+Cmd+C" : "Ctrl+Alt+Shift+C",
   rerun_last: isMac ? "Shift+Cmd+R" : "Ctrl+Alt+R",
+  select_block: isMac ? "Alt+Cmd+J" : "Ctrl+Alt+J",
   enable_integration: isMac ? "Alt+Shift+Cmd+I" : "Ctrl+Alt+Shift+I",
 };
 

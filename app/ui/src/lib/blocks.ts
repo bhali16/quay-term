@@ -129,6 +129,11 @@ export class BlockTracker<M extends Mark = Mark> {
     return best;
   }
 
+  /** A finished block whose prompt-to-end span contains `line` (a running command does not count). */
+  finishedAt(line: number): Block<M> | undefined {
+    return this.ran().find((b) => b.end !== null && line >= (b.prompt ?? b.out)!.line && line < b.end.line);
+  }
+
   /** The block whose prompt-to-end span contains `line`. */
   at(line: number, bottom: number): Block<M> | undefined {
     return this.ran().find((b) => {

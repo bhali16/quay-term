@@ -44,7 +44,10 @@
     onactivity,
     onfiles,
     oncommand,
+    onsnippet,
   }: {
+    /** The user chose "Add to snippets" on a command. */
+    onsnippet?: (command: string) => void;
     /** A command finished (needs shell integration marks). */
     oncommand?: (c: { command: string; exit: number | null; ms: number }) => void;
     active: boolean;
@@ -345,6 +348,49 @@
     term.selectLines(r[0], r[1] - 1);
     return true;
   }
+  // ---- per-block menu and selection ----
+  /** The finished block the user is looking at: the one in the middle of the view, else the last one. */
+  function blockInView(): Block<IMarker> | undefined {
+    const buf = term.buffer.active;
+    if (buf.viewportY < buf.baseY) {
+      const hit = tracker.finishedAt(buf.viewportY + Math.floor(term.rows / 2));
+      if (hit) return hit;
+    }
+    return tracker.lastFinished();
+  }
+  /** Select the output of the block in view. */
+  export function selectBlock(): boolean {
+    const b = blockInView();
+    const r = b && outputRange(b);
+    if (!r || r[1] <= r[0]) return false;
+    term.selectLines(r[0], r[1] - 1);
+    return true;
+  }
+  let menu = $state<{ x: number; y: number; block: Block<IMarker> } | null>(null);
+  /** The finished block under a mouse event, or undefined (live prompt, running command, no marks). */
+  function blockAtEvent(e: MouseEvent): Block<IMarker> | undefined {
+    const screen = term.element?.querySelector(".xterm-screen");
+    if (!screen || !seenMarks) return undefined;
+    const rect = screen.getBoundingClientRect();
+    if (e.clientY < rect.top || e.clientY >= rect.bottom || e.clientX < rect.left || e.clientX >= rect.right) return undefined;
+    const row = Math.floor(((e.clientY - rect.top) / rect.height) * term.rows);
+    return tracker.finishedAt(term.buffer.active.viewportY + row);
+  }
+  function menuDo(what: "command" | "output" | "both" | "select" | "snippet" | "paste") {
+    const b = menu?.block;
+    menu = null;
+    if (!b) return;
+    const text = (cmd: boolean) => blockText(b, cmd);
+    if (what === "command" && b.command) (void writeClipboard(b.command), flashCopied(b.command));
+    else if (what === "output") (void writeClipboard(text(false)), flashCopied(text(false)));
+    else if (what === "both") (void writeClipboard(text(true)), flashCopied(text(true)));
+    else if (what === "select") {
+      const r = outputRange(b);
+      if (r && r[1] > r[0]) term.selectLines(r[0], r[1] - 1);
+    } else if (what === "snippet" && b.command) onsnippet?.(b.command);
+    else if (what === "paste") pasteClipboard();
+    term.focus();
+  }
   /** Type the last command at the prompt without pressing Enter. */
   export function retypeLast(): string | null {
     const b = tracker.lastFinished();
@@ -500,8 +546,15 @@
     };
     host.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mouseup", onWindowMouseUp);
-    // Right-click pastes on Windows/Linux (PuTTY-style); macOS keeps the native context menu.
+    // Right-click on a finished command opens its menu. Elsewhere, Windows/Linux paste (PuTTY-style)
+    // and macOS keeps the native menu. A selection keeps the old behaviour so copy-by-right-click works.
     const onContext = (e: MouseEvent) => {
+      const hit = term.hasSelection() ? undefined : blockAtEvent(e);
+      if (hit) {
+        e.preventDefault();
+        menu = { x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 230), block: hit };
+        return;
+      }
       if (isMac) return;
       e.preventDefault();
       if (term.hasSelection()) {
@@ -548,6 +601,19 @@
     {#if copied}<span class="copied" role="status">{copied}</span>{/if}
     {#if broadcasting}<span class="bcast" title="What you type here is also sent to the other selected panes">Broadcast</span>{/if}
   </div>
+  {#if menu}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="shield" onmousedown={() => (menu = null)} oncontextmenu={(e) => (e.preventDefault(), (menu = null))}></div>
+    <div class="bmenu" role="menu" tabindex="-1" style:left="{menu.x}px" style:top="{menu.y}px" onkeydown={(e) => e.key === "Escape" && ((menu = null), term.focus())}>
+      <button role="menuitem" use:focus disabled={!menu.block.command} onclick={() => menuDo("command")}>Copy command</button>
+      <button role="menuitem" onclick={() => menuDo("output")}>Copy output</button>
+      <button role="menuitem" onclick={() => menuDo("both")}>Copy both</button>
+      <hr />
+      <button role="menuitem" onclick={() => menuDo("select")}>Select output</button>
+      <button role="menuitem" disabled={!menu.block.command || !onsnippet} onclick={() => menuDo("snippet")}>Add to snippets</button>
+      {#if !isMac}<hr /><button role="menuitem" onclick={() => menuDo("paste")}>Paste</button>{/if}
+    </div>
+  {/if}
   {#if pendingPaste !== null}
     <div class="bar confirm" role="alertdialog" tabindex="-1" aria-label="Confirm paste" onkeydown={(e) => e.key === "Escape" && answerPaste(false)}>
       <span class="msg">Paste {pendingPaste.replace(/[\r\n]+$/, "").split(/\r\n|\r|\n/).length} lines into this {env ?? "production"} session?</span>
@@ -565,6 +631,45 @@
 {/if}
 
 <style>
+  .shield {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+  .bmenu {
+    position: fixed;
+    z-index: 41;
+    min-width: 170px;
+    padding: 4px;
+    background: var(--surface);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+  }
+  .bmenu button {
+    all: unset;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .bmenu button:hover:not(:disabled),
+  .bmenu button:focus-visible {
+    background: var(--hover);
+  }
+  .bmenu button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .bmenu hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 4px 2px;
+  }
   .term {
     position: absolute;
     inset: 0;

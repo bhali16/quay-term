@@ -121,6 +121,12 @@
       return `${e}`;
     }
   }
+  /** "Add to snippets" from a command block: saved under its first words; rename it in the Snippets dialog. */
+  async function addCommandSnippet(command: string) {
+    const name = command.replace(/\s+/g, " ").slice(0, 40);
+    const err = await saveSnippet(null, name, "", command);
+    toast(err ?? `Saved snippet "${name}".`, err ? "error" : "success");
+  }
   async function removeSnippet(s: Snippet) {
     try {
       await snippetDelete(s.id);
@@ -548,6 +554,7 @@
           toast(c ? `Copied: ${c.length > 60 ? c.slice(0, 60) + "…" : c}` : "No finished command yet.", c ? "success" : "info");
         });
       case "rerun_last": return paneAction((p) => p.retypeLast() ?? toast("No command to type again."));
+      case "select_block": return paneAction((p) => p.selectBlock() || toast("No output to select."));
       case "enable_integration": {
         const p = focusedPane(activeTab);
         if (!p || p.isEnded() || p.sessionId() === null) return toast("This pane is not connected.");
@@ -726,6 +733,7 @@
                 onstatus={(s) => (tab.status[p.id] = s)}
                 onactivity={() => (tab.activity = true)}
                 oncommand={(c) => commandDone(tab.title, c)}
+                onsnippet={addCommandSnippet}
                 onfiles={tab.ssh || tab.saved ? () => (tab.files = true) : undefined}
                 onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
               />

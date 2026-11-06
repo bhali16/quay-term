@@ -92,6 +92,21 @@ describe("BlockTracker", () => {
   });
 });
 
+describe("finishedAt", () => {
+  it("finds finished blocks only, end exclusive", () => {
+    const t = new BlockTracker();
+    run(t, 10); // lines 10..12, ends at 13
+    t.promptStart(mk(13));
+    t.promptEnd(mk(13), 2);
+    t.commandStart(mk(14), 4000); // still running
+    expect(t.finishedAt(10)).toBeDefined();
+    expect(t.finishedAt(12)).toBeDefined();
+    expect(t.finishedAt(13)).toBeUndefined();
+    expect(t.finishedAt(20)).toBeUndefined();
+    expect(t.finishedAt(5)).toBeUndefined();
+  });
+});
+
 describe("helpers", () => {
   it("formats durations", () => {
     expect(duration(400)).toBe("400ms");
