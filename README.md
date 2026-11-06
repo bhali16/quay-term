@@ -8,7 +8,7 @@ Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Window
 
 The installers are not code-signed or notarized yet, so your OS will warn on first launch.
 
-- **macOS:** drag Quay Term to Applications, then right-click it, choose Open and confirm. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine "/Applications/Quay Term.app"` and open it again.
+- **macOS:** drag Quay Term to Applications and open it. When macOS blocks it, go to System Settings > Privacy & Security, choose Open Anyway and confirm. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine "/Applications/Quay Term.app"` and open it again.
 - **Windows:** download `Quay-Term-Setup.exe` and run it. It installs just for you, with no administrator prompt, and lets you pick the folder. Updating later is the same file, or use the in-app updater. SmartScreen may show "Windows protected your PC"; choose More info, then Run anyway.
 - **Linux:** make the `.AppImage` executable (`chmod +x`) or install the `.deb`/`.rpm`.
 
@@ -20,7 +20,7 @@ From 0.2.1 on, quay-term can update itself. Open Settings > About and choose Che
 
 One app to manage terminals, SSH sessions and remote files on any desktop OS.
 
-What it does today (v0.3):
+What it does today (v0.4):
 
 - **Terminals:** local shell tabs, split panes inside a tab (the layout comes back with a saved session) that you can zoom to fill the tab or drag onto another pane's edge to rearrange, optional focus follows mouse, and typing broadcast to selected panes
 - **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification; a quick-connect dialog can save the connection as you open it, and any open quick-connect tab can be saved from its right-click menu or the palette
