@@ -22,7 +22,7 @@ One app to manage terminals, SSH sessions and remote files on any desktop OS.
 
 What it does today (v0.3):
 
-- **Terminals:** local shell tabs, split panes inside a tab (the layout comes back with a saved session), and typing broadcast to selected panes
+- **Terminals:** local shell tabs, split panes inside a tab (the layout comes back with a saved session) that you can zoom to fill the tab or drag onto another pane's edge to rearrange, optional focus follows mouse, and typing broadcast to selected panes
 - **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification; a quick-connect dialog can save the connection as you open it, and any open quick-connect tab can be saved from its right-click menu or the palette
 - **Jump hosts:** chain `ProxyJump` hosts per saved session or from `~/.ssh/config`, with a host-key check at every hop
 - **Port forwards:** local, remote and dynamic (SOCKS5) tunnels over a tab's connection, saved with the session and optionally started automatically
