@@ -2,7 +2,7 @@
 
 Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Windows. Built with Rust and Tauri.
 
-> **Status:** early (0.3.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, signed in-app updates, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
+> **Status:** early (0.4.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, signed in-app updates, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
 
 ## Installing
 

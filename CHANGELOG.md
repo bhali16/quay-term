@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-06
+
+### Added
+- Pane zoom: the "Zoom pane" action (Shift+Cmd+Enter, or Ctrl+Shift+Enter on Windows and Linux) makes the focused pane fill the tab. The other panes keep running and receiving output. A "Zoomed" badge shows the state; click it to restore.
+- Drag a pane by the thin strip along its top edge onto the edge of another pane to move it there. A highlight shows where it will land.
+- Setting "Focus the pane under the mouse pointer without clicking" (off by default).
+- Thin lines between split panes, and the focused pane's highlight now shows on all four sides.
+- Tab bar layout setting (Settings > Appearance): horizontal strip or a vertical list on the left that also shows the host and environment label.
+- Tabs show a port-forward icon while tunnels are running over their connection.
+- Notifications: mute a single pane ("Mute alerts from this pane", Alt+Shift+Cmd+M), choose whether the notification shows the command's first words, and send a test notification from Settings, which also explains when the system has notifications blocked. Clicking a notification brings that tab and pane forward. Alerts now also fire for a background tab while the window is focused.
+- Right-click a finished command for a menu (copy command, output or both, select output, add to snippets), and a "Select output of the command in view" action.
+
+### Changed
+- Notifications are off until you turn them on under Settings > Terminal. If you already saved your settings, your choice is kept.
+- The Settings dialog is larger so the Notifications section fits.
+
 ## [0.3.2] - 2026-11-06
 
 ### Added
