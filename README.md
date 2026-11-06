@@ -20,21 +20,22 @@ From 0.2.1 on, quay-term can update itself. Open Settings > About and choose Che
 
 One app to manage terminals, SSH sessions and remote files on any desktop OS.
 
-What it does today (v0.2):
+What it does today (v0.3):
 
 - **Terminals:** local shell tabs, split panes inside a tab (the layout comes back with a saved session), and typing broadcast to selected panes
-- **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification
+- **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification; a quick-connect dialog can save the connection as you open it, and any open quick-connect tab can be saved from its right-click menu or the palette
 - **Jump hosts:** chain `ProxyJump` hosts per saved session or from `~/.ssh/config`, with a host-key check at every hop
 - **Port forwards:** local, remote and dynamic (SOCKS5) tunnels over a tab's connection, saved with the session and optionally started automatically
 - **Sessions:** saved sessions with folders, tags and search, and `~/.ssh/config` import (hosts, `ProxyJump` and forwards)
-- **Files:** SFTP browser with a transfer queue, sharing the terminal tab's login so a host asks for a code once
+- **Files:** SFTP browser with a transfer queue, sharing the terminal tab's login so a host asks for a code once; a failed or stalled SFTP request shows an error instead of waiting for ever
 - **Snippets:** a library of reusable commands with `{{variables}}`, folders and search
 - **Secrets:** stored in the OS keychain, or in a master-password file on machines without one
 - **Backup:** encrypted export and import of sessions, secrets and snippets in one file (Argon2id and ChaCha20-Poly1305)
 - **Updates:** signed in-app updates (Settings > About)
 - **Command palette:** Cmd/Ctrl+K searches actions, sessions, snippets and tabs
 - **Environments:** colour and prod/staging badges on saved sessions, tab connection state, and a reconnect bar
-- **Command marks:** prompt jumping, copy last output and exit-code bars for local zsh/bash (and remote ones on request)
+- **Command marks:** command blocks with exit-code bars, a copy button on each finished command, prompt jumping and copy last output. They work automatically in local zsh and bash on macOS and Linux, and in a remote bash or zsh on request (palette: "Enable command marks in this remote shell"). Local Windows shells (PowerShell, cmd) do not have them yet
+- **Notifications:** a desktop notification when a long command finishes or a session drops while the window is in the background
 - **Clipboard:** copy on select, Ctrl+C copies a selection, right-click pastes (Windows/Linux), Ctrl+click opens links
 - Five built-in themes, bundled fonts, configurable shortcuts
 - Installers for macOS (Apple silicon and Intel), Linux and Windows, with a themed setup app on Windows
