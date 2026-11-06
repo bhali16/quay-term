@@ -202,7 +202,11 @@ mod tests {
         let s = Settings::load(&p);
         assert!(!s.notifications);
         assert!(s.notify_show_command);
-        std::fs::write(&p, r#"{"notifications": true, "notify_show_command": false}"#).unwrap();
+        std::fs::write(
+            &p,
+            r#"{"notifications": true, "notify_show_command": false}"#,
+        )
+        .unwrap();
         let s = Settings::load(&p);
         assert!(s.notifications && !s.notify_show_command);
     }
