@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-06
+
+### Added
+- The quick SSH connection dialog has a "Save to sessions" checkbox, with an option to keep the password or passphrase in the system keychain.
+- Right-click an SSH tab (or use "Save this connection…" in the palette) to save a quick connection as a session; the editor opens prefilled with its host, user and sign-in. The tab menu also has Rename and Close.
+
+### Fixed
+- The Files panel could stay on "Connecting…" for ever on any host. Opening SFTP now resolves the home folder off the UI thread, a stalled request times out with an error, and an SFTP failure is shown instead of silently signing in a second time.
+
 ## [0.3.1] - 2026-11-05
 
 ### Changed
