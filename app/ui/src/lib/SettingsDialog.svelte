@@ -138,6 +138,13 @@
               {#each themes as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
             </select>
           </label>
+          <label>
+            Tab bar
+            <select value={settings.value.tab_layout} onchange={(e) => patch({ tab_layout: e.currentTarget.value === "vertical" ? "vertical" : "horizontal" })}>
+              <option value="horizontal">Horizontal (strip above the terminal)</option>
+              <option value="vertical">Vertical (list on the left)</option>
+            </select>
+          </label>
           <div class="swatches">
             {#each themes as t (t.id)}
               <button class="sw" class:on={settings.value.theme === t.id} title={t.name} aria-label={t.name} onclick={() => patch({ theme: t.id })} style:background={t.term.background}>

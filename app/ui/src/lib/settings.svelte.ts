@@ -21,6 +21,7 @@ const fallback: Settings = {
   notify_after_secs: 15,
   keybindings: {},
   focus_follows_mouse: false,
+  tab_layout: "horizontal",
 };
 
 class Store {

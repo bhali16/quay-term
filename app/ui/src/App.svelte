@@ -22,6 +22,7 @@
     vaultStatus,
     snippetSave,
     snippetsLoad,
+    tunnelList,
   } from "./lib/ipc";
   import Sidebar from "./lib/Sidebar.svelte";
   import SessionDialog from "./lib/SessionDialog.svelte";
@@ -51,6 +52,7 @@
   import { settings } from "./lib/settings.svelte";
   import { actionFor, actionLabels, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
+  import { runningTunnels, tabState, type TabState } from "./lib/tabs";
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
   import type { SshTarget } from "./lib/bindings/SshTarget";
@@ -68,6 +70,8 @@
     tunnels?: boolean;
     layout: P.Node;
     focus: number;
+    /** Port forwards running over this tab's connection, polled while the tab is open. */
+    tunnelCount: number;
     /** Pane shown full-tab while zoomed; the others stay mounted and keep running, only hidden. */
     zoom: number | null;
     panes: Record<number, TerminalPane>;
@@ -167,7 +171,7 @@
     const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
     // A saved session comes back with the split layout it was last closed with.
     const layout = (saved && loadShape(saved.id)) || { leaf: ++paneCounter };
-    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], zoom: null, panes: {}, status: {}, activity: false });
+    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], zoom: null, tunnelCount: 0, panes: {}, status: {}, activity: false });
     activeKey = key;
   }
 
@@ -395,6 +399,7 @@
     }
   };
 
+  const vertical = $derived(settings.value.tab_layout === "vertical");
   const activeTab = $derived(tabs.find((t) => t.key === activeKey));
   // A tab you switch to has nothing unseen any more.
   $effect(() => {
@@ -405,14 +410,8 @@
   const savedOf = (tab: Tab) => (tab.saved ? library.sessions.find((x) => x.id === tab.saved!.id) : undefined);
   const envOf = (tab: Tab) => savedOf(tab)?.env ?? null;
   const colorOf = (tab: Tab) => savedOf(tab)?.color ?? null;
-  type TabState = "connecting" | "connected" | "ended" | "local";
-  function stateOf(tab: Tab): TabState {
-    const all = P.leaves(tab.layout).map((id) => tab.status[id]);
-    const remote = !!(tab.ssh || tab.saved);
-    if (all.length && all.every((s) => s === "ended")) return "ended";
-    if (all.some((s) => s === "connecting" || s === undefined)) return remote ? "connecting" : "local";
-    return remote ? "connected" : "local";
-  }
+  const stateOf = (tab: Tab): TabState =>
+    tabState(P.leaves(tab.layout).map((id) => tab.status[id]), !!(tab.ssh || tab.saved));
   const stateLabel: Record<TabState, string> = { connecting: "Connecting", connected: "Connected", ended: "Disconnected", local: "" };
 
   // ---- command palette ----
@@ -635,6 +634,22 @@
       }, 5000);
     });
     getAppInfo().then((i) => (info = i));
+    // Tunnel indicator: ask each connected remote tab how many forwards run. Cheap, and quiet on failure.
+    const pollTunnels = setInterval(async () => {
+      for (const t of tabs) {
+        if (!(t.ssh || t.saved)) continue;
+        const sid = Object.values(t.panes).map((p) => p?.sessionId() ?? null).find((x) => x !== null) ?? null;
+        if (sid === null) {
+          t.tunnelCount = 0;
+          continue;
+        }
+        try {
+          t.tunnelCount = runningTunnels(await tunnelList(sid));
+        } catch {
+          /* the next tick tries again */
+        }
+      }
+    }, 3000);
     newTab();
     refresh();
     snippetsLoad().then((s) => (snippets = s)).catch(say);
@@ -654,6 +669,7 @@
       onAuthPrompt((p) => (authPrompt = p)),
     ];
     return () => {
+      clearInterval(pollTunnels);
       unlisten.forEach((u) => u.then((f) => f()));
     };
   });
@@ -695,11 +711,11 @@
     onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
   />
   <div class="col">
-  <nav class="tabs" data-tauri-drag-region>
-    {#each tabs as tab (tab.key)}
+  {#snippet tabItem(tab: Tab)}
       {@const st = stateOf(tab)}
       {@const tcolor = colorOf(tab)}
       {@const tenv = envOf(tab)}
+      {@const host = tab.ssh?.host ?? savedOf(tab)?.host}
       <div
         class="tab"
         role="presentation"
@@ -723,13 +739,17 @@
               <span class="sshdot ended" role="img" aria-label="Exited" title="Exited"></span>
             {/if}
             <span class="ttl">{tab.title}</span>
+            {#if vertical && host}<span class="sub">{host}</span>{/if}
             {#if tenv}<span class="envpill" class:prod={/^prod/i.test(tenv)} style:--c={tcolor ?? "var(--accent)"}>{tenv}</span>{/if}
+            {#if tab.tunnelCount > 0}<span class="tunneldot" role="img" aria-label="{tab.tunnelCount} port forward{tab.tunnelCount === 1 ? '' : 's'} running" title="{tab.tunnelCount} port forward{tab.tunnelCount === 1 ? '' : 's'} running"><Icon name="swap" size={12} /></span>{/if}
             {#if tab.activity}<span class="activity" role="img" aria-label="New output" title="New output"></span>{/if}
           </button>
         {/if}
         <button class="close" aria-label="Close tab" onclick={() => closeTab(tab.key)}>×</button>
       </div>
-    {/each}
+  {/snippet}
+  <nav class="tabs" data-tauri-drag-region>
+    {#if !vertical}{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}{/if}
     <div class="right">
       {#if activeTab && (activeTab.ssh || activeTab.saved)}
         <button class="filesbtn" class:on={activeTab.files} aria-label="Files" aria-pressed={!!activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>
@@ -750,6 +770,10 @@
       <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
     </div>
   </nav>
+  <div class="body">
+  {#if vertical}
+    <aside class="vtabs" aria-label="Tabs">{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}</aside>
+  {/if}
   <div class="panes">
     {#each tabs as tab (tab.key)}
       {@const lay = P.layout(tab.layout)}
@@ -832,6 +856,7 @@
         {/if}
       </div>
     {/each}
+  </div>
   </div>
   </div>
   {#if tabMenu}
@@ -1079,6 +1104,57 @@
   .envpill.prod {
     background: var(--red);
     color: var(--bg);
+  }
+  .tunneldot {
+    display: flex;
+    flex: none;
+    color: var(--accent);
+  }
+  .sub {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--dim);
+    font-size: 11px;
+  }
+  .body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  /* Vertical tab layout: the same tabs, listed down the left side. */
+  .vtabs {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 2px;
+    box-sizing: border-box;
+    width: 200px;
+    padding: 6px;
+    overflow-y: auto;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .vtabs .tab,
+  .vtabs .tab.active {
+    flex: none;
+    width: 100%;
+    max-width: none;
+    height: 36px;
+    margin: 0;
+    border-radius: 6px;
+    box-shadow: inset 2px 0 0 var(--tc, transparent);
+  }
+  .vtabs .label {
+    flex: 1;
+    padding-left: 12px;
+  }
+  .vtabs .ttl {
+    flex: 0 1 auto;
+  }
+  .vtabs .sub {
+    flex: 1;
   }
   .activity {
     flex: none;

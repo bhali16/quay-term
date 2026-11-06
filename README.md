@@ -37,7 +37,7 @@ What it does today (v0.3):
 - **Command marks:** command blocks with exit-code bars, a copy button on each finished command, prompt jumping and copy last output. They work automatically in local zsh and bash on macOS and Linux, and in a remote bash or zsh on request (palette: "Enable command marks in this remote shell"). Local Windows shells (PowerShell, cmd) do not have them yet
 - **Notifications:** a desktop notification when a long command finishes or a session drops while the window is in the background
 - **Clipboard:** copy on select, Ctrl+C copies a selection, right-click pastes (Windows/Linux), Ctrl+click opens links
-- Five built-in themes, bundled fonts, configurable shortcuts
+- Five built-in themes, bundled fonts, configurable shortcuts, tab status dots, and a horizontal or vertical tab bar
 - Installers for macOS (Apple silicon and Intel), Linux and Windows, with a themed setup app on Windows
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the milestones.

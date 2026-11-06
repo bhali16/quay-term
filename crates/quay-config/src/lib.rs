@@ -22,6 +22,20 @@ pub enum ConfigError {
     Json(#[from] serde_json::Error),
 }
 
+/// Where the tab list sits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub enum TabLayout {
+    /// A rail down the left side, for many sessions.
+    Vertical,
+    /// A strip above the terminal. Also what any unknown value in a hand-edited or newer file reads
+    /// as (`other` must be the last variant).
+    #[default]
+    #[serde(other)]
+    Horizontal,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(default)]
 #[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
@@ -53,6 +67,7 @@ pub struct Settings {
     pub keybindings: BTreeMap<String, String>,
     /// Focus the pane under the mouse pointer without clicking it.
     pub focus_follows_mouse: bool,
+    pub tab_layout: TabLayout,
 }
 
 impl Default for Settings {
@@ -74,6 +89,7 @@ impl Default for Settings {
             notify_after_secs: 15,
             keybindings: BTreeMap::new(),
             focus_follows_mouse: false,
+            tab_layout: TabLayout::Horizontal,
         }
     }
 }
@@ -159,6 +175,20 @@ mod tests {
         assert!(!Settings::load(&p).focus_follows_mouse);
         std::fs::write(&p, r#"{"focus_follows_mouse": true}"#).unwrap();
         assert!(Settings::load(&p).focus_follows_mouse);
+    }
+
+    #[test]
+    fn tab_layout_defaults_to_horizontal_and_tolerates_unknown_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        assert_eq!(Settings::load(&p).tab_layout, TabLayout::Horizontal);
+        std::fs::write(&p, r#"{"tab_layout": "vertical", "font_size": 18}"#).unwrap();
+        assert_eq!(Settings::load(&p).tab_layout, TabLayout::Vertical);
+        std::fs::write(&p, r#"{"tab_layout": "sideways", "font_size": 18}"#).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.tab_layout, TabLayout::Horizontal);
+        assert_eq!(s.font_size, 18);
     }
 
     #[test]
