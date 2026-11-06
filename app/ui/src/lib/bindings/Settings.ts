@@ -42,4 +42,8 @@ notify_after_secs: number,
 /**
  * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
  */
-keybindings: { [key in string]: string }, };
+keybindings: { [key in string]: string }, 
+/**
+ * Focus the pane under the mouse pointer without clicking it.
+ */
+focus_follows_mouse: boolean, };

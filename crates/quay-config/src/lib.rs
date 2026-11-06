@@ -51,6 +51,8 @@ pub struct Settings {
     pub notify_after_secs: u32,
     /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
     pub keybindings: BTreeMap<String, String>,
+    /// Focus the pane under the mouse pointer without clicking it.
+    pub focus_follows_mouse: bool,
 }
 
 impl Default for Settings {
@@ -71,6 +73,7 @@ impl Default for Settings {
             notifications: true,
             notify_after_secs: 15,
             keybindings: BTreeMap::new(),
+            focus_follows_mouse: false,
         }
     }
 }
@@ -146,6 +149,16 @@ mod tests {
         assert!(Settings::load(&p).check_for_updates);
         std::fs::write(&p, r#"{"check_for_updates": false}"#).unwrap();
         assert!(!Settings::load(&p).check_for_updates);
+    }
+
+    #[test]
+    fn focus_follows_mouse_defaults_off_for_old_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        assert!(!Settings::load(&p).focus_follows_mouse);
+        std::fs::write(&p, r#"{"focus_follows_mouse": true}"#).unwrap();
+        assert!(Settings::load(&p).focus_follows_mouse);
     }
 
     #[test]

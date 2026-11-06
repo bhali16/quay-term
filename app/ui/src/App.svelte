@@ -68,6 +68,8 @@
     tunnels?: boolean;
     layout: P.Node;
     focus: number;
+    /** Pane shown full-tab while zoomed; the others stay mounted and keep running, only hidden. */
+    zoom: number | null;
     panes: Record<number, TerminalPane>;
     /** Connection state of each pane, reported by the pane itself. */
     status: Record<number, PaneStatus>;
@@ -165,7 +167,7 @@
     const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
     // A saved session comes back with the split layout it was last closed with.
     const layout = (saved && loadShape(saved.id)) || { leaf: ++paneCounter };
-    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], panes: {}, status: {}, activity: false });
+    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], zoom: null, panes: {}, status: {}, activity: false });
     activeKey = key;
   }
 
@@ -190,7 +192,12 @@
   }
   const focusedPane = (tab: Tab | undefined) => tab?.panes[tab.focus];
 
+  function toggleZoom(tab: Tab) {
+    if (tab.zoom !== null) tab.zoom = null;
+    else if (P.leaves(tab.layout).length > 1) tab.zoom = tab.focus;
+  }
   function splitPane(tab: Tab, axis: P.Axis) {
+    tab.zoom = null;
     const id = ++paneCounter;
     setLayout(tab, P.split(tab.layout, tab.focus, id, axis));
     tab.focus = id;
@@ -199,6 +206,7 @@
     const next = P.remove(tab.layout, id);
     if (!next) return closeTab(tab.key);
     const order = P.leaves(tab.layout);
+    if (tab.zoom === id) tab.zoom = null;
     setLayout(tab, next);
     delete tab.panes[id];
     delete tab.status[id];
@@ -206,6 +214,7 @@
     if (tab.focus === id) tab.focus = P.leaves(next)[Math.min(order.indexOf(id), order.length - 2)];
   }
   function moveFocus(tab: Tab, dir: P.Dir) {
+    if (tab.zoom !== null) return;
     const to = P.neighbor(P.layout(tab.layout), tab.focus, dir);
     if (to !== null) tab.focus = to;
   }
@@ -228,6 +237,44 @@
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
+  }
+
+  // Drag a pane by its title strip onto an edge of another pane. Pointer events, not HTML5 drag and drop,
+  // so it behaves the same in every webview.
+  let drag = $state<{ tab: number; id: number; over: { id: number; edge: P.Dir } | null } | null>(null);
+  function dragPane(e: PointerEvent, tab: Tab, id: number) {
+    if (e.button !== 0 || tab.zoom !== null) return;
+    const el = e.currentTarget as HTMLElement;
+    const area = el.closest(".term")!.getBoundingClientRect();
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moved = false;
+    el.setPointerCapture(e.pointerId);
+    const at = (m: PointerEvent) =>
+      P.dropTarget(P.layout(tab.layout), (m.clientX - area.left) / area.width, (m.clientY - area.top) / area.height, id);
+    const onMove = (m: PointerEvent) => {
+      if (!moved && Math.hypot(m.clientX - x0, m.clientY - y0) < 5) return;
+      moved = true;
+      drag = { tab: tab.key, id, over: at(m) };
+    };
+    const end = (m: PointerEvent | null) => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onCancel);
+      drag = null;
+      return m;
+    };
+    const onUp = (m: PointerEvent) => {
+      const over = moved ? at(m) : null;
+      end(m);
+      if (!over) return;
+      setLayout(tab, P.move(tab.layout, id, over.id, over.edge));
+      tab.focus = id;
+    };
+    const onCancel = () => end(null);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onCancel);
   }
 
   // ---- saved sessions ----
@@ -521,6 +568,7 @@
       case "snippets": return (showSnippets = !showSnippets);
       case "split_right": return activeTab && splitPane(activeTab, "row");
       case "split_down": return activeTab && splitPane(activeTab, "col");
+      case "zoom_pane": return activeTab && toggleZoom(activeTab);
       case "focus_left": return activeTab && moveFocus(activeTab, "left");
       case "focus_right": return activeTab && moveFocus(activeTab, "right");
       case "focus_up": return activeTab && moveFocus(activeTab, "up");
@@ -706,17 +754,32 @@
     {#each tabs as tab (tab.key)}
       {@const lay = P.layout(tab.layout)}
       {@const solo = lay.panes.length === 1}
+      {@const zoomed = solo ? null : tab.zoom}
       <div class="tabview" class:hidden={tab.key !== activeKey}>
         <div class="term">
           {#each lay.panes as p (p.id)}
+            {@const v = P.zoomView(p.rect, p.id, zoomed)}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="leaf"
               class:focused={!solo && tab.focus === p.id}
-              style:left="{p.rect.x * 100}%"
-              style:top="{p.rect.y * 100}%"
-              style:width="{p.rect.w * 100}%"
-              style:height="{p.rect.h * 100}%"
+              class:dragging={drag?.id === p.id}
+              class:hidden={v.hidden}
+              style:left="{v.rect.x * 100}%"
+              style:top="{v.rect.y * 100}%"
+              style:width="{v.rect.w * 100}%"
+              style:height="{v.rect.h * 100}%"
+              onpointerenter={(e) => {
+                if (settings.value.focus_follows_mouse && e.pointerType === "mouse" && !drag && !v.hidden && tab.focus !== p.id && tab.key === activeKey) tab.focus = p.id;
+              }}
             >
+              {#if !solo && zoomed === null}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="grip" title="Drag onto another pane's edge to move this pane" onpointerdown={(e) => dragPane(e, tab, p.id)}></div>
+              {/if}
+              {#if zoomed === p.id}
+                <button class="zoombadge" title="Zoomed. Click or press {settings.bindings.zoom_pane} to restore" onclick={() => (tab.zoom = null)}>Zoomed</button>
+              {/if}
               <TerminalPane
                 bind:this={tab.panes[p.id]}
                 active={tab.key === activeKey}
@@ -739,7 +802,12 @@
               />
             </div>
           {/each}
-          {#each lay.dividers as d (d.path)}
+          {#if drag && drag.tab === tab.key && drag.over}
+            {@const target = lay.panes.find((q) => q.id === drag!.over!.id)!}
+            {@const r = P.edgeRect(target.rect, drag.over.edge)}
+            <div class="dropmark" style:left="{r.x * 100}%" style:top="{r.y * 100}%" style:width="{r.w * 100}%" style:height="{r.h * 100}%"></div>
+          {/if}
+          {#each zoomed === null ? lay.dividers : [] as d (d.path)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="divider {d.axis}"
@@ -1191,8 +1259,67 @@
     box-sizing: border-box;
     border: 1px solid transparent;
   }
-  .leaf.focused {
-    border-color: var(--accent);
+  /* Drawn above the divider lines, so the focused pane shows its ring on all four sides. */
+  .leaf.focused::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    box-sizing: border-box;
+    border: 1px solid var(--accent);
+    pointer-events: none;
+  }
+  /* Hidden by a zoom: same rectangle as before, so the terminal keeps its size and keeps receiving output. */
+  .leaf.hidden {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .leaf.dragging {
+    opacity: 0.6;
+  }
+  .grip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    z-index: 7;
+    cursor: grab;
+    touch-action: none;
+    transition: background 0.12s;
+  }
+  .grip:hover {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .leaf.dragging .grip {
+    cursor: grabbing;
+  }
+  .dropmark {
+    position: absolute;
+    z-index: 5;
+    box-sizing: border-box;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    border: 2px solid var(--accent);
+  }
+  .zoombadge {
+    all: unset;
+    position: absolute;
+    top: 5px;
+    left: 10px;
+    z-index: 8;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .zoombadge:focus-visible {
+    outline: 2px solid var(--fg);
   }
   .divider {
     position: absolute;
@@ -1208,6 +1335,25 @@
     height: 7px;
     margin-top: -3px;
     cursor: row-resize;
+  }
+  /* A thin line along every split, so the panes read as a grid. None on the outer edge of the tab. */
+  .divider::before {
+    content: "";
+    position: absolute;
+    background: var(--border);
+    pointer-events: none;
+  }
+  .divider.row::before {
+    left: 3px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+  }
+  .divider.col::before {
+    top: 3px;
+    left: 0;
+    right: 0;
+    height: 1px;
   }
   .divider:hover {
     background: var(--accent);

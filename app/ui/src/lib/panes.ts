@@ -29,6 +29,63 @@ export function remove(n: Node, id: number): Node | null {
   return { ...n, a, b };
 }
 
+/**
+ * Move leaf `id` next to leaf `target`, on the given edge of it. The old parent collapses (the sibling takes
+ * its space) and the target's slot is split 50/50. Returns the same tree when the move is meaningless:
+ * onto itself, an unknown id, or a tree with a single pane.
+ */
+export function move(n: Node, id: number, target: number, edge: Dir): Node {
+  if (id === target) return n;
+  const ids = leaves(n);
+  if (!ids.includes(id) || !ids.includes(target)) return n;
+  const rest = remove(n, id);
+  if (!rest) return n;
+  const axis: Axis = edge === "left" || edge === "right" ? "row" : "col";
+  const before = edge === "left" || edge === "up";
+  const put = (m: Node): Node => {
+    if (isLeaf(m)) {
+      if (m.leaf !== target) return m;
+      const moved: Node = { leaf: id };
+      return { axis, ratio: 0.5, a: before ? moved : m, b: before ? m : moved };
+    }
+    return { ...m, a: put(m.a), b: put(m.b) };
+  };
+  return put(rest);
+}
+
+/** Which edge of a pane a pointer at (fx, fy), both 0..1 inside the pane, is nearest to. */
+export function edgeAt(fx: number, fy: number): Dir {
+  const d = { left: fx, right: 1 - fx, up: fy, down: 1 - fy };
+  return (Object.keys(d) as Dir[]).reduce((best, k) => (d[k] < d[best] ? k : best), "left" as Dir);
+}
+
+/** The half of `rect` that a pane dropped on `edge` would take: what the drop indicator shows. */
+export function edgeRect(rect: Rect, edge: Dir): Rect {
+  const { x, y, w, h } = rect;
+  return edge === "left" ? { x, y, w: w / 2, h }
+    : edge === "right" ? { x: x + w / 2, y, w: w / 2, h }
+    : edge === "up" ? { x, y, w, h: h / 2 }
+    : { x, y: y + h / 2, w, h: h / 2 };
+}
+
+/** The pane under a point given as fractions of the tab area, and the edge of it the point is nearest to. */
+export function dropTarget(l: Layout, fx: number, fy: number, dragged: number): { id: number; edge: Dir } | null {
+  const hit = l.panes.find((p) => fx >= p.rect.x && fx <= p.rect.x + p.rect.w && fy >= p.rect.y && fy <= p.rect.y + p.rect.h);
+  if (!hit || hit.id === dragged) return null;
+  return { id: hit.id, edge: edgeAt((fx - hit.rect.x) / hit.rect.w, (fy - hit.rect.y) / hit.rect.h) };
+}
+
+const FULL: Rect = { x: 0, y: 0, w: 1, h: 1 };
+
+/**
+ * Where a pane is drawn while `zoomed` is set. The zoomed pane fills the tab; the others keep their own
+ * rectangle (so their terminals are not resized or unmounted) and are only hidden.
+ */
+export function zoomView(rect: Rect, id: number, zoomed: number | null): { rect: Rect; hidden: boolean } {
+  if (zoomed === null) return { rect, hidden: false };
+  return id === zoomed ? { rect: FULL, hidden: false } : { rect, hidden: true };
+}
+
 export type Divider = { path: string; axis: Axis; rect: Rect; parent: Rect };
 export type Layout = { panes: { id: number; rect: Rect }[]; dividers: Divider[] };
 

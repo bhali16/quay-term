@@ -7,6 +7,7 @@ export type Action =
   | "snippets"
   | "split_right"
   | "split_down"
+  | "zoom_pane"
   | "focus_left"
   | "focus_right"
   | "focus_up"
@@ -41,6 +42,7 @@ export const actionLabels: Record<Action, string> = {
   snippets: "Open snippets",
   split_right: "Split pane right",
   split_down: "Split pane down",
+  zoom_pane: "Zoom pane to fill the tab (toggle)",
   focus_left: "Focus pane to the left",
   focus_right: "Focus pane to the right",
   focus_up: "Focus pane above",
@@ -80,6 +82,7 @@ export const defaultBindings: Record<Action, string> = {
   snippets: isMac ? "Shift+Cmd+S" : "Ctrl+Alt+S",
   split_right: `${M}+D`,
   split_down: isMac ? "Shift+Cmd+D" : "Ctrl+Alt+D",
+  zoom_pane: isMac ? "Shift+Cmd+Enter" : "Ctrl+Shift+Enter",
   focus_left: isMac ? "Alt+Cmd+ArrowLeft" : "Ctrl+Alt+ArrowLeft",
   focus_right: isMac ? "Alt+Cmd+ArrowRight" : "Ctrl+Alt+ArrowRight",
   focus_up: isMac ? "Alt+Cmd+ArrowUp" : "Ctrl+Alt+ArrowUp",

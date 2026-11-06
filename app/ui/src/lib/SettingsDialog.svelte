@@ -174,6 +174,10 @@
             Check for updates when quay-term starts
           </label>
           <label class="check">
+            <input type="checkbox" checked={settings.value.focus_follows_mouse} onchange={(e) => patch({ focus_follows_mouse: e.currentTarget.checked })} />
+            Focus the pane under the mouse pointer without clicking
+          </label>
+          <label class="check">
             <input type="checkbox" checked={settings.value.show_hints} onchange={(e) => patch({ show_hints: e.currentTarget.checked })} />
             Show a reconnect bar when a session ends
           </label>

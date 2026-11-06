@@ -20,6 +20,7 @@ const fallback: Settings = {
   notifications: true,
   notify_after_secs: 15,
   keybindings: {},
+  focus_follows_mouse: false,
 };
 
 class Store {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromShape, layout, leaves, neighbor, nudge, remove, setRatio, shapeOf, split, type Node } from "./panes";
+import { dropTarget, edgeAt, edgeRect, fromShape, layout, leaves, move, neighbor, nudge, remove, setRatio, shapeOf, split, zoomView, type Node } from "./panes";
 
 const two: Node = split({ leaf: 1 }, 1, 2, "row");
 const grid: Node = split(split({ leaf: 1 }, 1, 2, "row"), 2, 3, "col"); // 1 | (2 over 3)
@@ -66,5 +66,98 @@ describe("stored shape", () => {
     expect(fromShape({ axis: "diag", ratio: 0.5, a: null, b: null }, () => 1)).toBeNull();
     expect(fromShape({ axis: "row", ratio: "x", a: null, b: null }, () => 1)).toBeNull();
     expect(fromShape({ axis: "row", ratio: 0.5, a: null }, () => 1)).toBeNull();
+  });
+});
+
+describe("move", () => {
+  const rectOf = (n: Node, id: number) => layout(n).panes.find((p) => p.id === id)!.rect;
+  it("places the pane on each edge of the target", () => {
+    const left = move(two, 2, 1, "left");
+    expect(leaves(left)).toEqual([2, 1]);
+    expect(left).toMatchObject({ axis: "row", ratio: 0.5 });
+    expect(leaves(move(two, 1, 2, "right"))).toEqual([2, 1]);
+    const top = move(two, 2, 1, "up");
+    expect(top).toMatchObject({ axis: "col" });
+    expect(leaves(top)).toEqual([2, 1]);
+    const bottom = move(two, 1, 2, "down");
+    expect(bottom).toMatchObject({ axis: "col" });
+    expect(leaves(bottom)).toEqual([2, 1]);
+  });
+  it("collapses the old parent so the sibling takes the space", () => {
+    // grid is 1 | (2 over 3). Moving 3 under 1 leaves 2 alone in the right column.
+    const n = move(grid, 3, 1, "down");
+    expect(leaves(n).sort()).toEqual([1, 2, 3]);
+    expect(rectOf(n, 2)).toEqual({ x: 0.5, y: 0, w: 0.5, h: 1 });
+    expect(rectOf(n, 1)).toEqual({ x: 0, y: 0, w: 0.5, h: 0.5 });
+    expect(rectOf(n, 3)).toEqual({ x: 0, y: 0.5, w: 0.5, h: 0.5 });
+  });
+  it("keeps every pane and tiles the area", () => {
+    for (const edge of ["left", "right", "up", "down"] as const) {
+      const n = move(grid, 1, 3, edge);
+      expect(leaves(n).sort()).toEqual([1, 2, 3]);
+      expect(layout(n).panes.reduce((s, p) => s + p.rect.w * p.rect.h, 0)).toBeCloseTo(1);
+    }
+  });
+  it("does nothing for a single pane, for itself, or for unknown ids", () => {
+    const one: Node = { leaf: 1 };
+    expect(move(one, 1, 1, "left")).toBe(one);
+    expect(move(two, 1, 1, "right")).toBe(two);
+    expect(move(two, 9, 1, "left")).toBe(two);
+    expect(move(two, 1, 9, "left")).toBe(two);
+    expect(move(one, 1, 2, "left")).toBe(one);
+  });
+  it("does not change the tree when the pane already sits there", () => {
+    expect(shapeOf(move(two, 2, 1, "right"))).toEqual(shapeOf(two));
+    expect(leaves(move(two, 2, 1, "right"))).toEqual([1, 2]);
+  });
+  it("survives the saved-session round trip", () => {
+    const moved = move(grid, 3, 1, "left");
+    let n = 20;
+    const back = fromShape(JSON.parse(JSON.stringify(shapeOf(moved))), () => ++n)!;
+    expect(shapeOf(back)).toEqual(shapeOf(moved));
+    expect(layout(back).panes.map((p) => p.rect)).toEqual(layout(moved).panes.map((p) => p.rect));
+  });
+});
+
+describe("edgeAt", () => {
+  it("picks the nearest edge", () => {
+    expect(edgeAt(0.05, 0.5)).toBe("left");
+    expect(edgeAt(0.95, 0.5)).toBe("right");
+    expect(edgeAt(0.5, 0.1)).toBe("up");
+    expect(edgeAt(0.5, 0.9)).toBe("down");
+  });
+  it("resolves the centre without throwing", () => {
+    expect(["left", "right", "up", "down"]).toContain(edgeAt(0.5, 0.5));
+  });
+});
+
+describe("zoomView", () => {
+  const r = { x: 0.5, y: 0, w: 0.5, h: 1 };
+  it("leaves rectangles alone when nothing is zoomed", () => {
+    expect(zoomView(r, 2, null)).toEqual({ rect: r, hidden: false });
+  });
+  it("fills the tab for the zoomed pane and only hides the others", () => {
+    expect(zoomView(r, 2, 2)).toEqual({ rect: { x: 0, y: 0, w: 1, h: 1 }, hidden: false });
+    expect(zoomView(r, 1, 2)).toEqual({ rect: r, hidden: true });
+  });
+});
+
+describe("drop target", () => {
+  const l = layout(two); // 1 on the left half, 2 on the right
+  it("finds the pane and edge under the pointer", () => {
+    expect(dropTarget(l, 0.9, 0.5, 1)).toEqual({ id: 2, edge: "right" });
+    expect(dropTarget(l, 0.55, 0.5, 1)).toEqual({ id: 2, edge: "left" });
+    expect(dropTarget(l, 0.75, 0.05, 1)).toEqual({ id: 2, edge: "up" });
+  });
+  it("ignores the dragged pane itself and points outside", () => {
+    expect(dropTarget(l, 0.2, 0.5, 1)).toBeNull();
+    expect(dropTarget(l, 1.5, 0.5, 1)).toBeNull();
+  });
+  it("draws the half that the moved pane would take", () => {
+    const r = { x: 0.5, y: 0, w: 0.5, h: 1 };
+    expect(edgeRect(r, "left")).toEqual({ x: 0.5, y: 0, w: 0.25, h: 1 });
+    expect(edgeRect(r, "right")).toEqual({ x: 0.75, y: 0, w: 0.25, h: 1 });
+    expect(edgeRect(r, "up")).toEqual({ x: 0.5, y: 0, w: 0.5, h: 0.5 });
+    expect(edgeRect(r, "down")).toEqual({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
   });
 });
