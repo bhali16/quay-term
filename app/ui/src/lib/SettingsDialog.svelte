@@ -233,7 +233,7 @@
               Mute one pane with "{actionLabels.mute_pane}" ({settings.bindings.mute_pane}). Clicking a notification brings that tab forward.
               Command alerts need command marks (Mark prompts and commands, above).
             </p>
-            <button onclick={testNotification}>Send a test notification</button>
+            <button class="action" onclick={testNotification}>Send a test notification</button>
             {#if permission === "denied"}
               <p class="hint warn" role="status">
                 The system has notifications blocked for quay-term, so none will appear. Allow them in your system notification settings, then send a test.
@@ -317,13 +317,13 @@
 
 <style>
   .wide {
-    width: 600px;
+    width: 760px;
     max-width: 94vw;
   }
   .layout {
     display: flex;
     gap: 16px;
-    height: 360px;
+    height: min(540px, 68vh);
   }
   .tabs {
     display: flex;
@@ -364,6 +364,23 @@
     gap: 10px;
     overflow: auto;
     padding-right: 2px;
+  }
+  /* Rows keep their natural height; the pane scrolls instead of squeezing them. */
+  .pane > :global(*) {
+    flex-shrink: 0;
+  }
+  .pane > .action {
+    align-self: flex-start;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input);
+    color: var(--fg);
+    font: inherit;
+    cursor: pointer;
+  }
+  .pane > .action:hover {
+    background: var(--hover);
   }
   /* One row of five: they share the pane's width instead of wrapping 4 + 1. */
   .swatches {
