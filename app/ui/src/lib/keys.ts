@@ -33,7 +33,8 @@ export type Action =
   | "copy_last_command"
   | "rerun_last"
   | "select_block"
-  | "enable_integration";
+  | "enable_integration"
+  | "history_search";
 
 export const actionLabels: Record<Action, string> = {
   new_tab: "New local tab",
@@ -70,6 +71,7 @@ export const actionLabels: Record<Action, string> = {
   rerun_last: "Type last command again (no Enter)",
   select_block: "Select output of the command in view",
   enable_integration: "Enable command marks in this remote shell",
+  history_search: "Search command history",
 };
 
 export const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
@@ -111,6 +113,7 @@ export const defaultBindings: Record<Action, string> = {
   rerun_last: isMac ? "Shift+Cmd+R" : "Ctrl+Alt+R",
   select_block: isMac ? "Alt+Cmd+J" : "Ctrl+Alt+J",
   enable_integration: isMac ? "Alt+Shift+Cmd+I" : "Ctrl+Alt+Shift+I",
+  history_search: isMac ? "Shift+Cmd+H" : "Ctrl+Alt+H",
 };
 
 const MODS = ["Ctrl", "Alt", "Shift", "Cmd"] as const;

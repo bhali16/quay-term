@@ -73,7 +73,31 @@ pub struct Settings {
     /// Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
     /// Needs shell integration marks, so it does nothing in a shell without them.
     pub snippet_expand: bool,
+    /// Save finished commands (from shell integration marks) so they can be searched across
+    /// sessions. Off until the user opts in; nothing is written while it is off.
+    pub record_history: bool,
+    /// Regular expressions (case-insensitive); a command matching any of them is never saved.
+    pub history_deny_patterns: Vec<String>,
 }
+
+/// Commands that look like they carry a secret. Users can edit the list in Settings.
+pub fn default_history_deny_patterns() -> Vec<String> {
+    [
+        r"pass(word|wd)?\s*[=:]",
+        r"--?(api[-_]?)?(token|secret|password)\b",
+        r"authorization:",
+        r"aws_secret",
+        r"\bexport\s+\w*(key|secret|token|passw)\w*\s*=",
+        r"\b(secret|token|api[-_]?key)\s*=",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Most deny patterns kept, and the longest one, so a hand-edited file cannot stall the UI.
+pub const MAX_DENY_PATTERNS: usize = 100;
+pub const MAX_DENY_PATTERN_LEN: usize = 500;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -97,6 +121,8 @@ impl Default for Settings {
             focus_follows_mouse: false,
             tab_layout: TabLayout::Horizontal,
             snippet_expand: false,
+            record_history: false,
+            history_deny_patterns: default_history_deny_patterns(),
         }
     }
 }
@@ -110,6 +136,14 @@ impl Settings {
             self.font_family = Settings::default().font_family;
         }
         self.keybindings.retain(|_, v| !v.trim().is_empty());
+        self.history_deny_patterns = self
+            .history_deny_patterns
+            .iter()
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty() && p.len() <= MAX_DENY_PATTERN_LEN)
+            .take(MAX_DENY_PATTERNS)
+            .map(String::from)
+            .collect();
         self
     }
 
@@ -213,6 +247,24 @@ mod tests {
         .unwrap();
         let s = Settings::load(&p);
         assert!(s.notifications && !s.notify_show_command);
+    }
+
+    #[test]
+    fn history_is_off_with_default_deny_patterns_for_old_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(!s.record_history);
+        assert_eq!(s.history_deny_patterns, default_history_deny_patterns());
+        std::fs::write(
+            &p,
+            r#"{"record_history": true, "history_deny_patterns": [" x= ", "", "   "]}"#,
+        )
+        .unwrap();
+        let s = Settings::load(&p);
+        assert!(s.record_history);
+        assert_eq!(s.history_deny_patterns, vec!["x=".to_string()]);
     }
 
     #[test]

@@ -8,7 +8,8 @@
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { sendNotification } from "@tauri-apps/plugin-notification";
   import { ensurePermission, type Permission } from "./notify";
-  import { getDiagnostics, vaultExport, vaultImport } from "./ipc";
+  import { getDiagnostics, historyClear, historyCount, vaultExport, vaultImport } from "./ipc";
+  import { compileDeny, DEFAULT_DENY } from "./history";
   import type { BackupReport } from "./bindings/BackupReport";
   import type { VaultStatus } from "./bindings/VaultStatus";
   import type { Diagnostics } from "./bindings/Diagnostics";
@@ -18,7 +19,8 @@
     onimported,
     vault = null,
     onunlock,
-  }: { onclose: () => void; onimported?: () => void; vault?: VaultStatus | null; onunlock?: () => void } = $props();
+    initialTab,
+  }: { onclose: () => void; onimported?: () => void; vault?: VaultStatus | null; onunlock?: () => void; initialTab?: Tab } = $props();
 
   let error = $state<string | null>(null);
   // Result of the last permission request, so a refusal is explained here instead of failing silently.
@@ -34,15 +36,39 @@
   let recording = $state<Action | null>(null);
   let diag = $state<Diagnostics | null>(null);
   let copied = $state(false);
-  type Tab = "appearance" | "terminal" | "shortcuts" | "backup" | "about";
+  type Tab = "appearance" | "terminal" | "history" | "shortcuts" | "backup" | "about";
   const tabs: { id: Tab; label: string; icon: Name }[] = [
     { id: "appearance", icon: "palette", label: "Appearance" },
     { id: "terminal", icon: "terminal", label: "Terminal" },
+    { id: "history", icon: "search", label: "History" },
     { id: "shortcuts", icon: "keyboard", label: "Shortcuts" },
     { id: "backup", icon: "lock", label: "Backup" },
     { id: "about", icon: "info", label: "About" },
   ];
-  let tab = $state<Tab>("appearance");
+  // svelte-ignore state_referenced_locally
+  let tab = $state<Tab>(initialTab ?? "appearance");
+
+  // ---- command history ----
+  let histCount = $state<number | null>(null);
+  let confirmForget = $state(false);
+  let histNote = $state<string | null>(null);
+  const loadCount = () => historyCount().then((n) => (histCount = n)).catch(() => (histCount = null));
+  $effect(() => {
+    if (tab === "history") loadCount();
+  });
+  const denyText = $derived(settings.value.history_deny_patterns.join("\n"));
+  const denyInvalid = $derived(compileDeny(settings.value.history_deny_patterns).invalid);
+  const setDeny = (text: string) => patch({ history_deny_patterns: text.split("\n").map((l) => l.trim()).filter(Boolean) });
+  async function forgetAll() {
+    confirmForget = false;
+    try {
+      await historyClear();
+      histNote = "History deleted from this computer.";
+    } catch (e) {
+      error = `${e}`;
+    }
+    loadCount();
+  }
 
   const actions = Object.keys(actionLabels) as Action[];
 
@@ -256,6 +282,54 @@
               <button class="reset" title="Reset to default" disabled={!settings.value.keybindings[a]} onclick={() => setBinding(a, null)}>↺</button>
             {/each}
           </div>
+        {:else if tab === "history"}
+          <h3>Command history</h3>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.record_history} onchange={(e) => patch({ record_history: e.currentTarget.checked })} />
+            Save the commands I run, so I can search them across sessions
+          </label>
+          <p class="blurb">
+            Commands are saved when they finish in a shell with command marks (Settings &gt; Terminal), with the host, folder and exit code. Search them
+            with "{actionLabels.history_search}" ({settings.bindings.history_search}) or type <code>$</code> in the command palette. Output is never saved.
+          </p>
+          <p class="blurb">
+            Stored on this computer only, in <code>history.db</code> next to your settings, readable only by your user account. It is not encrypted, and it is
+            never included in backups. Nothing is written while this is off.
+          </p>
+          <h3>Never save</h3>
+          <p class="blurb">
+            Commands typed with a leading space are never saved. Neither are commands matching any of these patterns (regular expressions, one per line, case
+            ignored).
+          </p>
+          <textarea
+            class="deny"
+            rows="6"
+            spellcheck="false"
+            autocapitalize="off"
+            aria-label="Patterns of commands never to save"
+            value={denyText}
+            onchange={(e) => setDeny(e.currentTarget.value)}
+          ></textarea>
+          {#if denyInvalid.length}
+            <p class="hint warn" role="status">Not a valid pattern, ignored: {denyInvalid.join(", ")}</p>
+          {/if}
+          <div class="brow">
+            <button class="copy" onclick={() => patch({ history_deny_patterns: [...DEFAULT_DENY] })}>Restore default patterns</button>
+          </div>
+          <h3>Saved history</h3>
+          <p class="blurb">
+            {histCount === null ? "Could not read the history." : histCount === 0 ? "Nothing saved." : `${histCount} ${histCount === 1 ? "entry" : "entries"} saved.`} The newest 20,000 are kept, for up to 180 days. Remove one from the
+            history search with Shift+Delete.
+          </p>
+          <div class="brow">
+            {#if confirmForget}
+              <button class="copy danger" onclick={forgetAll}>Delete all history</button>
+              <button class="copy" onclick={() => (confirmForget = false)}>Cancel</button>
+            {:else}
+              <button class="copy" disabled={!histCount} onclick={() => ((histNote = null), (confirmForget = true))}>Forget all history…</button>
+            {/if}
+          </div>
+          {#if histNote}<p class="ok" role="status">{histNote}</p>{/if}
         {:else if tab === "backup"}
           <h3>Saved passwords</h3>
           {#if vault?.mode === "keychain"}
@@ -450,6 +524,19 @@
   .reset:disabled {
     opacity: 0.3;
     cursor: default;
+  }
+  .deny {
+    font: 12.5px var(--font-mono);
+    color: var(--fg);
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    resize: vertical;
+  }
+  .copy.danger {
+    border-color: var(--red);
+    color: var(--red);
   }
   .blurb {
     margin: 0;

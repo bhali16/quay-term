@@ -21,6 +21,8 @@ import type { VaultStatus } from "./bindings/VaultStatus";
 import type { JumpSecret } from "./bindings/JumpSecret";
 import type { MissingSecret } from "./bindings/MissingSecret";
 import type { Snippet } from "./bindings/Snippet";
+import type { HistoryEntry } from "./bindings/HistoryEntry";
+import type { NewHistoryEntry } from "./bindings/NewHistoryEntry";
 import type { SftpOpened } from "./bindings/SftpOpened";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
 
@@ -144,6 +146,13 @@ export const snippetSave = (id: number | null, name: string, folder: string, bod
 export const snippetDefaults = (id: number, session: number, values: Record<string, string>) =>
   invoke<Snippet>("snippet_defaults", { id, session, values });
 export const snippetDelete = (id: number) => invoke<void>("snippet_delete", { id });
+
+// ---- command history (opt-in; Rust ignores adds while `record_history` is off) ----
+export const historyAdd = (entry: NewHistoryEntry) => invoke<boolean>("history_add", { entry });
+export const historyList = () => invoke<HistoryEntry[]>("history_list");
+export const historyCount = () => invoke<number>("history_count");
+export const historyDelete = (command: string) => invoke<number>("history_delete", { command });
+export const historyClear = () => invoke<void>("history_clear");
 
 export const vaultExport = (path: string, password: string, withSecrets: boolean) =>
   invoke<BackupReport>("vault_export", { path, password, withSecrets });

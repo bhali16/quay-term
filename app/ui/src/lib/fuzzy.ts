@@ -45,8 +45,8 @@ export function rank<T>(items: T[], query: string, fields: (item: T) => string[]
   return scored.sort((a, b) => b.score - a.score).map((s) => s.item);
 }
 
-/** Split a leading mode character (`>` actions, `@` sessions, `!` snippets, `/` tabs) off the query. */
+/** Split a leading mode character (`>` actions, `@` sessions, `!` snippets, `/` tabs, `$` history) off the query. */
 export function parseQuery(raw: string): { mode: string | null; query: string } {
-  const m = raw.match(/^([>@!/])\s*(.*)$/s);
+  const m = raw.match(/^([>@!/$])\s*(.*)$/s);
   return m ? { mode: m[1], query: m[2] } : { mode: null, query: raw };
 }

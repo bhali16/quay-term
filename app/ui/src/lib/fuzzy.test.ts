@@ -42,6 +42,7 @@ describe("parseQuery", () => {
   it("reads a mode prefix", () => {
     expect(parseQuery("@ prod")).toEqual({ mode: "@", query: "prod" });
     expect(parseQuery(">split")).toEqual({ mode: ">", query: "split" });
+    expect(parseQuery("$ rsync")).toEqual({ mode: "$", query: "rsync" });
   });
   it("has no mode for plain text", () => {
     expect(parseQuery("prod")).toEqual({ mode: null, query: "prod" });

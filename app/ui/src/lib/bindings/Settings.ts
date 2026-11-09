@@ -56,4 +56,13 @@ focus_follows_mouse: boolean, tab_layout: TabLayout,
  * Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
  * Needs shell integration marks, so it does nothing in a shell without them.
  */
-snippet_expand: boolean, };
+snippet_expand: boolean, 
+/**
+ * Save finished commands (from shell integration marks) so they can be searched across
+ * sessions. Off until the user opts in; nothing is written while it is off.
+ */
+record_history: boolean, 
+/**
+ * Regular expressions (case-insensitive); a command matching any of them is never saved.
+ */
+history_deny_patterns: Array<string>, };

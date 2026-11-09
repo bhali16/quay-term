@@ -21,6 +21,7 @@
   import { BlockTracker, parseExit, type Block } from "./blocks";
   import { REMOTE_SNIPPET } from "./shellIntegration";
   import { expansionAt, toInput } from "./snippets";
+  import { parseCwd } from "./history";
   import type { IMarker } from "@xterm/xterm";
 
   export type PaneStatus = "connecting" | "connected" | "ended";
@@ -53,7 +54,7 @@
     /** The user chose "Add to snippets" on a command. */
     onsnippet?: (command: string) => void;
     /** A command finished (needs shell integration marks). */
-    oncommand?: (c: { command: string; exit: number | null; ms: number }) => void;
+    oncommand?: (c: { command: string; exit: number | null; ms: number; spaced: boolean; cwd: string | null }) => void;
     active: boolean;
     ssh?: SshTarget | null;
     saved?: Saved | null;
@@ -88,6 +89,8 @@
   let lastExit = $state<string | null>(null);
   const tracker = new BlockTracker<IMarker>(1000);
   let seenMarks = false;
+  /** Last directory the shell reported (OSC 7); kept with each command for history. */
+  let cwd: string | null = null;
 
   export function sessionId() {
     return id;
@@ -210,9 +213,10 @@
     send("\x7f".repeat(short.length + 1));
     return true;
   }
-  function commandText(b: Block<IMarker>): string {
+  /** The typed command as on screen, untrimmed at the start so a leading space can be seen. */
+  function rawCommand(b: Block<IMarker>): string {
     if (!b.input || !b.out || b.input.isDisposed || b.out.isDisposed) return "";
-    return readRange(b.input.line, b.inputCol, b.out.line).replace(/\s+$/, "").trim();
+    return readRange(b.input.line, b.inputCol, b.out.line).replace(/\s+$/, "");
   }
   function outputRange(b: Block<IMarker>): [number, number] | null {
     if (!b.out || b.out.isDisposed) return null;
@@ -252,7 +256,12 @@
       case "C": {
         const mk = m();
         const b = mk && tracker.commandStart(mk, nowMs());
-        if (b) b.command = commandText(b);
+        if (b) {
+          const raw = rawCommand(b);
+          b.command = raw.trim();
+          b.spaced = /^\s/.test(raw) && b.command !== "";
+          b.cwd = cwd;
+        }
         break;
       }
       case "D": {
@@ -260,7 +269,7 @@
         const b = mk && tracker.commandEnd(mk, parseExit(arg), nowMs());
         if (b) {
           decorate(b);
-          if (b.startedAt !== null && b.endedAt !== null) oncommand?.({ command: b.command, exit: b.exit, ms: b.endedAt - b.startedAt });
+          if (b.startedAt !== null && b.endedAt !== null) oncommand?.({ command: b.command, exit: b.exit, ms: b.endedAt - b.startedAt, spaced: b.spaced, cwd: b.cwd });
         }
         break;
       }
@@ -433,6 +442,7 @@
 
   function start() {
     ended = false;
+    cwd = null;
     onstatus?.("connecting");
     const out = (bytes: Uint8Array) => {
       term.write(bytes);
@@ -548,6 +558,11 @@
     term.open(host);
     fit.fit();
     term.parser.registerOscHandler(133, onMark);
+    // OSC 7 (file://host/dir): where the next command runs. Untrusted, only stored as text.
+    term.parser.registerOscHandler(7, (data) => {
+      if (term.buffer.active.type !== "alternate") cwd = parseCwd(data.slice(0, 4096));
+      return true;
+    });
     // Capture phase, so this runs before xterm's own paste handler on the textarea.
     const onPaste = (e: ClipboardEvent) => {
       const text = e.clipboardData?.getData("text");

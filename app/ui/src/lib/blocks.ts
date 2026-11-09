@@ -22,6 +22,10 @@ export type Block<M extends Mark = Mark> = {
   endedAt: number | null;
   /** Command text, read from the screen once the command starts. */
   command: string;
+  /** The command was typed with a leading space (the shell convention for "keep out of history"). */
+  spaced: boolean;
+  /** Working directory the command ran in, when the shell reported one (OSC 7). */
+  cwd: string | null;
 };
 
 export class BlockTracker<M extends Mark = Mark> {
@@ -46,6 +50,8 @@ export class BlockTracker<M extends Mark = Mark> {
       startedAt: null,
       endedAt: null,
       command: "",
+      spaced: false,
+      cwd: null,
       ...b,
     };
     this.blocks.push(block);

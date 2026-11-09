@@ -1,4 +1,5 @@
 mod backup;
+mod history;
 mod library;
 mod sftp;
 mod snippets;
@@ -412,7 +413,7 @@ fn session_close(state: State<'_, Sessions>, tunnels: State<'_, Tunnels>, id: u3
 }
 
 /// Where settings.json lives, kept in managed state.
-struct SettingsPath(std::path::PathBuf);
+pub(crate) struct SettingsPath(pub(crate) std::path::PathBuf);
 
 #[tauri::command]
 fn settings_load(path: State<'_, SettingsPath>) -> quay_config::Settings {
@@ -493,6 +494,7 @@ pub fn run() {
             app.manage(library);
             app.manage(snippets::Snippets::open(dir.join("snippets.json")));
             app.manage(SettingsPath(dir.join("settings.json")));
+            app.manage(history::History::new(dir.join("history.db")));
             log::info!(
                 "quay-term {} starting on {}",
                 env!("CARGO_PKG_VERSION"),
@@ -537,6 +539,11 @@ pub fn run() {
             snippets::snippet_save,
             snippets::snippet_defaults,
             snippets::snippet_delete,
+            history::history_add,
+            history::history_list,
+            history::history_count,
+            history::history_delete,
+            history::history_clear,
             sftp::sftp_list,
             sftp::sftp_canonical,
             sftp::sftp_mkdir,

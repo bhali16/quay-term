@@ -2,6 +2,7 @@ import { settingsLoad, settingsSave } from "./ipc";
 import type { Settings } from "./bindings/Settings";
 import { applyChrome, themeById } from "./themes";
 import { resolve } from "./keys";
+import { DEFAULT_DENY } from "./history";
 
 const OLD_FONT = "Menlo, Consolas, 'DejaVu Sans Mono', monospace";
 const FONT = "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', ui-monospace, monospace";
@@ -24,6 +25,8 @@ const fallback: Settings = {
   focus_follows_mouse: false,
   tab_layout: "horizontal",
   snippet_expand: false,
+  record_history: false,
+  history_deny_patterns: DEFAULT_DENY,
 };
 
 class Store {

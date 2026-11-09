@@ -9,7 +9,8 @@ if [[ -n ${QUAY_SHELL_INTEGRATION_DIR-} ]]; then
 fi
 [[ -n ${__quay_integrated-} ]] && return 0
 __quay_integrated=1
-__quay_prompt() { local e=$?; printf '\e]133;D;%s\a\e]133;A\a' "$e"; }
+# D ends the last command; 7 reports the directory the next one runs in; A starts the prompt.
+__quay_prompt() { local e=$?; printf '\e]133;D;%s\a\e]7;file://%s%s\a\e]133;A\a' "$e" "${HOSTNAME-}" "$PWD"; }
 __quay_prompt_end() { [[ $PS1 == *133?B* ]] || PS1+='\[\e]133;B\a\]'; }
 PROMPT_COMMAND="__quay_prompt;${PROMPT_COMMAND:+$PROMPT_COMMAND;}__quay_prompt_end"
 # PS0 (bash 4.4+) marks the start of command output; older bash simply gets no command blocks.

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 - Snippet choice lists: `{{env|dev|staging|prod}}` shows a dropdown, and `{{name|default}}` suggests a value. `{{name:default}}` works as before, and `\{{` sends a plain `{{`.
 - Snippets can remember the values you filled in for a saved session ("Remember these values for …"), and fill them in next time on that host. Remembered values travel with the encrypted export and follow the session on import.
+- Command history search (opt-in, Settings > History): commands that finish in any pane with command marks are saved with the host, folder and exit code, and can be searched across all sessions with "Search command history" (Shift+Cmd+H, or Ctrl+Alt+H on Windows and Linux) or `$` in the command palette. Filter by host, failed commands, today or this week; Enter types the command at the prompt without running it, Shift+Delete forgets it. Commands typed with a leading space, or matching an editable deny-list (passwords, tokens, `Authorization:` headers, exported keys), are never saved. History is kept in `history.db` on this computer (owner-only permissions, not encrypted), is never part of a backup, keeps the newest 20,000 entries for up to 180 days, and "Forget all history" deletes the file.
+- Local zsh and bash now report their working directory (OSC 7), which history shows beside each command.
 - Experimental: with "type ;name then Tab" on (Settings > Terminal), typing `;short-name` then Tab at a marked prompt opens that snippet, or types it in if it has no variables. Each snippet's short name is shown in the list.
 
 ### Changed

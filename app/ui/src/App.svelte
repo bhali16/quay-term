@@ -26,7 +26,11 @@
     snippetSave,
     snippetsLoad,
     tunnelList,
+    historyAdd,
+    historyDelete,
+    historyList,
   } from "./lib/ipc";
+  import { compileDeny, recordable } from "./lib/history";
   import Sidebar from "./lib/Sidebar.svelte";
   import SessionDialog from "./lib/SessionDialog.svelte";
   import type { Result as SessionResult } from "./lib/SessionDialog.svelte";
@@ -38,7 +42,7 @@
   import TerminalPane from "./lib/TerminalPane.svelte";
   import type { PaneStatus } from "./lib/TerminalPane.svelte";
   import Palette from "./lib/Palette.svelte";
-  import type { PaletteItem } from "./lib/Palette.svelte";
+  import type { HistorySource, PaletteItem } from "./lib/Palette.svelte";
   import FilePanel from "./lib/FilePanel.svelte";
   import TunnelPanel from "./lib/TunnelPanel.svelte";
   import ConnectDialog from "./lib/ConnectDialog.svelte";
@@ -95,6 +99,8 @@
   let trustPrompt = $state<HostKeyPrompt | null>(null);
   let authPrompt = $state<AuthPrompt | null>(null);
   let showSettings = $state(false);
+  /** Settings page to open on; cleared when the dialog closes. */
+  let settingsTab = $state<"history" | undefined>(undefined);
 
   // ---- multi-exec and snippets ----
   // Panes whose typing is mirrored to each other. Pane ids are unique across tabs, so a tab needs no part in the key.
@@ -206,7 +212,20 @@
     activeKey = tab.key;
     if (tab.panes[t.pane]) tab.focus = t.pane;
   }
-  function commandDone(tab: Tab, pane: number, c: { command: string; exit: number | null; ms: number }) {
+  // ---- command history (F7) ----
+  const deny = $derived(compileDeny(settings.value.history_deny_patterns));
+  const hostOf = (tab: Tab) => tab.saved?.label ?? (tab.ssh ? `${tab.ssh.user}@${tab.ssh.host}` : "local");
+  function recordCommand(tab: Tab, c: { command: string; exit: number | null; spaced: boolean; cwd: string | null }) {
+    if (!settings.value.record_history || c.spaced) return;
+    const command = recordable(c.command, deny);
+    if (!command) return;
+    historyAdd({ command, host: hostOf(tab), session_id: tab.saved?.id ?? null, cwd: c.cwd, exit: c.exit }).catch((e) =>
+      console.warn("history not saved", e),
+    );
+  }
+
+  function commandDone(tab: Tab, pane: number, c: { command: string; exit: number | null; ms: number; spaced: boolean; cwd: string | null }) {
+    recordCommand(tab, c);
     if (!isLong(c.ms, settings.value.notify_after_secs)) return;
     const body = commandBody({ ...c, session: tab.title, showCommand: settings.value.notify_show_command });
     notify(tab, pane, c.exit === null || c.exit === 0 ? "Command finished" : "Command failed", body);
@@ -483,7 +502,9 @@
       /* recents are optional */
     }
   }
-  function openPalette() {
+  let paletteInitial = $state("");
+  function openPalette(initial = "") {
+    paletteInitial = initial;
     showPalette = true;
     paletteSessions = library.sessions;
     // The sidebar search may have narrowed `library`; the palette searches everything.
@@ -525,6 +546,27 @@
     }));
     return [...acts, ...extra, ...sess, ...snips, ...open];
   });
+  const historySource: HistorySource = {
+    get recording() {
+      return settings.value.record_history;
+    },
+    load: historyList,
+    insert(command) {
+      showPalette = false;
+      queueMicrotask(() => {
+        const p = focusedPane(activeTab);
+        if (!p || p.isEnded()) return toast("This pane has no running shell to type into.");
+        p.sendSnippet(command, false);
+        requestAnimationFrame(() => p.focusTerminal());
+      });
+    },
+    remove: historyDelete,
+    onsettings() {
+      showPalette = false;
+      settingsTab = "history";
+      showSettings = true;
+    },
+  };
   function runPalette(item: PaletteItem) {
     showPalette = false;
     remember(item.id);
@@ -636,6 +678,7 @@
       case "zoom_out": return zoom(-1);
       case "zoom_reset": return settings.update({ ...settings.value, font_size: 14 });
       case "palette": return showPalette ? (showPalette = false) : openPalette();
+      case "history_search": return showPalette ? (showPalette = false) : openPalette("$ ");
       case "prev_prompt": return paneAction((p) => p.prevPrompt() || toast("No earlier prompt."));
       case "next_prompt": return paneAction((p) => p.nextPrompt());
       case "copy_last_output":
@@ -992,14 +1035,15 @@
     />
   {/if}
   {#if showPalette}
-    <Palette items={paletteItems} {recent} onrun={runPalette} onclose={() => ((showPalette = false), requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal()))} />
+    <Palette items={paletteItems} {recent} history={historySource} initial={paletteInitial} onrun={runPalette} onclose={() => ((showPalette = false), requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal()))} />
   {/if}
   {#if showUnlock && vault}
     <UnlockDialog isNew={vault.is_new} ondone={() => ((showUnlock = false), loadVault(), refresh())} oncancel={() => (showUnlock = false)} />
   {/if}
   {#if showSettings}
     <SettingsDialog
-      onclose={() => (showSettings = false)}
+      initialTab={settingsTab}
+      onclose={() => ((showSettings = false), (settingsTab = undefined))}
       {vault}
       onunlock={() => ((showSettings = false), (showUnlock = true))}
       onimported={() => (refresh(), snippetsLoad().then((x) => (snippets = x)))}
