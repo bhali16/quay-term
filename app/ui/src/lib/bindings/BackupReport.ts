@@ -4,4 +4,12 @@ export type BackupReport = { sessions: number, secrets: number, snippets: number
 /**
  * Sessions the file held that were already saved, or secrets that could not be stored.
  */
-skipped: number, secrets_failed: number, };
+skipped: number, secrets_failed: number, 
+/**
+ * Command history entries exported, or added on import.
+ */
+history: number, 
+/**
+ * History entries in the file that were not added (recording is off, or the vault is locked).
+ */
+history_skipped: number, };

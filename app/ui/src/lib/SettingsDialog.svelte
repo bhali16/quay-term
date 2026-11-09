@@ -54,7 +54,7 @@
   let histNote = $state<string | null>(null);
   const loadCount = () => historyCount().then((n) => (histCount = n)).catch(() => (histCount = null));
   $effect(() => {
-    if (tab === "history") loadCount();
+    if (tab === "history" || tab === "backup") loadCount();
   });
   const denyText = $derived(settings.value.history_deny_patterns.join("\n"));
   const denyInvalid = $derived(compileDeny(settings.value.history_deny_patterns).invalid);
@@ -109,6 +109,8 @@
   let pw = $state("");
   let pw2 = $state("");
   let withSecrets = $state(true);
+  // Off unless ticked each time: history can hold hostnames and paths the user may not want to move.
+  let withHistory = $state(false);
   let busy = $state(false);
   let result = $state<string | null>(null);
 
@@ -129,8 +131,12 @@
       if (pw !== pw2) throw "The two passwords differ.";
       const file = await saveDialog({ title: "Save vault file", defaultPath: "quay-term.vault" });
       if (!file) return null;
-      const r = await vaultExport(file, pw, withSecrets);
-      return `Saved ${plural(r.sessions, "session")}${withSecrets ? `, ${plural(r.secrets, "secret")}` : ""} and ${plural(r.snippets, "snippet")}.`;
+      const r = await vaultExport(file, pw, withSecrets, withHistory);
+      const parts = [plural(r.sessions, "session")];
+      if (withSecrets) parts.push(plural(r.secrets, "secret"));
+      parts.push(plural(r.snippets, "snippet"));
+      if (withHistory) parts.push(`${r.history} history ${r.history === 1 ? "entry" : "entries"}`);
+      return `Saved ${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}.`;
     });
   const doImport = () =>
     run(async () => {
@@ -142,6 +148,14 @@
       if (r.secrets) bits.push(`${plural(r.secrets, "secret")} stored`);
       if (r.skipped) bits.push(`${r.skipped} already here`);
       if (r.secrets_failed) bits.push(`${r.secrets_failed} secret(s) could not be stored in the keychain`);
+      if (r.history) bits.push(`${r.history} history ${r.history === 1 ? "entry" : "entries"} added`);
+      if (r.history_skipped)
+        bits.push(
+          `${r.history_skipped} history ${r.history_skipped === 1 ? "entry" : "entries"} not added (${
+            !settings.value.record_history ? "turn on history in Settings > History first" : vault?.mode === "locked" ? "unlock the vault first" : "already here"
+          })`,
+        );
+      loadCount();
       return bits.join(", ") + ".";
     });
 
@@ -293,8 +307,14 @@
             with "{actionLabels.history_search}" ({settings.bindings.history_search}) or type <code>$</code> in the command palette. Output is never saved.
           </p>
           <p class="blurb">
-            Stored on this computer only, in <code>history.db</code> next to your settings, readable only by your user account. It is not encrypted, and it is
-            never included in backups. Nothing is written while this is off.
+            Stored on this computer only, in <code>history.db</code> next to your settings, readable only by your user account.
+            {#if !vault || vault.mode === "keychain"}
+              It is not encrypted (your passwords are in the system keychain, and history is not).
+            {:else}
+              Each command, host and folder is encrypted with your master password.
+              {vault.mode === "locked" ? "The vault is locked, so nothing is saved and history cannot be searched until you unlock it." : ""}
+            {/if}
+            It goes into a backup only if you tick "Include command history" when exporting. Nothing is written while this is off.
           </p>
           <h3>Never save</h3>
           <p class="blurb">
@@ -344,7 +364,7 @@
             {/if}
           {/if}
           <h3>Move to another machine</h3>
-          <p class="blurb">Saves your sessions, folders, jump hosts, tunnels and snippets in one file, locked with a master password (Argon2id and ChaCha20-Poly1305). Importing adds what is missing and never changes what you have.</p>
+          <p class="blurb">Saves your sessions, folders, jump hosts, tunnels and snippets (and, if you tick it, your command history) in one file, locked with a master password (Argon2id and ChaCha20-Poly1305). Importing adds what is missing and never changes what you have.</p>
           <label>
             Master password
             <input type="password" autocomplete="new-password" bind:value={pw} />
@@ -354,6 +374,7 @@
             <input type="password" autocomplete="new-password" bind:value={pw2} />
           </label>
           <label class="check"><input type="checkbox" bind:checked={withSecrets} /> Include saved passwords and key passphrases</label>
+          <label class="check"><input type="checkbox" bind:checked={withHistory} disabled={!histCount} /> Include command history{histCount ? ` (${histCount} ${histCount === 1 ? "entry" : "entries"})` : ""}</label>
           <div class="brow">
             <button class="copy" disabled={busy || pw.length < 8} onclick={doExport}>Export…</button>
             <button class="copy" disabled={busy || !pw} onclick={doImport}>Import…</button>

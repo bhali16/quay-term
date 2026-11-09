@@ -154,8 +154,8 @@ export const historyCount = () => invoke<number>("history_count");
 export const historyDelete = (command: string) => invoke<number>("history_delete", { command });
 export const historyClear = () => invoke<void>("history_clear");
 
-export const vaultExport = (path: string, password: string, withSecrets: boolean) =>
-  invoke<BackupReport>("vault_export", { path, password, withSecrets });
+export const vaultExport = (path: string, password: string, withSecrets: boolean, withHistory: boolean) =>
+  invoke<BackupReport>("vault_export", { path, password, withSecrets, withHistory });
 export const vaultImport = (path: string, password: string) => invoke<BackupReport>("vault_import", { path, password });
 export const vaultStatus = () => invoke<VaultStatus>("vault_status");
 export const vaultUnlock = (password: string) => invoke<void>("vault_unlock", { password });

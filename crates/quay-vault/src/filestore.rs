@@ -11,7 +11,11 @@ use std::sync::{Arc, Mutex};
 use zeroize::Zeroizing;
 
 use crate::archive::{self, Cost};
+use crate::field::{self, FieldKey};
 use crate::{KeychainStore, Result, SecretKey, SecretStore, VaultError};
+
+/// Where the history key sits among the secrets (session secrets use `session:<id>:<kind>`).
+const HISTORY_KEY: &str = "history:key";
 
 struct Unlocked {
     password: Zeroizing<String>,
@@ -86,6 +90,22 @@ impl FileStore {
         std::fs::rename(&tmp, &self.path).map_err(io)
     }
 
+    /// The key that seals command history, made on first use and kept inside this file, so it
+    /// is only readable after `unlock` and follows the master password.
+    pub fn history_key(&self) -> Result<FieldKey> {
+        self.with(|u| {
+            if let Some(k) = u.secrets.get(HISTORY_KEY).and_then(|h| field::from_hex(h)) {
+                return Ok(k);
+            }
+            let k = field::new_key().map_err(VaultError::Other)?;
+            u.secrets
+                .insert(HISTORY_KEY.into(), field::to_hex(k.as_ref()));
+            self.persist(u)
+                .inspect_err(|_| drop(u.secrets.remove(HISTORY_KEY)))?;
+            Ok(k)
+        })
+    }
+
     fn with<T>(&self, f: impl FnOnce(&mut Unlocked) -> Result<T>) -> Result<T> {
         match self.state.lock().unwrap().as_mut() {
             Some(u) => f(u),
@@ -148,8 +168,9 @@ impl FallbackStore {
         }
     }
 
-    #[cfg(test)]
-    fn forced(keychain: KeychainStore, file: FileStore, use_file: bool) -> Self {
+    /// For tests in other crates: pick the file without probing the keychain.
+    #[doc(hidden)]
+    pub fn forced(keychain: KeychainStore, file: FileStore, use_file: bool) -> Self {
         Self {
             keychain: Arc::new(keychain),
             file: Arc::new(file),
@@ -172,6 +193,16 @@ impl FallbackStore {
 
     pub fn unlock(&self, password: &str) -> Result<()> {
         self.file.unlock(password)
+    }
+
+    /// The key for sealing command history: `Ok(None)` with a keychain (history is stored
+    /// plain, owner-only), `Err(Locked)` while the master-password file is locked.
+    pub fn history_key(&self) -> Result<Option<FieldKey>> {
+        if self.use_file {
+            self.file.history_key().map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     fn active(&self) -> &dyn SecretStore {
@@ -248,5 +279,26 @@ mod tests {
         assert_eq!(f.mode(), Mode::FileUnlocked);
         f.set(key(1), "x").unwrap();
         assert_eq!(f.get(key(1)).unwrap().as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn history_key_is_locked_with_the_file_and_stable_across_restarts() {
+        let path = temp("c");
+        let s = FileStore::with_cost(path.clone(), FAST);
+        assert_eq!(s.history_key().unwrap_err(), VaultError::Locked);
+        s.unlock("master pw").unwrap();
+        let k = s.history_key().unwrap();
+        assert_eq!(*s.history_key().unwrap(), *k);
+        let again = FileStore::with_cost(path, FAST);
+        again.unlock("master pw").unwrap();
+        assert_eq!(*again.history_key().unwrap(), *k);
+
+        let kc = KeychainStore::with_service("quay-term-test-none");
+        let f = FallbackStore::forced(kc, FileStore::with_cost(temp("d"), FAST), false);
+        assert_eq!(
+            f.history_key().unwrap(),
+            None,
+            "a keychain means plain history"
+        );
     }
 }

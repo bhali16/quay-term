@@ -490,11 +490,15 @@ pub fn run() {
                 FileStore::new(dir.join("secrets.vault")),
             );
             app.manage(secrets.clone());
+            let keys = secrets.clone();
             let library = Library::open(&dir.join("sessions.db"), Box::new(secrets))?;
             app.manage(library);
             app.manage(snippets::Snippets::open(dir.join("snippets.json")));
             app.manage(SettingsPath(dir.join("settings.json")));
-            app.manage(history::History::new(dir.join("history.db")));
+            app.manage(history::History::new(
+                dir.join("history.db"),
+                Box::new(move || keys.history_key()),
+            ));
             log::info!(
                 "quay-term {} starting on {}",
                 env!("CARGO_PKG_VERSION"),

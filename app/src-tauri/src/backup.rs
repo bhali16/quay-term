@@ -10,8 +10,10 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use ts_rs::TS;
 
+use crate::history::{now_ms, History, HistoryEntry};
 use crate::library::{err, secret_kind, Library};
 use crate::snippets::{Snippet, Snippets};
+use crate::SettingsPath;
 
 const VERSION: u32 = 1;
 
@@ -31,6 +33,16 @@ struct Bundle {
     sessions: Vec<Item>,
     #[serde(default)]
     snippets: Vec<Snippet>,
+    /// Command history, only when the user ticked it on export.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    history: Vec<HistoryEntry>,
+}
+
+/// What an import brings in besides sessions and secrets.
+struct Absorbed {
+    report: BackupReport,
+    snippets: Vec<Snippet>,
+    history: Vec<HistoryEntry>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, TS)]
@@ -42,10 +54,19 @@ pub struct BackupReport {
     /// Sessions the file held that were already saved, or secrets that could not be stored.
     pub skipped: u32,
     pub secrets_failed: u32,
+    /// Command history entries exported, or added on import.
+    pub history: u32,
+    /// History entries in the file that were not added (recording is off, or the vault is locked).
+    pub history_skipped: u32,
 }
 
 impl Library {
-    fn bundle(&self, snippets: Vec<Snippet>, with_secrets: bool) -> Result<Bundle, String> {
+    fn bundle(
+        &self,
+        snippets: Vec<Snippet>,
+        history: Vec<HistoryEntry>,
+        with_secrets: bool,
+    ) -> Result<Bundle, String> {
         let store = self.store.lock().unwrap();
         let sessions = store
             .list_sessions()
@@ -66,11 +87,12 @@ impl Library {
             folders: store.list_folders().map_err(err)?,
             sessions,
             snippets,
+            history,
         })
     }
 
     /// Add what the bundle holds and is not here yet; nothing existing is changed or removed.
-    fn absorb(&self, b: Bundle) -> Result<(BackupReport, Vec<Snippet>), String> {
+    fn absorb(&self, b: Bundle) -> Result<Absorbed, String> {
         if b.version > VERSION {
             return Err(
                 "This vault file was made by a newer quay-term. Update the app to read it.".into(),
@@ -170,7 +192,20 @@ impl Library {
                 sn
             })
             .collect();
-        Ok((r, snippets))
+        // History keeps its link to a session only when that session came along.
+        let history = b
+            .history
+            .into_iter()
+            .map(|mut e| {
+                e.session_id = e.session_id.and_then(|s| session_map.get(&s).copied());
+                e
+            })
+            .collect();
+        Ok(Absorbed {
+            report: r,
+            snippets,
+            history,
+        })
     }
 }
 
@@ -225,18 +260,26 @@ fn file_path(p: String) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn vault_export(
     library: State<'_, Library>,
     snippets: State<'_, Snippets>,
+    history: State<'_, History>,
     path: String,
     password: String,
     with_secrets: bool,
+    with_history: bool,
 ) -> Result<BackupReport, String> {
     let path = file_path(path)?;
     if password.chars().count() < 8 {
         return Err("Use a master password of at least 8 characters.".into());
     }
-    let bundle = library.bundle(snippets.all(), with_secrets)?;
+    let entries = if with_history {
+        history.list()?
+    } else {
+        vec![]
+    };
+    let bundle = library.bundle(snippets.all(), entries, with_secrets)?;
     let report = BackupReport {
         sessions: bundle.sessions.len() as u32,
         secrets: bundle
@@ -245,6 +288,7 @@ pub(crate) async fn vault_export(
             .filter(|i| i.secret.is_some())
             .count() as u32,
         snippets: bundle.snippets.len() as u32,
+        history: bundle.history.len() as u32,
         ..Default::default()
     };
     let json = zeroize::Zeroizing::new(serde_json::to_vec(&bundle).map_err(err)?);
@@ -261,6 +305,8 @@ pub(crate) async fn vault_export(
 pub(crate) async fn vault_import(
     library: State<'_, Library>,
     snippets: State<'_, Snippets>,
+    history: State<'_, History>,
+    settings: State<'_, SettingsPath>,
     path: String,
     password: String,
 ) -> Result<BackupReport, String> {
@@ -273,8 +319,26 @@ pub(crate) async fn vault_import(
         .map_err(err)?;
     let bundle: Bundle =
         serde_json::from_slice(&plain).map_err(|_| "The vault file is damaged.".to_string())?;
-    let (mut report, incoming) = library.absorb(bundle)?;
+    let Absorbed {
+        mut report,
+        snippets: incoming,
+        history: entries,
+    } = library.absorb(bundle)?;
     report.snippets = snippets.merge(incoming)? as u32;
+    // History is written only while recording is on, as everywhere else.
+    if !entries.is_empty() {
+        let total = entries.len() as u32;
+        let added = if quay_config::Settings::load(&settings.0).record_history {
+            history.import(entries, now_ms()).unwrap_or_else(|e| {
+                log::warn!("history import skipped: {e}");
+                0
+            }) as u32
+        } else {
+            0
+        };
+        report.history = added;
+        report.history_skipped = total.saturating_sub(added);
+    }
     Ok(report)
 }
 
@@ -325,7 +389,7 @@ mod tests {
                 .unwrap();
             a.store.lock().unwrap().set_has_secret(id, true).unwrap();
         }
-        let json = serde_json::to_vec(&a.bundle(vec![], true).unwrap()).unwrap();
+        let json = serde_json::to_vec(&a.bundle(vec![], vec![], true).unwrap()).unwrap();
 
         // A fresh machine with one unrelated session already saved.
         let b = lib();
@@ -334,7 +398,7 @@ mod tests {
             .unwrap()
             .create_session(&input("other", "o.example", None, None))
             .unwrap();
-        let (r, _) = b.absorb(serde_json::from_slice(&json).unwrap()).unwrap();
+        let Absorbed { report: r, .. } = b.absorb(serde_json::from_slice(&json).unwrap()).unwrap();
         assert_eq!((r.sessions, r.secrets, r.skipped), (2, 2, 0));
         let store = b.store.lock().unwrap();
         let sessions = store.list_sessions().unwrap();
@@ -364,7 +428,8 @@ mod tests {
         drop(store);
 
         // Importing the same file again changes nothing.
-        let (again, _) = b.absorb(serde_json::from_slice(&json).unwrap()).unwrap();
+        let Absorbed { report: again, .. } =
+            b.absorb(serde_json::from_slice(&json).unwrap()).unwrap();
         assert_eq!((again.sessions, again.skipped), (0, 2));
         assert_eq!(b.store.lock().unwrap().list_sessions().unwrap().len(), 3);
     }
@@ -383,9 +448,9 @@ mod tests {
             .set(SecretKey::new(id, SecretKind::Password), "hunter2")
             .unwrap();
         a.store.lock().unwrap().set_has_secret(id, true).unwrap();
-        let json = serde_json::to_string(&a.bundle(vec![], false).unwrap()).unwrap();
+        let json = serde_json::to_string(&a.bundle(vec![], vec![], false).unwrap()).unwrap();
         assert!(!json.contains("hunter2"));
-        let json = serde_json::to_string(&a.bundle(vec![], true).unwrap()).unwrap();
+        let json = serde_json::to_string(&a.bundle(vec![], vec![], true).unwrap()).unwrap();
         assert!(json.contains("hunter2"));
     }
 
@@ -398,9 +463,17 @@ mod tests {
             body: format!("echo {name}"),
             ..Default::default()
         };
-        let json =
-            serde_json::to_vec(&lib().bundle(vec![snip("a"), snip("b")], false).unwrap()).unwrap();
-        let (r, incoming) = lib()
+        let json = serde_json::to_vec(
+            &lib()
+                .bundle(vec![snip("a"), snip("b")], vec![], false)
+                .unwrap(),
+        )
+        .unwrap();
+        let Absorbed {
+            report: r,
+            snippets: incoming,
+            ..
+        } = lib()
             .absorb(serde_json::from_slice(&json).unwrap())
             .unwrap();
         assert_eq!(incoming.len(), 2);
@@ -437,7 +510,7 @@ mod tests {
             defaults: [(id.to_string(), vals.clone()), ("999".into(), vals.clone())].into(),
             ..Default::default()
         };
-        let json = serde_json::to_vec(&a.bundle(vec![snip], false).unwrap()).unwrap();
+        let json = serde_json::to_vec(&a.bundle(vec![snip], vec![], false).unwrap()).unwrap();
 
         let b = lib();
         for n in ["x", "y"] {
@@ -447,7 +520,10 @@ mod tests {
                 .create_session(&input(n, &format!("{n}.example"), None, None))
                 .unwrap();
         }
-        let (_, incoming) = b.absorb(serde_json::from_slice(&json).unwrap()).unwrap();
+        let incoming = b
+            .absorb(serde_json::from_slice(&json).unwrap())
+            .unwrap()
+            .snippets;
         let new_id = b
             .store
             .lock()
@@ -475,7 +551,133 @@ mod tests {
             folders: vec![],
             sessions: vec![],
             snippets: vec![],
+            history: vec![],
         };
         assert!(lib().absorb(b).is_err());
+    }
+
+    #[test]
+    fn history_travels_only_when_asked_and_follows_its_session() {
+        let a = lib();
+        let id = a
+            .store
+            .lock()
+            .unwrap()
+            .create_session(&input("web", "w.example", None, None))
+            .unwrap()
+            .id;
+        let none = serde_json::to_string(&a.bundle(vec![], vec![], false).unwrap()).unwrap();
+        assert!(!none.contains("history"), "no history key without the tick");
+
+        let e = |cmd: &str, session_id| HistoryEntry {
+            id: 1,
+            ts: 5,
+            command: cmd.into(),
+            host: "web".into(),
+            session_id,
+            cwd: None,
+            exit: Some(0),
+        };
+        let json = serde_json::to_vec(
+            &a.bundle(
+                vec![],
+                vec![e("deploy", Some(id)), e("ls", Some(999))],
+                false,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let b = lib();
+        b.store
+            .lock()
+            .unwrap()
+            .create_session(&input("other", "o.example", None, None))
+            .unwrap();
+        let got = b
+            .absorb(serde_json::from_slice(&json).unwrap())
+            .unwrap()
+            .history;
+        let new_id = b
+            .store
+            .lock()
+            .unwrap()
+            .list_sessions()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.input.name == "web")
+            .unwrap()
+            .id;
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].session_id, Some(new_id));
+        assert_eq!(
+            got[1].session_id, None,
+            "a session not in the file is unlinked"
+        );
+    }
+
+    /// The whole path on a machine with no keychain: the real master-password file feeds the
+    /// history key, history is sealed on disk, exported, and lands on a keychain machine.
+    #[test]
+    fn history_round_trip_through_a_master_password_machine() {
+        use quay_vault::{archive::Cost, FileStore, KeychainStore};
+        let dir = tempfile::tempdir().unwrap();
+        let fast = Cost {
+            memory_kib: 64,
+            passes: 1,
+            lanes: 1,
+        };
+        let store = FallbackStore::forced(
+            KeychainStore::with_service("quay-term-test-none"),
+            FileStore::with_cost(dir.path().join("secrets.vault"), fast),
+            true,
+        );
+        let keys = store.clone();
+        let h = History::new(
+            dir.path().join("history.db"),
+            Box::new(move || keys.history_key()),
+        );
+        let cmd = |c: &str| crate::history::NewHistoryEntry {
+            command: c.into(),
+            host: "bastion-prod-77".into(),
+            session_id: None,
+            cwd: Some("/srv/app".into()),
+            exit: Some(0),
+        };
+        let now = now_ms();
+        assert!(!h.add(cmd("ls"), now).unwrap(), "locked: not saved");
+        store.unlock("master password").unwrap();
+        assert!(h
+            .add(cmd("kubectl rollout restart deploy/api"), now)
+            .unwrap());
+        let raw = std::fs::read(dir.path().join("history.db")).unwrap();
+        for needle in [&b"kubectl"[..], b"bastion-prod-77", b"/srv/app"] {
+            assert!(!raw.windows(needle.len()).any(|w| w == needle));
+        }
+
+        // A restart: a fresh vault object over the same files must unlock to read history.
+        let store2 = FallbackStore::forced(
+            KeychainStore::with_service("quay-term-test-none"),
+            FileStore::with_cost(dir.path().join("secrets.vault"), fast),
+            true,
+        );
+        let keys2 = store2.clone();
+        let h2 = History::new(
+            dir.path().join("history.db"),
+            Box::new(move || keys2.history_key()),
+        );
+        assert!(h2.list().is_err());
+        store2.unlock("master password").unwrap();
+        let entries = h2.list().unwrap();
+        assert_eq!(entries[0].command, "kubectl rollout restart deploy/api");
+
+        let json = serde_json::to_vec(&lib().bundle(vec![], entries, false).unwrap()).unwrap();
+        let got = lib()
+            .absorb(serde_json::from_slice(&json).unwrap())
+            .unwrap()
+            .history;
+        let other = tempfile::tempdir().unwrap();
+        let plain = History::new(other.path().join("history.db"), Box::new(|| Ok(None)));
+        assert_eq!(plain.import(got, now_ms()).unwrap(), 1);
+        assert_eq!(plain.list().unwrap()[0].host, "bastion-prod-77");
     }
 }

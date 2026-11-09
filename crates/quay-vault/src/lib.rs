@@ -5,6 +5,7 @@
 //! in the session database or config files.
 
 pub mod archive;
+pub mod field;
 mod filestore;
 pub use filestore::{FallbackStore, FileStore, Mode};
 
