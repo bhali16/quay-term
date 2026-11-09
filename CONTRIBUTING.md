@@ -1,6 +1,6 @@
 # Contributing to quay-term
 
-Thanks for your interest. The project is in early planning, so the best contributions right now are ideas, issue reports and design feedback.
+Thanks for your interest. quay-term is an early release, with installers on the [releases page](https://github.com/bhali16/quay-term/releases) and what is next on the [roadmap](docs/ROADMAP.md). Bug reports, feature ideas, design feedback and code are all welcome.
 
 ## Before you start
 
