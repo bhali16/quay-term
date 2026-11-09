@@ -141,6 +141,8 @@ export const getDiagnostics = () => invoke<Diagnostics>("get_diagnostics");
 export const snippetsLoad = () => invoke<Snippet[]>("snippets_load");
 export const snippetSave = (id: number | null, name: string, folder: string, body: string) =>
   invoke<Snippet>("snippet_save", { id, name, folder, body });
+export const snippetDefaults = (id: number, session: number, values: Record<string, string>) =>
+  invoke<Snippet>("snippet_defaults", { id, session, values });
 export const snippetDelete = (id: number) => invoke<void>("snippet_delete", { id });
 
 export const vaultExport = (path: string, password: string, withSecrets: boolean) =>

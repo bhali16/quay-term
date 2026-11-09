@@ -28,7 +28,7 @@ What it does today (v0.3):
 - **Port forwards:** local, remote and dynamic (SOCKS5) tunnels over a tab's connection, saved with the session and optionally started automatically
 - **Sessions:** saved sessions with folders, tags and search, and `~/.ssh/config` import (hosts, `ProxyJump` and forwards)
 - **Files:** SFTP browser with a transfer queue, sharing the terminal tab's login so a host asks for a code once; a failed or stalled SFTP request shows an error instead of waiting for ever
-- **Snippets:** a library of reusable commands with `{{variables}}`, folders and search
+- **Snippets:** a library of reusable commands with `{{variables}}`, choice lists, values remembered per host, folders and search
 - **Secrets:** stored in the OS keychain, or in a master-password file on machines without one
 - **Backup:** encrypted export and import of sessions, secrets and snippets in one file (Argon2id and ChaCha20-Poly1305)
 - **Updates:** signed in-app updates (Settings > About)

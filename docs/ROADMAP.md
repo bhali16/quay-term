@@ -66,7 +66,8 @@ Definition of done: a user with many panes and sessions can zoom into one, rearr
 
 ## Next
 
-- F7 cross-session history search, F8 snippet upgrade (choice lists, per-session defaults, save from a block), F9 input assist, F11 optional AI helper (on hold until the privacy position is settled).
+- F8 snippet upgrade: done, unreleased (choice lists, per-session values, `;name` expansion, save from a block).
+- F7 cross-session history search, F9 input assist, F11 optional AI helper (on hold until the privacy position is settled).
 
 ## Later
 

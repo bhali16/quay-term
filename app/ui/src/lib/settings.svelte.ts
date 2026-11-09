@@ -23,6 +23,7 @@ const fallback: Settings = {
   keybindings: {},
   focus_follows_mouse: false,
   tab_layout: "horizontal",
+  snippet_expand: false,
 };
 
 class Store {

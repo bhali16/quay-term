@@ -208,6 +208,10 @@
             <input type="checkbox" checked={settings.value.block_gutter} onchange={(e) => patch({ block_gutter: e.currentTarget.checked })} />
             Show a green or red bar beside finished commands
           </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.snippet_expand} onchange={(e) => patch({ snippet_expand: e.currentTarget.checked })} />
+            Experimental: type <code>;name</code> then Tab at a marked prompt to open that snippet
+          </label>
           <h3>Notifications</h3>
           <label class="check">
             <input type="checkbox" checked={settings.value.notifications} onchange={(e) => setNotifications(e.currentTarget.checked)} />

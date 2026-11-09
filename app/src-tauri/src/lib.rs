@@ -535,6 +535,7 @@ pub fn run() {
             backup::vault_import,
             snippets::snippets_load,
             snippets::snippet_save,
+            snippets::snippet_defaults,
             snippets::snippet_delete,
             sftp::sftp_list,
             sftp::sftp_canonical,

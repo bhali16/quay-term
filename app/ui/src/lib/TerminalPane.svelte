@@ -20,6 +20,7 @@
   import { focus } from "./focus";
   import { BlockTracker, parseExit, type Block } from "./blocks";
   import { REMOTE_SNIPPET } from "./shellIntegration";
+  import { expansionAt, toInput } from "./snippets";
   import type { IMarker } from "@xterm/xterm";
 
   export type PaneStatus = "connecting" | "connected" | "ended";
@@ -45,7 +46,10 @@
     onfiles,
     oncommand,
     onsnippet,
+    onexpand,
   }: {
+    /** `;name` then Tab at a marked prompt: return true if a snippet took it (the typed text is erased). */
+    onexpand?: (short: string) => boolean;
     /** The user chose "Add to snippets" on a command. */
     onsnippet?: (command: string) => void;
     /** A command finished (needs shell integration marks). */
@@ -91,6 +95,10 @@
   /** Type into this pane from outside (a snippet, or another pane's broadcast). */
   export function send(text: string) {
     if (id !== null) sessionWrite(id, new TextEncoder().encode(text));
+  }
+  /** Type a filled-in snippet; several lines without Enter go as one bracketed paste when the shell asked for that. */
+  export function sendSnippet(text: string, enter: boolean) {
+    send(toInput(text, enter, term?.modes.bracketedPasteMode ?? false));
   }
   export function notifyExited(reason: string | null) {
     ended = true;
@@ -182,6 +190,25 @@
       else rows.push(text);
     }
     return rows.join("\n");
+  }
+  /** The cursor row's text typed at the current marked prompt, up to the cursor; null when no prompt is waiting. */
+  function typedAtPrompt(): string | null {
+    const buf = term.buffer.active;
+    if (buf.type === "alternate") return null;
+    const b = tracker.alive().at(-1);
+    if (!b || !b.input || b.input.isDisposed || b.out !== null) return null;
+    const cur = cursorAbs();
+    if (cur < b.input.line) return null;
+    return buf.getLine(cur)?.translateToString(false, cur === b.input.line ? b.inputCol : 0, buf.cursorX) ?? null;
+  }
+  function tryExpand(): boolean {
+    if (!settings.value.snippet_expand || !onexpand) return false;
+    const typed = typedAtPrompt();
+    const short = typed === null ? null : expansionAt(typed);
+    if (!short || !onexpand(short)) return false;
+    // Erase ";name" as if it were backspaced, so the shell's own line stays consistent.
+    send("\x7f".repeat(short.length + 1));
+    return true;
   }
   function commandText(b: Block<IMarker>): string {
     if (!b.input || !b.out || b.input.isDisposed || b.out.isDisposed) return "";
@@ -487,6 +514,10 @@
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
       if (actionFor(e, settings.bindings)) return false;
+      if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && tryExpand()) {
+        e.preventDefault();
+        return false;
+      }
       const k = e.key.toLowerCase();
       // Copy: Ctrl/Cmd+C copies a selection (and clears it); with none, Ctrl+C is the shell's interrupt.
       // Ctrl+Shift+C always copies, never interrupts.

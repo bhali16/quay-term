@@ -2,28 +2,38 @@
   import { focus } from "./focus";
   import Icon from "./Icon.svelte";
   import type { Snippet } from "./bindings/Snippet";
-  import { fill, group, matches, toInput, variables } from "./snippets";
+  import { fill, group, initialValues, matches, slug, variables } from "./snippets";
 
   export type Target = "focused" | "tab" | "broadcast";
   let {
     snippets,
     initial = null,
+    draft: startDraft = null,
+    session = null,
     tabPanes,
     broadcast,
     onsend,
     onsave,
+    onremember,
     ondelete,
     onclose,
   }: {
     snippets: Snippet[];
     /** Open straight into this snippet's fill form (chosen from the command palette). */
     initial?: Snippet | null;
+    /** Open straight into a new snippet with this text (saved from a command block). */
+    draft?: { name: string; body: string } | null;
+    /** The saved session of the focused pane, whose remembered values fill the form. */
+    session?: { id: number; label: string } | null;
     /** Panes in the current tab. */
     tabPanes: number;
     /** Panes currently selected for broadcast. */
     broadcast: number;
-    onsend: (text: string, target: Target) => void;
+    /** `text` is filled in; `enter` says whether to run it. The pane decides how to type it. */
+    onsend: (text: string, enter: boolean, target: Target) => void;
     onsave: (id: number | null, name: string, folder: string, body: string) => Promise<string | null>;
+    /** Remember values for one session; empty values forget them. */
+    onremember: (id: number, session: number, values: Record<string, string>) => Promise<void>;
     ondelete: (s: Snippet) => void;
     onclose: () => void;
   } = $props();
@@ -35,34 +45,56 @@
   let enter = $state(true);
   let target = $state<Target>("focused");
   let draft = $state({ name: "", folder: "", body: "" });
+  let remember = $state(false);
   let error = $state<string | null>(null);
 
   const shown = $derived(group(snippets.filter((s) => matches(s, query))));
   const folders = $derived([...new Set(snippets.map((s) => s.folder).filter(Boolean))].sort());
   const vars = $derived(current ? variables(current.body) : []);
 
+  const remembered = (s: Snippet) => (session ? s.defaults[String(session.id)] : undefined);
   function pick(s: Snippet) {
     current = s;
-    values = Object.fromEntries(variables(s.body).map((v) => [v.name, v.fallback]));
+    values = initialValues(s.body, remembered(s));
+    remember = remembered(s) !== undefined;
     target = broadcast > 0 ? "broadcast" : "focused";
     mode = "fill";
   }
+  let started = false;
   $effect.pre(() => {
-    if (initial && mode === "list" && !current) pick(initial);
+    if (started) return;
+    started = true;
+    if (initial) pick(initial);
+    else if (startDraft) edit(null, startDraft);
   });
-  function send() {
+  async function send() {
     if (!current) return;
-    onsend(toInput(fill(current.body, values), enter), target);
+    if (session && vars.length) {
+      const want = remember ? Object.fromEntries(vars.map((v) => [v.name, values[v.name] ?? ""])) : {};
+      const had = remembered(current) ?? {};
+      if (JSON.stringify(want) !== JSON.stringify(had)) {
+        try {
+          await onremember(current.id, session.id, want);
+        } catch {
+          /* the snippet still goes out; remembering is a convenience */
+        }
+      }
+    }
+    onsend(fill(current.body, values), enter, target);
   }
-  function edit(s: Snippet | null) {
+  function edit(s: Snippet | null, from: { name: string; body: string } | null = null) {
     current = s;
-    draft = { name: s?.name ?? "", folder: s?.folder ?? "", body: s?.body ?? "" };
+    draft = { name: s?.name ?? from?.name ?? "", folder: s?.folder ?? "", body: s?.body ?? from?.body ?? "" };
     error = null;
     mode = "edit";
   }
   async function save() {
     error = await onsave(current?.id ?? null, draft.name, draft.folder, draft.body);
     if (!error) mode = "list";
+  }
+  /** Take focus a frame after the form appears, so a terminal that opened it (`;name` + Tab) cannot keep it. */
+  function focusIf(node: HTMLElement, on: boolean) {
+    if (on) requestAnimationFrame(() => node.focus());
   }
   function onkey(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
@@ -87,7 +119,7 @@
           {#each g.snippets as s (s.id)}
             <div class="item">
               <button class="main" onclick={() => pick(s)} title="Send this snippet">
-                <span class="nm">{s.name}</span>
+                <span class="nm">{s.name}<span class="short">;{slug(s.name)}</span></span>
                 <code class="pv">{s.body.split("\n")[0]}</code>
               </button>
               <button class="ic" aria-label="Edit {s.name}" onclick={() => edit(s)}><Icon name="pencil" size={14} /></button>
@@ -105,9 +137,21 @@
     {:else if mode === "fill" && current}
       <h2>{current.name}</h2>
       <pre class="body">{fill(current.body, values)}</pre>
-      {#each vars as v (v.name)}
-        <label>{v.name}<input bind:value={values[v.name]} onkeydown={(e) => e.key === "Enter" && (e.preventDefault(), send())} /></label>
+      {#each vars as v, i (v.name)}
+        <label>{v.name}
+          {#if v.choices.length}
+            <select bind:value={values[v.name]} use:focusIf={i === 0}>
+              {#each v.choices as c (c)}<option value={c}>{c}</option>{/each}
+              {#if values[v.name] && !v.choices.includes(values[v.name])}<option value={values[v.name]}>{values[v.name]}</option>{/if}
+            </select>
+          {:else}
+            <input bind:value={values[v.name]} use:focusIf={i === 0} onkeydown={(e) => e.key === "Enter" && (e.preventDefault(), send())} />
+          {/if}
+        </label>
       {/each}
+      {#if session && vars.length}
+        <label class="check"><input type="checkbox" bind:checked={remember} /> Remember these values for {session.label}</label>
+      {/if}
       <label>Send to
         <select bind:value={target}>
           <option value="focused">The focused pane</option>
@@ -115,14 +159,14 @@
           <option value="broadcast" disabled={broadcast === 0}>The {broadcast} broadcast pane{broadcast === 1 ? "" : "s"}</option>
         </select>
       </label>
-      <label class="check"><input type="checkbox" bind:checked={enter} /> Press Enter after the text</label>
+      <label class="check"><input type="checkbox" bind:checked={enter} /> Run it (press Enter after the text). Off types it into the prompt to check first</label>
       {#if target !== "focused"}<p class="note"><Icon name="info" size={14} /><span>This types into several terminals at once.</span></p>{/if}
       <div class="actions">
         <button type="button" onclick={() => (mode = "list")}>Back</button>
-        <button type="button" class="primary" onclick={send}>Send</button>
+        <button type="button" class="primary" onclick={send} use:focusIf={vars.length === 0}>Send</button>
       </div>
     {:else}
-      <h2>{current ? "Edit snippet" : "New snippet"}</h2>
+      <h2>{current ? "Edit snippet" : startDraft ? "Save command as snippet" : "New snippet"}</h2>
       <form onsubmit={(e) => (e.preventDefault(), save())}>
         <label>Name<input use:focus bind:value={draft.name} /></label>
         <label>Folder (optional, "a/b" nests)<input bind:value={draft.folder} list="snippet-folders" /></label>
@@ -130,7 +174,11 @@
         <label>Text to send
           <textarea class="mono" rows="5" bind:value={draft.body} spellcheck="false"></textarea>
         </label>
-        <p class="hint">Write <code>{"{{name}}"}</code> for a part you fill in when sending, or <code>{"{{name:default}}"}</code> to suggest a value. Each line is sent as if you pressed Enter after it.</p>
+        <p class="hint">
+          Write <code>{"{{name}}"}</code> for a part you fill in when sending, <code>{"{{name|default}}"}</code> to suggest a value,
+          or <code>{"{{name|dev|staging|prod}}"}</code> to pick from a list. <code>{"\\{{"}</code> sends a plain <code>{"{{"}</code>.
+          Each line is sent as if you pressed Enter after it.
+        </p>
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <div class="actions">
           <button type="button" onclick={() => (mode = "list")}>Cancel</button>
@@ -191,6 +239,12 @@
   }
   .nm {
     font-size: 13.5px;
+  }
+  .short {
+    margin-left: 8px;
+    color: var(--dim);
+    font-family: var(--mono, monospace);
+    font-size: 11.5px;
   }
   .pv {
     overflow: hidden;

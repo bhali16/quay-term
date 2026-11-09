@@ -51,4 +51,9 @@ keybindings: { [key in string]: string },
 /**
  * Focus the pane under the mouse pointer without clicking it.
  */
-focus_follows_mouse: boolean, tab_layout: TabLayout, };
+focus_follows_mouse: boolean, tab_layout: TabLayout, 
+/**
+ * Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
+ * Needs shell integration marks, so it does nothing in a shell without them.
+ */
+snippet_expand: boolean, };

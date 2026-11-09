@@ -70,6 +70,9 @@ pub struct Settings {
     /// Focus the pane under the mouse pointer without clicking it.
     pub focus_follows_mouse: bool,
     pub tab_layout: TabLayout,
+    /// Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
+    /// Needs shell integration marks, so it does nothing in a shell without them.
+    pub snippet_expand: bool,
 }
 
 impl Default for Settings {
@@ -93,6 +96,7 @@ impl Default for Settings {
             keybindings: BTreeMap::new(),
             focus_follows_mouse: false,
             tab_layout: TabLayout::Horizontal,
+            snippet_expand: false,
         }
     }
 }

@@ -3,7 +3,9 @@
 //! A snippet's `folder` is a path such as `Deploy/Prod`; there is no folder
 //! table, so a folder exists while a snippet names it. The body may hold
 //! `{{variable}}` placeholders, which the UI asks for when the snippet is sent.
+//! Values the user chose to remember for one saved session live in `defaults`.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -13,13 +15,17 @@ use ts_rs::TS;
 
 use crate::err;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../ui/src/lib/bindings/")]
 pub struct Snippet {
     pub id: u32,
     pub name: String,
     pub folder: String,
     pub body: String,
+    /// Saved session id (as text) -> variable name -> value, filled in when sending there.
+    /// Older files have none.
+    #[serde(default)]
+    pub defaults: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -126,6 +132,7 @@ impl Snippets {
                     name: name.into(),
                     folder,
                     body: body.into(),
+                    defaults: BTreeMap::new(),
                 };
                 next.push(s.clone());
                 s
@@ -134,6 +141,30 @@ impl Snippets {
         self.persist(&next)?;
         *items = next;
         Ok(snippet)
+    }
+
+    /// Remember `values` for one saved session; empty values forget that session's entry.
+    fn set_defaults(
+        &self,
+        id: u32,
+        session: i64,
+        values: BTreeMap<String, String>,
+    ) -> Result<Snippet, String> {
+        let mut items = self.items.lock().unwrap();
+        let mut next = items.clone();
+        let s = next
+            .iter_mut()
+            .find(|s| s.id == id)
+            .ok_or("That snippet no longer exists.")?;
+        if values.is_empty() {
+            s.defaults.remove(&session.to_string());
+        } else {
+            s.defaults.insert(session.to_string(), values);
+        }
+        let out = s.clone();
+        self.persist(&next)?;
+        *items = next;
+        Ok(out)
     }
 
     fn delete(&self, id: u32) -> Result<(), String> {
@@ -159,6 +190,16 @@ pub(crate) fn snippet_save(
     body: String,
 ) -> Result<Snippet, String> {
     s.save(id, &name, &folder, &body)
+}
+
+#[tauri::command]
+pub(crate) fn snippet_defaults(
+    s: State<'_, Snippets>,
+    id: u32,
+    session: i64,
+    values: BTreeMap<String, String>,
+) -> Result<Snippet, String> {
+    s.set_defaults(id, session, values)
 }
 
 #[tauri::command]
@@ -210,6 +251,36 @@ mod tests {
         let items = again.items.lock().unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].name, "Restart unit");
+    }
+
+    #[test]
+    fn remembers_values_per_session_and_survives_edits() {
+        let path = temp();
+        let s = Snippets::open(path.clone());
+        let a = s.save(None, "Deploy", "", "deploy {{env}}").unwrap();
+        let vals = BTreeMap::from([("env".to_string(), "prod".to_string())]);
+        s.set_defaults(a.id, 7, vals.clone()).unwrap();
+        s.save(Some(a.id), "Deploy", "", "deploy {{env}} now")
+            .unwrap();
+        let again = Snippets::open(path.clone());
+        assert_eq!(again.all()[0].defaults.get("7"), Some(&vals));
+        again.set_defaults(a.id, 7, BTreeMap::new()).unwrap();
+        assert!(Snippets::open(path).all()[0].defaults.is_empty());
+        assert!(again.set_defaults(99, 7, vals).is_err());
+    }
+
+    #[test]
+    fn loads_files_written_before_defaults_existed() {
+        let path = temp();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            br#"{"snippets":[{"id":1,"name":"a","folder":"","body":"ls"}]}"#,
+        )
+        .unwrap();
+        let s = Snippets::open(path);
+        assert_eq!(s.all().len(), 1);
+        assert!(s.all()[0].defaults.is_empty());
     }
 
     #[test]

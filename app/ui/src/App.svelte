@@ -20,6 +20,7 @@
     sshTrustResponse,
     sshAuthResponse,
     onAuthPrompt,
+    snippetDefaults,
     snippetDelete,
     vaultStatus,
     snippetSave,
@@ -51,6 +52,7 @@
   import type { VaultStatus } from "./lib/bindings/VaultStatus";
   import type { Target } from "./lib/SnippetDialog.svelte";
   import type { Snippet } from "./lib/bindings/Snippet";
+  import { byShortName, fill, variables } from "./lib/snippets";
   import { settings } from "./lib/settings.svelte";
   import { actionFor, actionLabels, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
@@ -112,13 +114,34 @@
   function mirror(from: number, data: string) {
     if (broadcast.includes(from)) for (const id of broadcast) if (id !== from) paneById(id)?.send(data);
   }
-  function sendSnippet(text: string, target: Target) {
+  function sendSnippet(text: string, enter: boolean, target: Target) {
     const tab = activeTab;
     if (!tab) return;
     const ids =
       target === "focused" ? [tab.focus] : target === "tab" ? P.leaves(tab.layout) : broadcast;
-    for (const id of ids) paneById(id)?.send(text);
+    for (const id of ids) paneById(id)?.sendSnippet(text, enter);
+    closeSnippets();
+  }
+  function closeSnippets() {
     showSnippets = false;
+    snippetPick = null;
+    snippetDraft = null;
+    requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal());
+  }
+  async function rememberSnippet(id: number, session: number, values: Record<string, string>) {
+    await snippetDefaults(id, session, values);
+    snippets = await snippetsLoad();
+  }
+  /** `;name` typed at a prompt: a snippet with variables opens its form, one without is typed in (not run). */
+  function expandSnippet(tab: Tab, pane: number, short: string): boolean {
+    const sn = byShortName(snippets, short);
+    if (!sn) return false;
+    tab.focus = pane;
+    if (variables(sn.body).length) {
+      snippetPick = sn;
+      showSnippets = true;
+    } else requestAnimationFrame(() => paneById(pane)?.sendSnippet(fill(sn.body, {}), false));
+    return true;
   }
   async function saveSnippet(id: number | null, name: string, folder: string, body: string) {
     try {
@@ -129,11 +152,12 @@
       return `${e}`;
     }
   }
-  /** "Add to snippets" from a command block: saved under its first words; rename it in the Snippets dialog. */
-  async function addCommandSnippet(command: string) {
-    const name = command.replace(/\s+/g, " ").slice(0, 40);
-    const err = await saveSnippet(null, name, "", command);
-    toast(err ?? `Saved snippet "${name}".`, err ? "error" : "success");
+  /** "Add to snippets" from a command block: opens a new snippet with the command, to name it and mark its variables. */
+  let snippetDraft = $state<{ name: string; body: string } | null>(null);
+  function addCommandSnippet(command: string) {
+    snippetPick = null;
+    snippetDraft = { name: command.replace(/\s+/g, " ").slice(0, 40), body: command };
+    showSnippets = true;
   }
   async function removeSnippet(s: Snippet) {
     try {
@@ -854,6 +878,7 @@
                 onactivity={() => (tab.activity = true)}
                 oncommand={(c) => commandDone(tab, p.id, c)}
                 onsnippet={addCommandSnippet}
+                onexpand={(short) => expandSnippet(tab, p.id, short)}
                 onfiles={tab.ssh || tab.saved ? () => (tab.files = true) : undefined}
                 onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
               />
@@ -955,12 +980,15 @@
     <SnippetDialog
       {snippets}
       initial={snippetPick}
+      draft={snippetDraft}
+      session={activeTab?.saved ? { id: activeTab.saved.id, label: activeTab.saved.label } : null}
       tabPanes={activeTab ? P.leaves(activeTab.layout).length : 0}
       broadcast={broadcast.length}
       onsend={sendSnippet}
       onsave={saveSnippet}
+      onremember={rememberSnippet}
       ondelete={removeSnippet}
-      onclose={() => ((showSnippets = false), (snippetPick = null))}
+      onclose={closeSnippets}
     />
   {/if}
   {#if showPalette}

@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Snippet choice lists: `{{env|dev|staging|prod}}` shows a dropdown, and `{{name|default}}` suggests a value. `{{name:default}}` works as before, and `\{{` sends a plain `{{`.
+- Snippets can remember the values you filled in for a saved session ("Remember these values for …"), and fill them in next time on that host. Remembered values travel with the encrypted export and follow the session on import.
+- Experimental: with "type ;name then Tab" on (Settings > Terminal), typing `;short-name` then Tab at a marked prompt opens that snippet, or types it in if it has no variables. Each snippet's short name is shown in the list.
+
+### Changed
+- "Add to snippets" on a command opens the new snippet for naming and editing instead of saving it straight away.
+
+### Fixed
+- A multi-line snippet sent with "Run it" off no longer runs every line but the last. When the shell supports bracketed paste, the lines wait in the prompt together.
+
 ## [0.4.0] - 2026-11-06
 
 ### Added

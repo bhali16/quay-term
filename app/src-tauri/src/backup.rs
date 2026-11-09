@@ -155,7 +155,22 @@ impl Library {
                 }
             }
         }
-        Ok((r, b.snippets))
+        // Remembered snippet values follow their session to its id here; others are dropped.
+        let snippets = b
+            .snippets
+            .into_iter()
+            .map(|mut sn| {
+                sn.defaults = std::mem::take(&mut sn.defaults)
+                    .into_iter()
+                    .filter_map(|(k, v)| {
+                        let old = k.parse::<i64>().ok()?;
+                        Some((session_map.get(&old)?.to_string(), v))
+                    })
+                    .collect();
+                sn
+            })
+            .collect();
+        Ok((r, snippets))
     }
 }
 
@@ -381,6 +396,7 @@ mod tests {
             name: name.into(),
             folder: "ops".into(),
             body: format!("echo {name}"),
+            ..Default::default()
         };
         let json =
             serde_json::to_vec(&lib().bundle(vec![snip("a"), snip("b")], false).unwrap()).unwrap();
@@ -401,6 +417,55 @@ mod tests {
         );
         let ids: Vec<u32> = library.all().iter().map(|s| s.id).collect();
         assert_eq!(ids, vec![1, 2], "imported snippets get fresh ids");
+    }
+
+    #[test]
+    fn remembered_snippet_values_follow_their_session() {
+        let a = lib();
+        let id = a
+            .store
+            .lock()
+            .unwrap()
+            .create_session(&input("web", "w.example", None, None))
+            .unwrap()
+            .id;
+        let vals = std::collections::BTreeMap::from([("env".to_string(), "prod".to_string())]);
+        let snip = Snippet {
+            id: 1,
+            name: "deploy".into(),
+            body: "deploy {{env}}".into(),
+            defaults: [(id.to_string(), vals.clone()), ("999".into(), vals.clone())].into(),
+            ..Default::default()
+        };
+        let json = serde_json::to_vec(&a.bundle(vec![snip], false).unwrap()).unwrap();
+
+        let b = lib();
+        for n in ["x", "y"] {
+            b.store
+                .lock()
+                .unwrap()
+                .create_session(&input(n, &format!("{n}.example"), None, None))
+                .unwrap();
+        }
+        let (_, incoming) = b.absorb(serde_json::from_slice(&json).unwrap()).unwrap();
+        let new_id = b
+            .store
+            .lock()
+            .unwrap()
+            .list_sessions()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.input.name == "web")
+            .unwrap()
+            .id;
+        assert_ne!(new_id, id, "the session got a new id on this machine");
+        let d = &incoming[0].defaults;
+        assert_eq!(
+            d.len(),
+            1,
+            "values for a session not in the file are dropped"
+        );
+        assert_eq!(d.get(&new_id.to_string()), Some(&vals));
     }
 
     #[test]
