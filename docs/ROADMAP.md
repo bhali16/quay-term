@@ -66,8 +66,8 @@ Definition of done: a user with many panes and sessions can zoom into one, rearr
 
 ## Next
 
-- F8 snippet upgrade: done, unreleased (choice lists, per-session values, `;name` expansion, save from a block).
-- F7 cross-session history search: done, unreleased (opt-in, `$` in the palette, deny-list, per-entry and full delete, encrypted when the master-password vault is in use, optional in export).
+- F8 snippet upgrade: released in 0.4.1 (choice lists, per-session values, `;name` expansion, save from a block).
+- F7 cross-session history search: released in 0.4.1 (opt-in, `$` in the palette, deny-list, per-entry and full delete, encrypted when the master-password vault is in use, optional in export).
 - F9 input assist, F11 optional AI helper (on hold until the privacy position is settled).
 
 ## Later

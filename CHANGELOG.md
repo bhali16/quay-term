@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-10
+
 ### Added
 - Snippet choice lists: `{{env|dev|staging|prod}}` shows a dropdown, and `{{name|default}}` suggests a value. `{{name:default}}` works as before, and `\{{` sends a plain `{{`.
 - Snippets can remember the values you filled in for a saved session ("Remember these values for …"), and fill them in next time on that host. Remembered values travel with the encrypted export and follow the session on import.
