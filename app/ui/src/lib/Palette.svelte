@@ -11,7 +11,9 @@
 </script>
 
 <script lang="ts">
+  import { onMount } from "svelte";
   import { focus } from "./focus";
+  import { onEscape } from "./escape";
   import Icon from "./Icon.svelte";
   import { parseQuery, rank } from "./fuzzy";
   import { ago, applyFilter, collapse, hostsOf, noFilter, type HistoryFilter, type HistoryRow, type Range } from "./history";
@@ -124,11 +126,10 @@
     el?.scrollIntoView({ block: "nearest" });
   });
 
+  onMount(() => onEscape(() => onclose()));
+
   function onkey(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onclose();
-    } else if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
+    if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
       e.preventDefault();
       sel = count ? (sel + 1) % count : 0;
     } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) {

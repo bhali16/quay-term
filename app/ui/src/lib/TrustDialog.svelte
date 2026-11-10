@@ -1,11 +1,14 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { focus } from "./focus";
+  import { onEscape } from "./escape";
   import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 
   let { prompt, onanswer }: { prompt: HostKeyPrompt; onanswer: (trust: boolean) => void } = $props();
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onanswer(false)} />
+  // Level 1: drawn above every other dialog, so it owns Escape whichever opened first.
+  onMount(() => onEscape(() => onanswer(false), 1));
+</script>
 
 <div class="dlg-backdrop top" role="presentation">
   <div class="dlg" role="alertdialog" aria-label="Unknown host key" tabindex="-1">

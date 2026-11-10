@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { onEscape } from "./escape";
   import Icon, { type Name } from "./Icon.svelte";
   import { settings } from "./settings.svelte";
   import { updates } from "./updates.svelte";
@@ -82,27 +83,25 @@
     patch({ keybindings: kb });
   }
   // The window listener runs in the capture phase so a recorded shortcut never fires its action.
+  // Escape (cancel the recording, or close) comes through the shared dialog stack instead.
   function onkey(e: KeyboardEvent) {
-    if (recording) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.key === "Escape") recording = null;
-      else {
-        const d = describe(e);
-        if (d) {
-          const clash = actions.find((a) => a !== recording && settings.bindings[a] === d);
-          if (clash) error = `${d} is already used by "${actionLabels[clash]}".`;
-          else setBinding(recording, d);
-          recording = null;
-        }
-      }
-    } else if (e.key === "Escape") onclose();
+    if (!recording || e.key === "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const d = describe(e);
+    if (d) {
+      const clash = actions.find((a) => a !== recording && settings.bindings[a] === d);
+      if (clash) error = `${d} is already used by "${actionLabels[clash]}".`;
+      else setBinding(recording, d);
+      recording = null;
+    }
   }
 
   onMount(() => {
     getDiagnostics().then((d) => (diag = d));
     window.addEventListener("keydown", onkey, true);
-    return () => window.removeEventListener("keydown", onkey, true);
+    const off = onEscape(() => (recording ? (recording = null) : onclose()));
+    return () => (off(), window.removeEventListener("keydown", onkey, true));
   });
 
   // ---- encrypted backup ----
@@ -235,6 +234,10 @@
           <label class="check">
             <input type="checkbox" checked={settings.value.focus_follows_mouse} onchange={(e) => patch({ focus_follows_mouse: e.currentTarget.checked })} />
             Focus the pane under the mouse pointer without clicking
+          </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.confirm_close} onchange={(e) => patch({ confirm_close: e.currentTarget.checked })} />
+            Ask before closing a running command or a tab with several connected panes
           </label>
           <label class="check">
             <input type="checkbox" checked={settings.value.show_hints} onchange={(e) => patch({ show_hints: e.currentTarget.checked })} />

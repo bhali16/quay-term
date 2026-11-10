@@ -23,6 +23,7 @@ const fallback: Settings = {
   notify_show_command: true,
   keybindings: {},
   focus_follows_mouse: false,
+  confirm_close: true,
   tab_layout: "horizontal",
   snippet_expand: false,
   record_history: false,

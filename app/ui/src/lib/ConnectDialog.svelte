@@ -1,12 +1,20 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import KeyFileField from "./KeyFileField.svelte";
+  import { onEscape } from "./escape";
+  import SecretStoreCheck, { canStore } from "./SecretStoreCheck.svelte";
+  import type { VaultStatus } from "./bindings/VaultStatus";
   import { focus } from "./focus";
   import type { SshTarget } from "./bindings/SshTarget";
 
   let {
+    vault = null,
+    onunlock,
     onconnect,
     oncancel,
   }: {
+    vault?: VaultStatus | null;
+    onunlock?: () => void;
     /** `save` asks for the connection to be kept as a saved session; `keepSecret` also keeps its password or passphrase. */
     onconnect: (t: SshTarget, save: { save: boolean; keepSecret: boolean }) => void;
     oncancel: () => void;
@@ -33,11 +41,11 @@
         : method === "key"
           ? { method, path: keyPath, passphrase: passphrase || null }
           : { method };
-    onconnect({ host: host.trim(), port, user: user.trim(), auth }, { save, keepSecret });
+    onconnect({ host: host.trim(), port, user: user.trim(), auth }, { save, keepSecret: keepSecret && canStore(vault) });
   }
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+  onMount(() => onEscape(() => oncancel()));
+</script>
 
 <div class="dlg-backdrop" role="presentation">
   <form class="dlg" onsubmit={submit} aria-label="New SSH connection">
@@ -63,7 +71,7 @@
     {/if}
     <label class="check"><input type="checkbox" bind:checked={save} /> Save to sessions</label>
     {#if save && method !== "agent"}
-      <label class="check"><input type="checkbox" bind:checked={keepSecret} /> Save the {method === "key" ? "passphrase" : "password"} in the system keychain</label>
+      <SecretStoreCheck bind:checked={keepSecret} {vault} {onunlock} what={method === "key" ? "passphrase" : "password"} />
     {/if}
     <div class="actions">
       <button type="button" onclick={oncancel}>Cancel</button>

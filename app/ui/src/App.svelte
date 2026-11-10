@@ -53,6 +53,7 @@
   import SettingsDialog from "./lib/SettingsDialog.svelte";
   import SnippetDialog from "./lib/SnippetDialog.svelte";
   import UnlockDialog from "./lib/UnlockDialog.svelte";
+  import ConfirmDialog from "./lib/ConfirmDialog.svelte";
   import type { VaultStatus } from "./lib/bindings/VaultStatus";
   import type { Target } from "./lib/SnippetDialog.svelte";
   import type { Snippet } from "./lib/bindings/Snippet";
@@ -95,6 +96,20 @@
   let counter = 0;
   let paneCounter = 0;
   let editing = $state<number | null>(null);
+  /** The name being typed while a tab is renamed; the tab keeps its title until it is committed. */
+  let renameDraft = $state("");
+  function startRename(tab: Tab) {
+    renameDraft = tab.title;
+    editing = tab.key;
+  }
+  /** Enter or clicking away keeps the new name (an empty one keeps the old); Escape drops it. */
+  function endRename(tab: Tab, keep: boolean) {
+    if (editing !== tab.key) return;
+    editing = null;
+    const name = renameDraft.trim();
+    if (keep && name) tab.title = name;
+    requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal());
+  }
   let connecting = $state(false);
   let trustPrompt = $state<HostKeyPrompt | null>(null);
   let authPrompt = $state<AuthPrompt | null>(null);
@@ -165,12 +180,23 @@
     snippetDraft = { name: command.replace(/\s+/g, " ").slice(0, 40), body: command };
     showSnippets = true;
   }
+  /** Deleting is immediate, with an Undo that puts the snippet back (and its remembered values). */
   async function removeSnippet(s: Snippet) {
     try {
       await snippetDelete(s.id);
       snippets = await snippetsLoad();
+      toast(`Deleted snippet "${s.name}".`, "info", { label: "Undo", run: () => restoreSnippet(s) });
     } catch (e) {
       say(e);
+    }
+  }
+  async function restoreSnippet(s: Snippet) {
+    try {
+      const back = await snippetSave(null, s.name, s.folder, s.body);
+      for (const [session, values] of Object.entries(s.defaults)) await snippetDefaults(back.id, Number(session), values);
+      snippets = await snippetsLoad();
+    } catch (e) {
+      say(`Could not restore the snippet: ${e}`);
     }
   }
 
@@ -350,7 +376,7 @@
   // ---- saved sessions ----
   let library = $state<LibraryView>({ folders: [], sessions: [] });
   let query = $state("");
-  type Toast = { id: number; kind: "info" | "success" | "error"; text: string };
+  type Toast = { id: number; kind: "info" | "success" | "error"; text: string; action?: { label: string; run: () => void } };
   let toasts = $state<Toast[]>([]);
   let toastId = 0;
   let sidebarOpen = $state(readSidebarPref());
@@ -382,10 +408,11 @@
       /* preference is optional */
     }
   }
-  function toast(text: string, kind: Toast["kind"] = "info") {
+  /** A toast with an action (Undo) stays as long as an error, so there is time to use it. */
+  function toast(text: string, kind: Toast["kind"] = "info", action?: Toast["action"]) {
     const id = ++toastId;
-    toasts.push({ id, kind, text });
-    setTimeout(() => dismiss(id), kind === "error" ? 8000 : 4500);
+    toasts.push({ id, kind, text, action });
+    setTimeout(() => dismiss(id), kind === "error" || action ? 8000 : 4500);
   }
   const dismiss = (id: number) => (toasts = toasts.filter((t) => t.id !== id));
   const say = (e: unknown) => toast(`${e}`, "error");
@@ -647,11 +674,44 @@
     if (tabs.length === 0) newTab();
   }
 
+  // ---- closing: ask first when it would end a running command or several connected panes ----
+  let closeAsk = $state<{ title: string; body: string; label: string; run: () => void } | null>(null);
+  const busyIn = (tab: Tab, ids: number[]) => ids.filter((id) => tab.panes[id]?.isBusy()).length;
+  function confirmClose(ask: NonNullable<typeof closeAsk>) {
+    if (settings.value.confirm_close) closeAsk = ask;
+    else ask.run();
+  }
+  function answerClose(yes: boolean, never = false) {
+    const ask = closeAsk;
+    closeAsk = null;
+    if (yes && never) settings.update({ ...settings.value, confirm_close: false });
+    if (yes) ask?.run();
+    else requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal());
+  }
+  function requestCloseTab(key: number) {
+    const tab = tabs.find((t) => t.key === key);
+    if (!tab) return;
+    const ids = P.leaves(tab.layout);
+    const busy = busyIn(tab, ids);
+    const live = ids.filter((id) => tab.status[id] === "connected").length;
+    if (!busy && live < 2) return closeTab(key);
+    const body = busy
+      ? `${busy === 1 ? "A command is" : `Commands are`} still running in ${busy === 1 && ids.length === 1 ? "this tab" : busy === 1 ? "one of its panes" : `${busy} of its panes`}. Closing the tab stops ${busy === 1 ? "it" : "them"}.`
+      : `This closes all ${live} connected panes in the tab.`;
+    confirmClose({ title: `Close ${tab.title}?`, body, label: ids.length > 1 ? `Close ${ids.length} panes` : "Close tab", run: () => closeTab(key) });
+  }
+  function requestClosePane(tab: Tab, id: number) {
+    // The last pane takes the tab with it.
+    if (P.leaves(tab.layout).length < 2) return requestCloseTab(tab.key);
+    if (!busyIn(tab, [id])) return closePane(tab, id);
+    confirmClose({ title: "Close this pane?", body: "A command is still running in it. Closing the pane stops it.", label: "Close pane", run: () => closePane(tab, id) });
+  }
+
   function runAction(a: Action) {
     const i = tabs.findIndex((t) => t.key === activeKey);
     switch (a) {
       case "new_tab": return newTab();
-      case "close_tab": return activeTab && closePane(activeTab, activeTab.focus);
+      case "close_tab": return activeTab && requestClosePane(activeTab, activeTab.focus);
       case "broadcast_pane": return activeTab && toggleBroadcast([activeTab.focus]);
       case "broadcast_tab": return activeTab && toggleBroadcast(P.leaves(activeTab.layout));
       case "snippets": return (showSnippets = !showSnippets);
@@ -820,12 +880,14 @@
           <!-- svelte-ignore a11y_autofocus -->
           <input
             autofocus
-            bind:value={tab.title}
-            onblur={() => (editing = null)}
-            onkeydown={(e) => (e.key === "Enter" || e.key === "Escape") && (editing = null)}
+            aria-label="Tab name"
+            bind:value={renameDraft}
+            onfocus={(e) => e.currentTarget.select()}
+            onblur={() => endRename(tab, true)}
+            onkeydown={(e) => (e.key === "Enter" ? endRename(tab, true) : e.key === "Escape" && (e.stopPropagation(), endRename(tab, false)))}
           />
         {:else}
-          <button class="label" onclick={() => (activeKey = tab.key)} ondblclick={() => (editing = tab.key)}>
+          <button class="label" onclick={() => (activeKey = tab.key)} ondblclick={() => startRename(tab)}>
             {#if st !== "local" || tab.ssh || tab.saved}
               <span class="sshdot {st}" role="img" aria-label={stateLabel[st] || "Local shell"} title={stateLabel[st] || "Local shell"}></span>
             {:else if st === "local" && Object.values(tab.status).length && Object.values(tab.status).every((x) => x === "ended")}
@@ -838,7 +900,7 @@
             {#if tab.activity}<span class="activity" role="img" aria-label="New output" title="New output"></span>{/if}
           </button>
         {/if}
-        <button class="close" aria-label="Close tab" onclick={() => closeTab(tab.key)}>×</button>
+        <button class="close" aria-label="Close tab" onclick={() => requestCloseTab(tab.key)}>×</button>
       </div>
   {/snippet}
   <nav class="tabs" data-tauri-drag-region>
@@ -967,8 +1029,8 @@
       {#if mt?.ssh && !mt.saved}
         <button role="menuitem" onclick={() => ((tabMenu = null), saveConnection(mt))}>Save this connection…</button>
       {/if}
-      <button role="menuitem" onclick={() => ((editing = tabMenu!.key), (tabMenu = null))}>Rename tab</button>
-      <button role="menuitem" onclick={() => (closeTab(tabMenu!.key), (tabMenu = null))}>Close tab</button>
+      <button role="menuitem" onclick={() => (mt && startRename(mt), (tabMenu = null))}>Rename tab</button>
+      <button role="menuitem" onclick={() => (requestCloseTab(tabMenu!.key), (tabMenu = null))}>Close tab</button>
     </div>
   {/if}
   {#if editing_session}
@@ -980,6 +1042,8 @@
         folders={library.folders}
         sessions={library.sessions}
         error={dialogError}
+        {vault}
+        onunlock={() => (showUnlock = true)}
         onsubmit={submitSession}
         oncancel={() => (editing_session = null)}
       />
@@ -988,6 +1052,8 @@
   {#if passwordFor}
     <PasswordPrompt
       title={`${passwordFor.user}@${passwordFor.host}`}
+      {vault}
+      onunlock={() => (showUnlock = true)}
       oncancel={() => (passwordFor = null)}
       onsubmit={(pw, remember) => {
         const s = passwordFor!;
@@ -999,6 +1065,8 @@
   {#if jumpFor}
     <PasswordPrompt
       title={`${jumpFor.hop.user}@${jumpFor.hop.host} (jump host ${jumpFor.hop.name})`}
+      {vault}
+      onunlock={() => (showUnlock = true)}
       oncancel={() => (jumpFor = null)}
       onsubmit={(pw, remember) => {
         const j = jumpFor!;
@@ -1008,13 +1076,14 @@
     />
   {/if}
   {#if connecting}
-    <ConnectDialog onconnect={connectSsh} oncancel={() => (connecting = false)} />
+    <ConnectDialog {vault} onunlock={() => (showUnlock = true)} onconnect={connectSsh} oncancel={() => (connecting = false)} />
   {/if}
   <div class="toasts" aria-live="polite">
     {#each toasts as t (t.id)}
-      <div class="toast {t.kind}" role="status">
+      <div class="toast {t.kind}" role={t.kind === "error" ? "alert" : "status"}>
         <span class="ticon"><Icon name={t.kind === "error" ? "x" : t.kind === "success" ? "check" : "info"} size={16} /></span>
         <span class="msg">{t.text}</span>
+        {#if t.action}<button class="tact" onclick={() => (t.action!.run(), dismiss(t.id))}>{t.action.label}</button>{/if}
         <button aria-label="Dismiss" onclick={() => dismiss(t.id)}><Icon name="x" size={14} /></button>
       </div>
     {/each}
@@ -1036,6 +1105,11 @@
   {/if}
   {#if showPalette}
     <Palette items={paletteItems} {recent} history={historySource} initial={paletteInitial} onrun={runPalette} onclose={() => ((showPalette = false), requestAnimationFrame(() => focusedPane(activeTab)?.focusTerminal()))} />
+  {/if}
+  {#if closeAsk}
+    {#key closeAsk}
+      <ConfirmDialog title={closeAsk.title} body={closeAsk.body} confirmLabel={closeAsk.label} dontAsk onconfirm={(never) => answerClose(true, never)} oncancel={() => answerClose(false)} />
+    {/key}
   {/if}
   {#if showUnlock && vault}
     <UnlockDialog isNew={vault.is_new} ondone={() => ((showUnlock = false), loadVault(), refresh())} oncancel={() => (showUnlock = false)} />
@@ -1396,6 +1470,17 @@
   }
   .toast button:hover {
     opacity: 1;
+  }
+  .toast .tact {
+    flex: none;
+    padding: 1px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-weight: 500;
+    opacity: 1;
+  }
+  .toast .tact:hover {
+    background: var(--hover);
   }
   @media (prefers-reduced-motion: reduce) {
     .toast {

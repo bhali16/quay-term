@@ -69,6 +69,9 @@ pub struct Settings {
     pub keybindings: BTreeMap<String, String>,
     /// Focus the pane under the mouse pointer without clicking it.
     pub focus_follows_mouse: bool,
+    /// Ask before closing a tab or pane that is running a command, or a tab with several
+    /// connected panes.
+    pub confirm_close: bool,
     pub tab_layout: TabLayout,
     /// Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
     /// Needs shell integration marks, so it does nothing in a shell without them.
@@ -119,6 +122,7 @@ impl Default for Settings {
             notify_show_command: true,
             keybindings: BTreeMap::new(),
             focus_follows_mouse: false,
+            confirm_close: true,
             tab_layout: TabLayout::Horizontal,
             snippet_expand: false,
             record_history: false,
@@ -216,6 +220,16 @@ mod tests {
         assert!(!Settings::load(&p).focus_follows_mouse);
         std::fs::write(&p, r#"{"focus_follows_mouse": true}"#).unwrap();
         assert!(Settings::load(&p).focus_follows_mouse);
+    }
+
+    #[test]
+    fn confirm_close_defaults_on_for_old_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        assert!(Settings::load(&p).confirm_close);
+        std::fs::write(&p, r#"{"confirm_close": false}"#).unwrap();
+        assert!(!Settings::load(&p).confirm_close);
     }
 
     #[test]

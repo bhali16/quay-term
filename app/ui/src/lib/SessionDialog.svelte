@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { onEscape } from "./escape";
+  import SecretStoreCheck, { canStore, storeName } from "./SecretStoreCheck.svelte";
+  import type { VaultStatus } from "./bindings/VaultStatus";
   import Icon from "./Icon.svelte";
   import KeyFileField from "./KeyFileField.svelte";
   import { focus } from "./focus";
@@ -27,9 +30,14 @@
     folders,
     sessions = [],
     error = null,
+    vault = null,
+    onunlock,
     onsubmit,
     oncancel,
   }: {
+    /** Where secrets are kept on this computer, so the form names the right place. */
+    vault?: VaultStatus | null;
+    onunlock?: () => void;
     session?: SavedSession | null;
     /** Folder preselected for a new session. */
     defaultFolderId?: number | null;
@@ -117,16 +125,18 @@
       tunnels: $state.snapshot(tunnels),
     };
     const typed = auth !== "agent" && secret !== "";
+    // A locked vault cannot take a secret: what was typed is used for this connection only.
+    const keep = saveSecret && canStore(vault);
     const update: SecretUpdate =
-      typed && saveSecret ? { action: "set", value: secret } : clearSecret ? { action: "clear" } : { action: "unchanged" };
-    onsubmit({ input, secret: update, transient: typed && !saveSecret ? secret : null, connect });
+      typed && keep ? { action: "set", value: secret } : clearSecret ? { action: "clear" } : { action: "unchanged" };
+    onsubmit({ input, secret: update, transient: typed && !keep ? secret : null, connect });
   }
+
+  onMount(() => onEscape(() => oncancel()));
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
-
 <div class="dlg-backdrop" role="presentation">
-  <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit(true))} aria-label="Session">
+  <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit(!session))} aria-label="Session">
     <h2>{session ? "Edit session" : draft ? "Save this connection" : "New session"}</h2>
     <label>Name <input bind:value={name} placeholder="Optional, defaults to user@host" /></label>
     <div class="row">
@@ -170,9 +180,9 @@
           placeholder={hadSecret ? "Saved - leave blank to keep" : ""}
         />
       </label>
-      <label class="check"><input type="checkbox" bind:checked={saveSecret} /> Save in the system keychain</label>
-      {#if saveSecret}
-        <p class="note"><Icon name="lock" size={14} />{auth === "key" ? "Passphrase" : "Password"} stored in the OS keychain, never in the database</p>
+      <SecretStoreCheck bind:checked={saveSecret} {vault} {onunlock} what={auth === "key" ? "passphrase" : "password"} />
+      {#if saveSecret && canStore(vault)}
+        <p class="note"><Icon name="lock" size={14} />{auth === "key" ? "Passphrase" : "Password"} stored in the {storeName(vault)}, never in the database</p>
       {/if}
       {#if hadSecret}
         <label class="check"><input type="checkbox" bind:checked={clearSecret} /> Remove the saved secret</label>
@@ -198,24 +208,36 @@
         <button type="button" class="small" onclick={addTunnel}><Icon name="plus" size={14} />Add</button>
       </div>
       {#each tunnels as t, i (i)}
-        <div class="trow">
-          <select bind:value={t.kind} aria-label="Tunnel type">
-            {#each Object.entries(kindLabels) as [k, label] (k)}<option value={k}>{label}</option>{/each}
-          </select>
-          <input class="num" type="number" min="0" max="65535" bind:value={t.bind_port} aria-label="Port to listen on" title={t.kind === "remote" ? "Port on the server" : "Port on this computer"} />
+        <div class="tun">
+          <div class="row">
+            <label class="grow">
+              Type
+              <select bind:value={t.kind}>
+                {#each Object.entries(kindLabels) as [k, label] (k)}<option value={k}>{label}</option>{/each}
+              </select>
+            </label>
+            <label class="port">
+              {t.kind === "remote" ? "Server port" : "Local port"}
+              <input type="number" min="0" max="65535" bind:value={t.bind_port} />
+            </label>
+            <button type="button" class="small remove" aria-label="Remove tunnel" title="Remove tunnel" onclick={() => tunnels.splice(i, 1)}><Icon name="trash" size={14} /></button>
+          </div>
           {#if t.kind !== "dynamic"}
-            <span class="arrow">→</span>
-            <input class="mono dest" bind:value={t.dest_host} aria-label="Destination host" autocapitalize="off" spellcheck="false" />
-            <input class="num" type="number" min="1" max="65535" bind:value={t.dest_port} aria-label="Destination port" />
+            <div class="row">
+              <label class="grow">
+                {t.kind === "remote" ? "Send to (from this computer)" : "Send to (from the server)"}
+                <input class="mono" bind:value={t.dest_host} autocapitalize="off" spellcheck="false" />
+              </label>
+              <label class="port">Port <input type="number" min="1" max="65535" bind:value={t.dest_port} /></label>
+            </div>
           {:else}
-            <span class="arrow dim">proxy</span>
+            <p class="hint">A SOCKS5 proxy on this computer; the app using it picks the destination.</p>
           {/if}
-          <label class="auto" title="Start when this session connects"><input type="checkbox" bind:checked={t.auto_start} />Auto</label>
-          <button type="button" class="small" aria-label="Remove tunnel" onclick={() => tunnels.splice(i, 1)}><Icon name="x" size={14} /></button>
+          <label class="check"><input type="checkbox" bind:checked={t.auto_start} /> Start when this session connects</label>
         </div>
       {/each}
       {#if tunnels.length === 0}
-        <p class="note">Port forwards saved with this session. Mark one Auto to start it on connect.</p>
+        <p class="note">Port forwards saved with this session. Each can start on its own when the session connects.</p>
       {/if}
     </div>
     <div class="swatches" role="group" aria-label="Colour">
@@ -227,8 +249,14 @@
     {#if error}<p class="error">{error}</p>{/if}
     <div class="actions">
       <button type="button" onclick={oncancel}>Cancel</button>
-      <button type="button" disabled={!valid} onclick={() => submit(false)}>Save</button>
-      <button type="submit" class="primary" disabled={!valid}>Save &amp; connect</button>
+      <!-- Enter saves an existing session; it connects only when the session is new. -->
+      {#if session}
+        <button type="button" disabled={!valid} onclick={() => submit(true)}>Save &amp; connect</button>
+        <button type="submit" class="primary" disabled={!valid}>Save</button>
+      {:else}
+        <button type="button" disabled={!valid} onclick={() => submit(false)}>Save</button>
+        <button type="submit" class="primary" disabled={!valid}>Save &amp; connect</button>
+      {/if}
     </div>
   </form>
 </div>
@@ -267,33 +295,31 @@
     justify-content: space-between;
     color: var(--dim);
   }
-  .trow {
+  /* One tunnel: listen side on the first line, destination on the second, so every field has room. */
+  .tun {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
   }
-  .trow select {
-    width: 84px;
+  .tun .row {
+    align-items: flex-end;
+  }
+  .tun .port {
+    width: 96px;
     flex: none;
   }
-  .trow .num {
-    width: 68px;
+  .tun .port input,
+  .tun .grow input,
+  .tun .grow select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .tun .remove {
     flex: none;
-  }
-  .trow .dest {
-    flex: 1;
-    min-width: 0;
-  }
-  .arrow {
-    color: var(--dim);
-  }
-  .auto {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 4px;
-    flex: none;
-    font-size: 12px;
+    height: 32px;
   }
   .small {
     display: flex;

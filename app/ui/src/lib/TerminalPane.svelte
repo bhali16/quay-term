@@ -118,6 +118,8 @@
     if (ended) start();
   }
   export const isEnded = () => ended;
+  /** A command is running here (known only in a shell with command marks). */
+  export const isBusy = () => !ended && id !== null && tracker.running();
   export const focusTerminal = () => term?.focus();
 
   async function writeClipboard(text: string) {

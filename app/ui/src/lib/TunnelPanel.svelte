@@ -238,7 +238,7 @@
     background: var(--bg);
   }
   .item.failed {
-    border-color: var(--danger, #d9534f);
+    border-color: var(--red);
   }
   .top {
     display: flex;
@@ -277,10 +277,10 @@
     line-height: 1.4;
   }
   .warn {
-    color: var(--warn, #d98e04);
+    color: var(--yellow);
   }
   .err {
-    color: var(--danger, #d9534f);
+    color: var(--red);
   }
   form {
     display: flex;

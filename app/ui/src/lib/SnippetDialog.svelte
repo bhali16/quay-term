@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { focus } from "./focus";
+  import { onEscape } from "./escape";
   import Icon from "./Icon.svelte";
   import type { Snippet } from "./bindings/Snippet";
   import { fill, group, initialValues, matches, slug, variables } from "./snippets";
@@ -96,14 +98,8 @@
   function focusIf(node: HTMLElement, on: boolean) {
     if (on) requestAnimationFrame(() => node.focus());
   }
-  function onkey(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
-    if (mode === "list") onclose();
-    else mode = "list";
-  }
+  onMount(() => onEscape(() => (mode === "list" ? onclose() : (mode = "list"))));
 </script>
-
-<svelte:window onkeydown={onkey} />
 
 <div class="dlg-backdrop" role="presentation">
   <div class="dlg snip" role="dialog" aria-label="Snippets">
@@ -243,7 +239,7 @@
   .short {
     margin-left: 8px;
     color: var(--dim);
-    font-family: var(--mono, monospace);
+    font-family: var(--font-mono);
     font-size: 11.5px;
   }
   .pv {

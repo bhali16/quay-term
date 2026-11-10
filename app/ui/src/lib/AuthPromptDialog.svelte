@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { focus } from "./focus";
+  import { onEscape } from "./escape";
   import type { AuthPrompt } from "./bindings/AuthPrompt";
 
   let { prompt, onanswer }: { prompt: AuthPrompt; onanswer: (answers: string[] | null) => void } = $props();
@@ -8,9 +10,10 @@
   // svelte-ignore state_referenced_locally
   let answers = $state<string[]>(prompt.prompts.map(() => ""));
   const ready = $derived(answers.every((a) => a.length > 0));
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onanswer(null)} />
+  // Level 1: drawn above every other dialog, so it owns Escape whichever opened first.
+  onMount(() => onEscape(() => onanswer(null), 1));
+</script>
 
 <div class="dlg-backdrop top" role="presentation">
   <form

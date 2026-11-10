@@ -75,14 +75,18 @@ function readableOn(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.3 ? "#16171b" : "#ffffff";
 }
 
-export function applyChrome(t: Theme) {
-  const r = document.documentElement.style;
-  const m: Record<string, string> = {
+/** Every colour variable a theme sets on :root, by name (without the leading "--"). */
+export function chromeVars(t: Theme): Record<string, string> {
+  return {
     bg: t.ui.bg, "bg-alt": t.ui.bgAlt, "bg-deep": t.ui.bgDeep, surface: t.ui.surface, hover: t.ui.hover,
     border: t.ui.border, input: t.ui.input, fg: t.ui.fg, accent: t.ui.accent,
     dim: t.ui.dim, green: t.ui.green, red: t.ui.red, yellow: t.ui.yellow,
+    "on-accent": readableOn(t.ui.accent),
   };
-  for (const [k, v] of Object.entries(m)) r.setProperty(`--${k}`, v);
-  r.setProperty("--on-accent", readableOn(t.ui.accent));
+}
+
+export function applyChrome(t: Theme) {
+  const r = document.documentElement.style;
+  for (const [k, v] of Object.entries(chromeVars(t))) r.setProperty(`--${k}`, v);
   r.colorScheme = t.dark ? "dark" : "light";
 }

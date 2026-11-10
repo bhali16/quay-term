@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { focus } from "./focus";
+  import { onEscape } from "./escape";
   import { vaultUnlock } from "./ipc";
 
   let { isNew, ondone, oncancel }: { isNew: boolean; ondone: () => void; oncancel: () => void } = $props();
@@ -22,9 +24,9 @@
       busy = false;
     }
   }
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+  onMount(() => onEscape(() => oncancel()));
+</script>
 
 <div class="dlg-backdrop" role="presentation">
   <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit())} aria-label="Secret vault">
