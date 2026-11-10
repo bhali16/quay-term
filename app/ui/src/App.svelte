@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { onAction, sendNotification } from "@tauri-apps/plugin-notification";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { commandBody, ensurePermission, isLong, shouldNotify } from "./lib/notify";
@@ -61,6 +61,7 @@
   import { settings } from "./lib/settings.svelte";
   import { actionFor, actionLabels, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
+  import { DOCK, dockFit, dragWidth, NARROW, readWidth, SIDEBAR, TOOLS_COMPACT, writeWidth } from "./lib/layout";
   import { runningTunnels, tabState, type TabState } from "./lib/tabs";
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
@@ -68,6 +69,7 @@
   import type { JumpSecret } from "./lib/bindings/JumpSecret";
   import type { MissingSecret } from "./lib/bindings/MissingSecret";
 
+  type Dock = "files" | "tunnels";
   type Saved = { id: number; label: string; secret?: string | null; remember?: boolean; jumps?: JumpSecret[] };
   // `layout` is the split tree; every leaf is a terminal that opens the tab's own target (a new login for SSH).
   type Tab = {
@@ -75,6 +77,9 @@
     title: string;
     ssh: SshTarget | null;
     saved: Saved | null;
+    /** Which panel the dock on the right shows; null when it is closed. */
+    dock: Dock | null;
+    /** Panels opened since the dock was shown. They stay mounted while the other one is in front. */
     files?: boolean;
     tunnels?: boolean;
     layout: P.Node;
@@ -262,7 +267,7 @@
     const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
     // A saved session comes back with the split layout it was last closed with.
     const layout = (saved && loadShape(saved.id)) || { leaf: ++paneCounter };
-    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], zoom: null, tunnelCount: 0, panes: {}, status: {}, activity: false });
+    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], zoom: null, dock: null, tunnelCount: 0, panes: {}, status: {}, activity: false });
     activeKey = key;
   }
 
@@ -400,14 +405,88 @@
       return true;
     }
   }
+  /** Width of the app's own area (the window's content). */
+  let winW = $state(document.documentElement.clientWidth);
+  const narrow = $derived(winW < NARROW);
+  /** The sidebar was folded to the rail by a small window, not by the user. */
+  let autoRail = false;
   function toggleSidebar() {
+    autoRail = false;
     sidebarOpen = !sidebarOpen;
+    // A choice made in a small window is for that window only.
+    if (narrow) return;
     try {
       localStorage.setItem("quay.sidebar", sidebarOpen ? "open" : "closed");
     } catch {
       /* preference is optional */
     }
   }
+  // A small window has no room for the full sidebar: start it as the rail, and bring it back when there is room.
+  $effect(() => {
+    const small = narrow;
+    untrack(() => {
+      if (small && sidebarOpen) {
+        sidebarOpen = false;
+        autoRail = true;
+      } else if (!small && autoRail) {
+        sidebarOpen = true;
+        autoRail = false;
+      }
+    });
+  });
+
+  // ---- widths the user can drag ----
+  let sidebarW = $state(readWidth("quay.sidebar.w", SIDEBAR));
+  let dockW = $state(readWidth("quay.dock.w", DOCK));
+  let resizing = $state(false);
+  /** Width of the area the terminal and the dock share. */
+  let panesW = $state(0);
+  function dragSidebar(e: PointerEvent) {
+    resizing = true;
+    dragWidth(e, sidebarW, 1, SIDEBAR, (w) => (sidebarW = w), (w) => ((resizing = false), writeWidth("quay.sidebar.w", w)));
+  }
+  function dragDock(e: PointerEvent, shown: number) {
+    resizing = true;
+    dragWidth(e, shown, -1, DOCK, (w) => (dockW = w), (w) => ((resizing = false), writeWidth("quay.dock.w", w)));
+  }
+  const resetSidebarW = () => writeWidth("quay.sidebar.w", (sidebarW = SIDEBAR.def));
+  const resetDockW = () => writeWidth("quay.dock.w", (dockW = DOCK.def));
+
+  // ---- the dock on the right: Files and Tunnels share one place ----
+  const canDock = (tab: Tab) => !!(tab.ssh || tab.saved);
+  function showDock(tab: Tab, which: Dock) {
+    if (!canDock(tab)) return;
+    tab[which] = true;
+    tab.dock = which;
+  }
+  function closeDock(tab: Tab) {
+    tab.dock = null;
+    tab.files = tab.tunnels = false;
+    requestAnimationFrame(() => focusedPane(tab)?.focusTerminal());
+  }
+  const toggleDock = (tab: Tab, which: Dock) => (tab.dock === which ? closeDock(tab) : showDock(tab, which));
+
+  // ---- the tab strip: tabs keep a readable width and the strip scrolls ----
+  let navW = $state(0);
+  let stripEl = $state<HTMLDivElement>();
+  let stripOverflows = $state(false);
+  /** The list of all tabs, opened from the end of the strip when some are scrolled out of view. */
+  let tabList = $state<{ right: number; top: number } | null>(null);
+  const checkStrip = () => (stripOverflows = !!stripEl && stripEl.scrollWidth > stripEl.clientWidth + 1);
+  $effect(() => {
+    if (!stripEl) return;
+    // Its own size, and anything that changes what is inside it (a tab added, closed or renamed).
+    const ro = new ResizeObserver(checkStrip);
+    const mo = new MutationObserver(checkStrip);
+    ro.observe(stripEl);
+    mo.observe(stripEl, { childList: true, subtree: true, characterData: true });
+    return () => (ro.disconnect(), mo.disconnect());
+  });
+  // The tab you switch to is scrolled into view, and stays in view when the strip changes width.
+  $effect(() => {
+    void [activeKey, tabs.length, navW];
+    tick().then(() => stripEl?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
+  });
   /** A toast with an action (Undo) stays as long as an error, so there is time to use it. */
   function toast(text: string, kind: Toast["kind"] = "info", action?: Toast["action"]) {
     const id = ++toastId;
@@ -492,7 +571,8 @@
     }
   };
 
-  const vertical = $derived(settings.value.tab_layout === "vertical");
+  // Vertical tabs are a section of the sidebar. With the sidebar folded to the rail they go back to the strip.
+  const vertical = $derived(settings.value.tab_layout === "vertical" && sidebarOpen);
   const activeTab = $derived(tabs.find((t) => t.key === activeKey));
   // A tab you switch to has nothing unseen any more.
   $effect(() => {
@@ -548,7 +628,7 @@
         ? [{ id: "cmd:save-connection", group: "Actions" as const, title: "Save this connection…", run: () => saveConnection(activeTab) }]
         : []),
       { id: "cmd:import", group: "Actions", title: "Import hosts from ~/.ssh/config", run: doImport },
-      { id: "cmd:tunnels", group: "Actions", title: "Toggle tunnels panel", run: () => activeTab && (activeTab.ssh || activeTab.saved) && (activeTab.tunnels = !activeTab.tunnels) },
+      { id: "cmd:tunnels", group: "Actions", title: "Toggle tunnels panel", run: () => activeTab && toggleDock(activeTab, "tunnels") },
     ];
     const sess = paletteSessions.map((s): PaletteItem => ({
       id: `session:${s.id}`,
@@ -731,8 +811,7 @@
       case "prev_tab": return (activeKey = tabs[(i - 1 + tabs.length) % tabs.length].key);
       case "toggle_sidebar": return toggleSidebar();
       case "toggle_files":
-        if (activeTab && (activeTab.ssh || activeTab.saved)) activeTab.files = !activeTab.files;
-        return;
+        return activeTab && toggleDock(activeTab, "files");
       case "settings": return (showSettings = !showSettings);
       case "zoom_in": return zoom(1);
       case "zoom_out": return zoom(-1);
@@ -828,42 +907,12 @@
   });
 </script>
 
-<svelte:window onkeydowncapture={(e) => e.key === "Escape" && tabMenu && ((tabMenu = null), e.stopPropagation())} {onkeydown} />
+<svelte:window
+  onkeydowncapture={(e) => e.key === "Escape" && (tabMenu || tabList) && ((tabMenu = null), (tabList = null), e.stopPropagation())}
+  {onkeydown}
+/>
 
-<main class:mac={isMac} class:rail={!sidebarOpen}>
-  <!-- One button for both states, next to the traffic lights, so it never moves when the sidebar does. -->
-  <button
-    class="sbtoggle"
-    aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-    aria-expanded={sidebarOpen}
-    title={`${sidebarOpen ? "Hide" : "Show"} sidebar (${settings.bindings.toggle_sidebar})`}
-    onclick={toggleSidebar}
-  >
-    <Icon name="panel-left" size={17} />
-  </button>
-  <Sidebar
-    railOnly={!sidebarOpen}
-    {library}
-    bind:query
-    oncollapse={toggleSidebar}
-    onshell={() => newTab()}
-    onssh={() => (connecting = true)}
-    shellKey={settings.bindings.new_tab}
-    openIds={tabs.flatMap((t) => (t.saved ? [t.saved.id] : []))}
-    activeId={activeTab?.saved?.id ?? null}
-    version={info ? `${info.name} v${info.version}` : ""}
-    onconnect={(s) => connectSaved(s)}
-    onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
-    onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
-    ondelete={removeSession}
-    onimport={doImport}
-    onnewfolder={(name, parentId) => folderAction(() => folderCreate(name, parentId))()}
-    onrenamefolder={(id, name) => folderAction(() => folderRename(id, name))()}
-    ondeletefolder={(id) => folderAction(() => folderDelete(id))()}
-    onmovesession={(id, folderId) => folderAction(() => sessionMove(id, folderId))()}
-    onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
-  />
-  <div class="col">
+<!-- One tab, drawn the same in the strip and in the sidebar's list. -->
   {#snippet tabItem(tab: Tab)}
       {@const st = stateOf(tab)}
       {@const tcolor = colorOf(tab)}
@@ -903,33 +952,96 @@
         <button class="close" aria-label="Close tab" onclick={() => requestCloseTab(tab.key)}>×</button>
       </div>
   {/snippet}
-  <nav class="tabs" data-tauri-drag-region>
-    {#if !vertical}{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}{/if}
+  {#snippet sideTabs()}
+    <div class="vtabs">{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}</div>
+  {/snippet}
+
+<main class:mac={isMac} class:rail={!sidebarOpen} class:resizing style:--sidebar-w="{sidebarW}px" bind:clientWidth={winW}>
+  <!-- One button for both states, next to the traffic lights, so it never moves when the sidebar does. -->
+  <button
+    class="sbtoggle"
+    aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+    aria-expanded={sidebarOpen}
+    title={`${sidebarOpen ? "Hide" : "Show"} sidebar (${settings.bindings.toggle_sidebar})`}
+    onclick={toggleSidebar}
+  >
+    <Icon name="panel-left" size={17} />
+  </button>
+  <Sidebar
+    railOnly={!sidebarOpen}
+    {library}
+    bind:query
+    oncollapse={toggleSidebar}
+    onshell={() => newTab()}
+    onssh={() => (connecting = true)}
+    shellKey={settings.bindings.new_tab}
+    openIds={tabs.flatMap((t) => (t.saved ? [t.saved.id] : []))}
+    activeId={activeTab?.saved?.id ?? null}
+    version={info ? `${info.name} v${info.version}` : ""}
+    onconnect={(s) => connectSaved(s)}
+    onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
+    onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
+    ondelete={removeSession}
+    onimport={doImport}
+    onnewfolder={(name, parentId) => folderAction(() => folderCreate(name, parentId))()}
+    onrenamefolder={(id, name) => folderAction(() => folderRename(id, name))()}
+    ondeletefolder={(id) => folderAction(() => folderDelete(id))()}
+    onmovesession={(id, folderId) => folderAction(() => sessionMove(id, folderId))()}
+    onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
+    tabs={vertical ? sideTabs : undefined}
+  />
+  {#if sidebarOpen}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="sbgrip" title="Drag to resize the sidebar. Double-click to reset." onpointerdown={dragSidebar} ondblclick={resetSidebarW}></div>
+  {/if}
+  <div class="col">
+  <nav class="tabs" class:compact={navW < TOOLS_COMPACT} bind:clientWidth={navW} data-tauri-drag-region>
+    <!-- Tabs keep a readable width; when they do not all fit, the strip scrolls and the list button shows them all. -->
+    <div
+      class="strip"
+      bind:this={stripEl}
+      data-tauri-drag-region
+      onwheel={(e) => Math.abs(e.deltaY) > Math.abs(e.deltaX) && (e.currentTarget.scrollLeft += e.deltaY)}
+    >
+      {#if !vertical}{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}{/if}
+    </div>
+    {#if !vertical && stripOverflows}
+      <button
+        class="settings"
+        title="All tabs"
+        aria-label="All tabs ({tabs.length})"
+        aria-haspopup="menu"
+        aria-expanded={!!tabList}
+        onclick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          tabList = tabList ? null : { right: Math.max(8, window.innerWidth - r.right), top: r.bottom + 4 };
+        }}
+      >
+        <Icon name="chevron-down" size={16} />
+      </button>
+    {/if}
     <div class="right">
-      {#if activeTab && (activeTab.ssh || activeTab.saved)}
-        <button class="filesbtn" class:on={activeTab.files} aria-label="Files" aria-pressed={!!activeTab.files} title="Browse files on this host (SFTP)" onclick={() => (activeTab.files = !activeTab.files)}>
-          <Icon name="folder" size={16} />Files
+      {#if activeTab && canDock(activeTab)}
+        <button class="filesbtn" class:on={activeTab.dock === "files"} aria-label="Files" aria-pressed={activeTab.dock === "files"} title="Browse files on this host (SFTP)" onclick={() => toggleDock(activeTab, "files")}>
+          <Icon name="folder" size={16} /><span class="txt">Files</span>
         </button>
-        <button class="filesbtn" class:on={activeTab.tunnels} aria-label="Tunnels" aria-pressed={!!activeTab.tunnels} title="Port forwards over this connection" onclick={() => (activeTab.tunnels = !activeTab.tunnels)}>
-          <Icon name="swap" size={16} />Tunnels
+        <button class="filesbtn" class:on={activeTab.dock === "tunnels"} aria-label="Tunnels" aria-pressed={activeTab.dock === "tunnels"} title="Port forwards over this connection" onclick={() => toggleDock(activeTab, "tunnels")}>
+          <Icon name="swap" size={16} /><span class="txt">Tunnels</span>
         </button>
       {/if}
       {#if broadcast.length}
-        <button class="filesbtn on warn" title="Stop broadcasting" aria-label="Stop broadcasting to {broadcast.length} panes" onclick={() => (broadcast = [])}>
-          <Icon name="x" size={14} />Broadcast {broadcast.length}
+        <button class="filesbtn on warn" title="Stop broadcasting to {broadcast.length} panes" aria-label="Stop broadcasting to {broadcast.length} panes" onclick={() => (broadcast = [])}>
+          <Icon name="x" size={14} /><span class="txt">Broadcast</span> {broadcast.length}
         </button>
       {/if}
       <button class="filesbtn" title={`Snippets (${settings.bindings.snippets})`} aria-label="Snippets" onclick={() => (showSnippets = true)}>
-        <Icon name="terminal" size={16} />Snippets
+        <Icon name="terminal" size={16} /><span class="txt">Snippets</span>
       </button>
       <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
     </div>
   </nav>
   <div class="body">
-  {#if vertical}
-    <aside class="vtabs" aria-label="Tabs">{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}</aside>
-  {/if}
-  <div class="panes">
+  <div class="panes" bind:clientWidth={panesW}>
     {#each tabs as tab (tab.key)}
       {@const lay = P.layout(tab.layout)}
       {@const solo = lay.panes.length === 1}
@@ -971,6 +1083,7 @@
                 active={tab.key === activeKey}
                 focused={tab.focus === p.id}
                 compact={!solo}
+                badgeRow={zoomed === p.id || muted.includes(p.id)}
                 onfocus={() => (tab.focus = p.id)}
                 oninput={(d) => mirror(p.id, d)}
                 broadcasting={broadcast.includes(p.id)}
@@ -984,7 +1097,7 @@
                 oncommand={(c) => commandDone(tab, p.id, c)}
                 onsnippet={addCommandSnippet}
                 onexpand={(short) => expandSnippet(tab, p.id, short)}
-                onfiles={tab.ssh || tab.saved ? () => (tab.files = true) : undefined}
+                onfiles={canDock(tab) ? () => showDock(tab, "files") : undefined}
                 onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
               />
             </div>
@@ -1006,16 +1119,36 @@
             ></div>
           {/each}
         </div>
-        {#if tab.tunnels}
-          <TunnelPanel
-            terminalId={() => focusedPane(tab)?.sessionId() ?? null}
-            saved={library.sessions.find((x) => x.id === tab.saved?.id)?.tunnels ?? []}
-            active={tab.key === activeKey}
-            onclose={() => (tab.tunnels = false)}
-          />
-        {/if}
-        {#if tab.files}
-          <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey} terminalId={() => focusedPane(tab)?.sessionId() ?? null} onclose={() => (tab.files = false)} />
+        {#if tab.dock}
+          {@const fit = dockFit(dockW, panesW)}
+          <!-- One panel on the right for Files and Tunnels. It sits beside the terminal, or over it when the window is too small for both. -->
+          <aside class="dock" class:over={fit.over} style:width="{fit.width}px" aria-label="Side panel">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="dockgrip" title="Drag to resize. Double-click to reset." onpointerdown={(e) => dragDock(e, fit.width)} ondblclick={resetDockW}></div>
+            <header class="dockhead">
+              <div class="docktabs" role="tablist" aria-label="Side panel">
+                <button role="tab" aria-selected={tab.dock === "files"} class:on={tab.dock === "files"} onclick={() => showDock(tab, "files")}><Icon name="folder" size={15} />Files</button>
+                <button role="tab" aria-selected={tab.dock === "tunnels"} class:on={tab.dock === "tunnels"} onclick={() => showDock(tab, "tunnels")}>
+                  <Icon name="swap" size={15} />Tunnels{#if tab.tunnelCount > 0}<span class="count">{tab.tunnelCount}</span>{/if}
+                </button>
+              </div>
+              <button class="settings" title="Close panel" aria-label="Close side panel" onclick={() => closeDock(tab)}><Icon name="x" size={16} /></button>
+            </header>
+            {#if tab.files}
+              <div class="dockbody" class:off={tab.dock !== "files"}>
+                <FilePanel ssh={tab.ssh} saved={tab.saved} active={tab.key === activeKey && tab.dock === "files"} terminalId={() => focusedPane(tab)?.sessionId() ?? null} />
+              </div>
+            {/if}
+            {#if tab.tunnels}
+              <div class="dockbody" class:off={tab.dock !== "tunnels"}>
+                <TunnelPanel
+                  terminalId={() => focusedPane(tab)?.sessionId() ?? null}
+                  saved={library.sessions.find((x) => x.id === tab.saved?.id)?.tunnels ?? []}
+                  active={tab.key === activeKey && tab.dock === "tunnels"}
+                />
+              </div>
+            {/if}
+          </aside>
         {/if}
       </div>
     {/each}
@@ -1031,6 +1164,19 @@
       {/if}
       <button role="menuitem" onclick={() => (mt && startRename(mt), (tabMenu = null))}>Rename tab</button>
       <button role="menuitem" onclick={() => (requestCloseTab(tabMenu!.key), (tabMenu = null))}>Close tab</button>
+    </div>
+  {/if}
+  {#if tabList}
+    <div class="tabmenu-bg" role="presentation" onclick={() => (tabList = null)} oncontextmenu={(e) => (e.preventDefault(), (tabList = null))}></div>
+    <div class="tabmenu tablist" role="menu" aria-label="All tabs" style:right="{tabList.right}px" style:top="{tabList.top}px">
+      {#each tabs as t (t.key)}
+        {@const st = stateOf(t)}
+        <button role="menuitemradio" aria-checked={t.key === activeKey} class:cur={t.key === activeKey} onclick={() => ((activeKey = t.key), (tabList = null))}>
+          <span class="sshdot {st}" class:none={st === "local"}></span>
+          <span class="ttl">{t.title}</span>
+          {#if t.activity}<span class="activity"></span>{/if}
+        </button>
+      {/each}
     </div>
   {/if}
   {#if editing_session}
@@ -1171,6 +1317,29 @@
     flex-direction: column;
     min-width: 0;
   }
+  /* The sidebar's right edge: drag to resize. Below the top band, which belongs to the window. */
+  .sbgrip {
+    position: absolute;
+    z-index: 6;
+    top: var(--chrome-h);
+    bottom: 0;
+    left: calc(var(--sidebar-w) - 4px);
+    width: 7px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .sbgrip:hover,
+  main.resizing .sbgrip {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  /* While a width is dragged it follows the pointer, with no animation and no text selection. */
+  main.resizing {
+    user-select: none;
+    cursor: col-resize;
+  }
+  main.resizing :global(.sb) {
+    transition: none;
+  }
   nav {
     display: flex;
     align-items: flex-end;
@@ -1223,13 +1392,31 @@
   .tabmenu button:hover {
     background: var(--hover);
   }
+  /* One pixel taller than the strip's content, so the active tab can cover the strip's bottom border. */
+  .strip {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    height: calc(100% + 1px);
+    margin-bottom: -1px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .strip::-webkit-scrollbar {
+    display: none;
+  }
   .tab {
     display: flex;
     align-items: center;
     flex: 0 1 auto;
-    min-width: 0;
+    /* Room for the state dot, a few letters and the close button. Below this the strip scrolls. */
+    min-width: 96px;
     max-width: 220px;
     height: 34px;
+    margin-bottom: 1px;
     border-radius: 8px 8px 0 0;
     color: var(--dim);
   }
@@ -1239,7 +1426,7 @@
   /* Covers the strip's bottom border so the active tab and the terminal read as one surface. */
   .tab.active {
     height: 35px;
-    margin-bottom: -1px;
+    margin-bottom: 0;
     background: var(--bg);
     color: var(--fg);
   }
@@ -1301,33 +1488,30 @@
     flex: 1;
     min-height: 0;
   }
-  /* Vertical tab layout: the same tabs, listed down the left side. */
+  /* Vertical tab layout: the same tabs, listed in the sidebar above the sessions. */
   .vtabs {
     display: flex;
-    flex: none;
     flex-direction: column;
     gap: 2px;
-    box-sizing: border-box;
-    width: 200px;
-    padding: 6px;
-    overflow-y: auto;
-    background: var(--bg-alt);
-    border-right: 1px solid var(--border);
-    font-size: 14px;
+    font-size: 13px;
   }
   .vtabs .tab,
   .vtabs .tab.active {
     flex: none;
     width: 100%;
+    min-width: 0;
     max-width: none;
-    height: 36px;
+    height: 32px;
     margin: 0;
     border-radius: 6px;
     box-shadow: inset 2px 0 0 var(--tc, transparent);
   }
   .vtabs .label {
     flex: 1;
-    padding-left: 12px;
+    padding-left: 10px;
+  }
+  .vtabs .close {
+    flex: none;
   }
   .vtabs .ttl {
     flex: 0 1 auto;
@@ -1391,9 +1575,122 @@
     display: flex;
     align-items: center;
     align-self: center;
+    flex: none;
     gap: 6px;
-    margin-left: auto;
+    margin-left: 4px;
     padding-right: 2px;
+  }
+  nav > .settings {
+    align-self: center;
+    flex: none;
+  }
+  /* A narrow strip keeps the icons and drops the words; each button still has its tooltip and label. */
+  nav.compact .txt {
+    display: none;
+  }
+  nav.compact .right {
+    gap: 2px;
+  }
+  .tablist {
+    max-width: min(320px, calc(100vw - 16px));
+    max-height: min(420px, calc(100vh - 80px));
+    overflow-y: auto;
+  }
+  .tablist button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tablist .cur {
+    background: var(--hover);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .tablist .ttl {
+    flex: 1;
+    white-space: nowrap;
+  }
+  .sshdot.none {
+    visibility: hidden;
+  }
+  /* The dock: one panel on the right for Files and Tunnels. */
+  .dock {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    box-sizing: border-box;
+    min-height: 0;
+    background: var(--bg-alt);
+    border-left: 1px solid var(--border);
+  }
+  .dock.over {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9;
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
+  }
+  .dockgrip {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    left: -4px;
+    width: 7px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .dockgrip:hover {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .dockhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: none;
+    padding: 4px 6px 0 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .docktabs {
+    display: flex;
+    gap: 2px;
+  }
+  .docktabs button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px 8px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .docktabs button:hover {
+    color: var(--fg);
+  }
+  .docktabs .on {
+    color: var(--fg);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+  .docktabs .count {
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--hover);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .dockbody {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+  /* The panel behind stays mounted, so a folder listing or a running upload is still there when you come back. */
+  .dockbody.off {
+    display: none;
   }
   .filesbtn {
     display: flex;

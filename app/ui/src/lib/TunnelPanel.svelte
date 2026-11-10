@@ -10,14 +10,12 @@
     terminalId,
     saved = [],
     active,
-    onclose,
   }: {
     /** The terminal tab's session id while it is connected. */
     terminalId: () => number | null;
     /** Tunnels saved with this session, offered when not running. */
     saved?: TunnelSpec[];
     active: boolean;
-    onclose: () => void;
   } = $props();
 
   let running = $state<TunnelInfo[]>([]);
@@ -112,11 +110,6 @@
 </script>
 
 <aside aria-label="Tunnels">
-  <header>
-    <span class="title"><Icon name="swap" size={16} />Tunnels</span>
-    <button class="ibtn" aria-label="Close tunnels" onclick={onclose}><Icon name="x" size={16} /></button>
-  </header>
-
   <div class="body">
     {#if running.length === 0}
       <p class="empty">No tunnels yet. Add one below{saved.length ? ", or start a saved one" : ""}.</p>
@@ -187,28 +180,14 @@
 </aside>
 
 <style>
+  /* Fills the dock that App draws; the dock owns the width, the edge and the close button. */
   aside {
-    width: clamp(280px, 34vw, 380px);
-    flex: none;
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg-alt);
-    border-left: 1px solid var(--border);
     font-size: 13px;
     min-height: 0;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--border);
-  }
-  .title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
   }
   .body {
     flex: 1;

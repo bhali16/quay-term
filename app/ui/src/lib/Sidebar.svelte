@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { focus } from "./focus";
   import Icon from "./Icon.svelte";
   import type { Folder } from "./bindings/Folder";
@@ -26,7 +27,10 @@
     ondeletefolder,
     onmovesession,
     onmovefolder,
+    tabs,
   }: {
+    /** The open tabs, listed above the sessions (vertical tab layout). Not shown in the rail. */
+    tabs?: Snippet;
     library: LibraryView;
     query: string;
     version?: string;
@@ -296,6 +300,11 @@
     <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</button>
     <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={13} />Import</button>
   </div>
+  {#if tabs}
+    <div class="seclabel">Tabs</div>
+    <div class="tabsec">{@render tabs()}</div>
+    <div class="seclabel">Sessions</div>
+  {/if}
   <div class="list" class:drop={dropTarget === "root"} data-drop="root">
     {#if creating?.parent === null}{@render folderInput()}{/if}
     {#if searching}
@@ -404,6 +413,24 @@
     font-size: 13px;
     min-height: 0;
   }
+  /* Vertical tabs live here, so the window has one left column, not two. */
+  .seclabel {
+    flex: none;
+    margin: 2px 4px -4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .tabsec {
+    flex: 0 1 auto;
+    min-height: 38px;
+    max-height: 40%;
+    margin: 0 -4px;
+    padding: 0 4px;
+    overflow-y: auto;
+  }
   .searchbox {
     display: flex;
     align-items: center;
@@ -440,13 +467,15 @@
     border: 0;
     cursor: pointer;
   }
+  /* Wraps to a second line when the sidebar is dragged narrow, so no label is cut. */
   .tools {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     flex: none;
   }
   .tools button {
-    flex: 1;
+    flex: 1 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -36,6 +36,7 @@
     onconnected,
     focused = true,
     compact = false,
+    badgeRow = false,
     onfocus,
     oninput,
     broadcasting = false,
@@ -61,6 +62,8 @@
     onconnected?: () => void;
     focused?: boolean;
     compact?: boolean;
+    /** The app draws its own badges (Zoomed, Muted) over this pane, so keep the badge row free. */
+    badgeRow?: boolean;
     onfocus?: () => void;
     /** Text typed or pasted here, for the app to mirror to other panes. */
     oninput?: (data: string) => void;
@@ -77,6 +80,8 @@
     onfiles?: () => void;
   } = $props();
   const remote = $derived(ssh !== null || saved !== null);
+  /** Badges that stay get a row of their own above the terminal, so they never cover its first line. */
+  const header = $derived(!!env || broadcasting || badgeRow);
 
   let host: HTMLDivElement;
   let term: Terminal;
@@ -87,6 +92,10 @@
   let pendingPaste = $state<string | null>(null);
   let noisy = false;
   let lastExit = $state<string | null>(null);
+  const endedBar = $derived(ended && settings.value.show_hints && !hintDismissed && pendingPaste === null);
+  const endedText = $derived(`${remote ? "Disconnected" : "Shell exited"}${lastExit ? `: ${lastExit}` : ""}`);
+  /** Height of the "Disconnected" bar; the terminal ends above it, so the last lines (the error) stay readable. */
+  let barH = $state(0);
   const tracker = new BlockTracker<IMarker>(1000);
   let seenMarks = false;
   /** Last directory the shell reported (OSC 7); kept with each command for history. */
@@ -641,7 +650,15 @@
   });
 </script>
 
-<div class="term" class:hidden={!active} class:compact bind:this={host}></div>
+<div
+  class="term"
+  class:hidden={!active}
+  class:compact
+  class:header
+  class:barred={endedBar}
+  style:bottom={endedBar ? `${barH + 16}px` : undefined}
+  bind:this={host}
+></div>
 {#if active}
   {#if color}<span class="strip" style:background={color}></span>{/if}
   <div class="badges">
@@ -668,9 +685,9 @@
       <button use:focus class="go" onclick={() => answerPaste(true)}>Paste</button>
       <button onclick={() => answerPaste(false)}>Cancel</button>
     </div>
-  {:else if ended && settings.value.show_hints && !hintDismissed}
-    <div class="bar" role="status">
-      <span class="msg">{remote ? "Disconnected" : "Shell exited"}{lastExit ? `: ${lastExit}` : ""}</span>
+  {:else if endedBar}
+    <div class="bar" role="status" bind:offsetHeight={barH}>
+      <span class="msg wrap" title={endedText}>{endedText}</span>
       <button class="go" onclick={() => (reconnect(), term.focus())}>{remote ? "Reconnect" : "Restart"} <kbd>R</kbd></button>
       {#if remote && onfiles}<button onclick={onfiles}>Files</button>{/if}
       <button aria-label="Dismiss" onclick={() => ((hintDismissed = true), term.focus())}>Dismiss</button>
@@ -785,7 +802,17 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The reason for a drop can be long: two lines here, the whole text in the tooltip. */
+  .bar .msg.wrap {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .bar button {
+    flex: none;
     padding: 3px 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -836,6 +863,14 @@
   }
   .term.compact {
     padding: 8px 10px;
+  }
+  /* Room for the badge row. The padding shrinks so the text does not move further than it has to. */
+  .term.header {
+    top: 22px;
+    padding-top: 6px;
+  }
+  .term.barred {
+    padding-bottom: 0;
   }
   .hidden {
     visibility: hidden;

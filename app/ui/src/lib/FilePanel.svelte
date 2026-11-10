@@ -30,14 +30,12 @@
     saved = null,
     active,
     terminalId,
-    onclose,
   }: {
     ssh?: SshTarget | null;
     saved?: Saved | null;
     active: boolean;
     /** The terminal tab's session id, if it is connected: its login is reused. */
     terminalId?: () => number | null;
-    onclose: () => void;
   } = $props();
 
   let conn = $state<number | null>(null);
@@ -215,7 +213,6 @@
     {:else}
       <span class="path dim">{status === "connecting" ? "Connecting…" : "Not connected"}</span>
     {/if}
-    <button class="ibtn" title="Close file panel" aria-label="Close file panel" onclick={onclose}><Icon name="x" size={15} /></button>
   </div>
 
   {#if status === "connecting"}
@@ -327,14 +324,13 @@
 </aside>
 
 <style>
+  /* Fills the dock that App draws; the dock owns the width, the edge and the close button. */
   aside {
-    /* Scales with the window so it cannot squeeze the terminal to nothing. */
-    width: clamp(280px, 34vw, 380px);
-    flex: none;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg-alt);
-    border-left: 1px solid var(--border);
     font-size: 13px;
   }
   aside.dropping {

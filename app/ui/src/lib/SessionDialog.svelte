@@ -138,6 +138,8 @@
 <div class="dlg-backdrop" role="presentation">
   <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit(!session))} aria-label="Session">
     <h2>{session ? "Edit session" : draft ? "Save this connection" : "New session"}</h2>
+    <section class="sec" aria-labelledby="sec-conn">
+    <h3 id="sec-conn">Connection</h3>
     <label>Name <input bind:value={name} placeholder="Optional, defaults to user@host" /></label>
     <div class="row">
       <label class="grow">Host <input class="mono" use:focus bind:value={host} placeholder="example.com" /></label>
@@ -159,6 +161,9 @@
         {jumpChosen.auth === "password" && !jumpChosen.has_secret ? " - it has no saved password yet, so you will be asked for it when you connect" : ""}
       </p>
     {/if}
+    </section>
+    <section class="sec" aria-labelledby="sec-auth">
+    <h3 id="sec-auth">Sign-in</h3>
     <label>
       Authentication
       <select bind:value={auth}>
@@ -188,6 +193,9 @@
         <label class="check"><input type="checkbox" bind:checked={clearSecret} /> Remove the saved secret</label>
       {/if}
     {/if}
+    </section>
+    <section class="sec" aria-labelledby="sec-org">
+    <h3 id="sec-org">Organise</h3>
     <div class="row">
       <label class="grow">
         Folder
@@ -198,14 +206,24 @@
           {/each}
         </select>
       </label>
+      <label class="envf">Environment <input bind:value={env} maxlength="8" list="env-presets" placeholder="prod, dev…" title="Optional badge shown on the tab and the terminal" autocapitalize="off" spellcheck="false" /></label>
     </div>
-    <label>Environment <input bind:value={env} maxlength="8" list="env-presets" placeholder="prod, staging, dev (optional badge)" autocapitalize="off" spellcheck="false" /></label>
     <datalist id="env-presets"><option value="prod"></option><option value="staging"></option><option value="dev"></option></datalist>
     <label>Tags <input bind:value={tags} placeholder="prod, eu (comma separated)" /></label>
-    <div class="tunnels">
+    <div class="colour">
+      <span id="colour-label">Colour</span>
+      <div class="swatches" role="group" aria-labelledby="colour-label">
+        <button type="button" class="none" class:sel={color === null} aria-label="No colour" onclick={() => (color = null)}>∅</button>
+        {#each swatches as c (c)}
+          <button type="button" class:sel={color === c} style:background={c} aria-label={`Colour ${c}`} onclick={() => (color = c)}></button>
+        {/each}
+      </div>
+    </div>
+    </section>
+    <section class="sec tunnels" aria-labelledby="sec-tun">
       <div class="thead">
-        <span>Tunnels</span>
-        <button type="button" class="small" onclick={addTunnel}><Icon name="plus" size={14} />Add</button>
+        <h3 id="sec-tun">Tunnels{tunnels.length ? ` (${tunnels.length})` : ""}</h3>
+        <button type="button" class="small" title="Add a port forward that is saved with this session" onclick={addTunnel}><Icon name="plus" size={14} />Add</button>
       </div>
       {#each tunnels as t, i (i)}
         <div class="tun">
@@ -236,16 +254,7 @@
           <label class="check"><input type="checkbox" bind:checked={t.auto_start} /> Start when this session connects</label>
         </div>
       {/each}
-      {#if tunnels.length === 0}
-        <p class="note">Port forwards saved with this session. Each can start on its own when the session connects.</p>
-      {/if}
-    </div>
-    <div class="swatches" role="group" aria-label="Colour">
-      <button type="button" class="none" class:sel={color === null} aria-label="No colour" onclick={() => (color = null)}>∅</button>
-      {#each swatches as c (c)}
-        <button type="button" class:sel={color === c} style:background={c} aria-label={`Colour ${c}`} onclick={() => (color = c)}></button>
-      {/each}
-    </div>
+    </section>
     {#if error}<p class="error">{error}</p>{/if}
     <div class="actions">
       <button type="button" onclick={oncancel}>Cancel</button>
@@ -284,16 +293,46 @@
   .swatches .sel {
     border-color: var(--fg);
   }
-  .tunnels {
+  /* Same fields as before, grouped under four headings with a rule between groups. */
+  .sec {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 12px;
+  }
+  .sec + .sec {
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .sec h3 {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .sec .grow {
+    min-width: 0;
+  }
+  .envf {
+    width: 130px;
+    flex: none;
+  }
+  .envf input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .colour {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--dim);
   }
   .thead {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    color: var(--dim);
   }
   /* One tunnel: listen side on the first line, destination on the second, so every field has room. */
   .tun {

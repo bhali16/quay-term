@@ -193,7 +193,7 @@
             Tab bar
             <select value={settings.value.tab_layout} onchange={(e) => patch({ tab_layout: e.currentTarget.value === "vertical" ? "vertical" : "horizontal" })}>
               <option value="horizontal">Horizontal (strip above the terminal)</option>
-              <option value="vertical">Vertical (list on the left)</option>
+              <option value="vertical">Vertical (in the sidebar)</option>
             </select>
           </label>
           <div class="swatches">
