@@ -7,18 +7,20 @@ name: Notify website
 on:
   release:
     types: [published]
+  # Run by hand to check the token works; the website then re-checks the latest release.
+  workflow_dispatch:
 
 permissions: {}
 
 jobs:
   notify:
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     steps:
       - name: Send quay-term-release to the website repo
         env:
           GH_TOKEN: ${{ secrets.SITE_SYNC_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || 'manual run' }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::notice::SITE_SYNC_TOKEN is not set; the website will pick up $TAG on its next scheduled check."
