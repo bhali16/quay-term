@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import KeyFileField from "./KeyFileField.svelte";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
   import SecretStoreCheck, { canStore } from "./SecretStoreCheck.svelte";
   import type { VaultStatus } from "./bindings/VaultStatus";
   import { focus } from "./focus";
@@ -48,7 +49,7 @@
 </script>
 
 <div class="dlg-backdrop" role="presentation">
-  <form class="dlg" onsubmit={submit} aria-label="New SSH connection">
+  <form use:modal class="dlg" onsubmit={submit} aria-label="New SSH connection">
     <h2>New SSH connection</h2>
     <div class="row">
       <label class="grow">Host <input class="mono" use:focus bind:value={host} placeholder="example.com" /></label>

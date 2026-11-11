@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
   import SecretStoreCheck, { canStore, storeName } from "./SecretStoreCheck.svelte";
   import type { VaultStatus } from "./bindings/VaultStatus";
   import Icon from "./Icon.svelte";
@@ -136,7 +137,7 @@
 </script>
 
 <div class="dlg-backdrop" role="presentation">
-  <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit(!session))} aria-label="Session">
+  <form use:modal class="dlg" onsubmit={(e) => (e.preventDefault(), submit(!session))} aria-label="Session">
     <h2>{session ? "Edit session" : draft ? "Save this connection" : "New session"}</h2>
     <section class="sec" aria-labelledby="sec-conn">
     <h3 id="sec-conn">Connection</h3>
@@ -287,7 +288,7 @@
   }
   .swatches .none {
     background: none;
-    border-color: var(--border);
+    border-color: var(--border-strong);
   }
   /* var(--fg), not white: the dialog surface is white in the light themes. */
   .swatches .sel {

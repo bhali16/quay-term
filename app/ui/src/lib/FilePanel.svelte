@@ -358,6 +358,10 @@
   }
   .ibtn {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
     flex: none;
     padding: 4px;
     color: var(--dim);
@@ -397,11 +401,11 @@
   .path:focus,
   .name-input {
     background: var(--input);
-    border-color: var(--border);
+    border-color: var(--border-strong);
     outline: 0;
   }
   .path:focus {
-    border-color: var(--accent);
+    border-color: var(--focus);
   }
   .path.dim {
     color: var(--dim);
@@ -423,14 +427,14 @@
     padding: 4px 10px;
     font-size: 12px;
     white-space: nowrap;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     background: var(--surface);
   }
   .msg {
     margin: 8px 12px;
   }
   .err {
-    color: var(--red);
+    color: var(--red-text);
     word-break: break-word;
   }
   .grow {
@@ -464,7 +468,7 @@
     color: var(--dim);
   }
   .icon.folder {
-    color: var(--yellow);
+    color: var(--yellow-text);
   }
   .name {
     flex: 1;
@@ -505,13 +509,17 @@
   }
   .acts button {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
     color: var(--dim);
   }
   .acts button:hover {
     color: var(--fg);
   }
   .danger {
-    color: var(--red);
+    color: var(--red-text);
   }
   .empty {
     padding: 14px 10px;
@@ -556,13 +564,13 @@
   .ticon {
     display: flex;
     flex: none;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .t.ok .ticon {
-    color: var(--green);
+    color: var(--green-text);
   }
   .t.bad .ticon {
-    color: var(--red);
+    color: var(--red-text);
   }
   .tname {
     flex: 1;
@@ -581,7 +589,7 @@
     font-size: 12px;
   }
   .small.err {
-    color: var(--red);
+    color: var(--red-text);
   }
   .bar {
     height: 5px;

@@ -61,6 +61,9 @@
   import { settings } from "./lib/settings.svelte";
   import { actionFor, actionLabels, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
+  import { inkOn } from "./lib/themes";
+  import { menu, setFocusFallback } from "./lib/modal";
+  import { roving } from "./lib/roving";
   import { DOCK, dockFit, dragWidth, NARROW, readWidth, SIDEBAR, TOOLS_COMPACT, writeWidth } from "./lib/layout";
   import { runningTunnels, tabState, type TabState } from "./lib/tabs";
   import type { AppInfo } from "./lib/bindings/AppInfo";
@@ -856,6 +859,7 @@
   }
 
   onMount(() => {
+    setFocusFallback(() => focusedPane(activeTab)?.focusTerminal());
     settings.load().then(() => {
       if (!settings.value.check_for_updates) return;
       // Let the first tab connect before touching the network.
@@ -936,7 +940,21 @@
             onkeydown={(e) => (e.key === "Enter" ? endRename(tab, true) : e.key === "Escape" && (e.stopPropagation(), endRename(tab, false)))}
           />
         {:else}
-          <button class="label" onclick={() => (activeKey = tab.key)} ondblclick={() => startRename(tab)}>
+          <button
+            class="label"
+            role="tab"
+            id="tab-{tab.key}"
+            aria-selected={tab.key === activeKey}
+            aria-controls="tabview-{tab.key}"
+            tabindex={tab.key === activeKey ? 0 : -1}
+            onclick={() => (activeKey = tab.key)}
+            ondblclick={() => startRename(tab)}
+            onkeydown={(e) => {
+              if (e.key === "F2") startRename(tab);
+              else if (e.key === "Delete") requestCloseTab(tab.key);
+              else if (e.key === "Enter") (e.preventDefault(), focusedPane(tab)?.focusTerminal());
+            }}
+          >
             {#if st !== "local" || tab.ssh || tab.saved}
               <span class="sshdot {st}" role="img" aria-label={stateLabel[st] || "Local shell"} title={stateLabel[st] || "Local shell"}></span>
             {:else if st === "local" && Object.values(tab.status).length && Object.values(tab.status).every((x) => x === "ended")}
@@ -944,16 +962,16 @@
             {/if}
             <span class="ttl">{tab.title}</span>
             {#if vertical && host}<span class="sub">{host}</span>{/if}
-            {#if tenv}<span class="envpill" class:prod={/^prod/i.test(tenv)} style:--c={tcolor ?? "var(--accent)"}>{tenv}</span>{/if}
+            {#if tenv}<span class="envpill" class:prod={/^prod/i.test(tenv)} style:--c={tcolor ?? "var(--accent)"} style:--on={inkOn(tcolor)}>{tenv}</span>{/if}
             {#if tab.tunnelCount > 0}<span class="tunneldot" role="img" aria-label="{tab.tunnelCount} port forward{tab.tunnelCount === 1 ? '' : 's'} running" title="{tab.tunnelCount} port forward{tab.tunnelCount === 1 ? '' : 's'} running"><Icon name="swap" size={12} /></span>{/if}
             {#if tab.activity}<span class="activity" role="img" aria-label="New output" title="New output"></span>{/if}
           </button>
         {/if}
-        <button class="close" aria-label="Close tab" onclick={() => requestCloseTab(tab.key)}>×</button>
+        <button class="close" aria-label="Close {tab.title}" title="Close tab" tabindex={tab.key === activeKey ? 0 : -1} onclick={() => requestCloseTab(tab.key)}><Icon name="x" size={13} /></button>
       </div>
   {/snippet}
   {#snippet sideTabs()}
-    <div class="vtabs">{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}</div>
+    <div class="vtabs" role="tablist" aria-label="Tabs" aria-orientation="vertical" use:roving={{ selector: '[role="tab"]', vertical: true, activate: true }}>{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}</div>
   {/snippet}
 
 <main class:mac={isMac} class:rail={!sidebarOpen} class:resizing style:--sidebar-w="{sidebarW}px" bind:clientWidth={winW}>
@@ -999,6 +1017,9 @@
     <!-- Tabs keep a readable width; when they do not all fit, the strip scrolls and the list button shows them all. -->
     <div
       class="strip"
+      role={vertical ? undefined : "tablist"}
+      aria-label={vertical ? undefined : "Tabs"}
+      use:roving={{ selector: '[role="tab"]', activate: true }}
       bind:this={stripEl}
       data-tauri-drag-region
       onwheel={(e) => Math.abs(e.deltaY) > Math.abs(e.deltaX) && (e.currentTarget.scrollLeft += e.deltaY)}
@@ -1046,7 +1067,7 @@
       {@const lay = P.layout(tab.layout)}
       {@const solo = lay.panes.length === 1}
       {@const zoomed = solo ? null : tab.zoom}
-      <div class="tabview" class:hidden={tab.key !== activeKey}>
+      <div class="tabview" class:hidden={tab.key !== activeKey} role="tabpanel" id="tabview-{tab.key}" aria-labelledby="tab-{tab.key}">
         <div class="term">
           {#each lay.panes as p (p.id)}
             {@const v = P.zoomView(p.rect, p.id, zoomed)}
@@ -1066,7 +1087,7 @@
             >
               {#if !solo && zoomed === null}
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div class="grip" title="Drag onto another pane's edge to move this pane" onpointerdown={(e) => dragPane(e, tab, p.id)}></div>
+                <div class="grip" title="Drag onto another pane's edge to move this pane" onpointerdown={(e) => dragPane(e, tab, p.id)}><span></span></div>
               {/if}
               {#if zoomed === p.id || muted.includes(p.id)}
                 <div class="leafbadges">
@@ -1158,7 +1179,7 @@
   {#if tabMenu}
     {@const mt = tabs.find((t) => t.key === tabMenu!.key)}
     <div class="tabmenu-bg" role="presentation" onclick={() => (tabMenu = null)} oncontextmenu={(e) => (e.preventDefault(), (tabMenu = null))}></div>
-    <div class="tabmenu" role="menu" style:left="{tabMenu.x}px" style:top="{tabMenu.y}px">
+    <div use:menu class="tabmenu" role="menu" aria-label="Tab" style:left="{tabMenu.x}px" style:top="{tabMenu.y}px">
       {#if mt?.ssh && !mt.saved}
         <button role="menuitem" onclick={() => ((tabMenu = null), saveConnection(mt))}>Save this connection…</button>
       {/if}
@@ -1168,7 +1189,7 @@
   {/if}
   {#if tabList}
     <div class="tabmenu-bg" role="presentation" onclick={() => (tabList = null)} oncontextmenu={(e) => (e.preventDefault(), (tabList = null))}></div>
-    <div class="tabmenu tablist" role="menu" aria-label="All tabs" style:right="{tabList.right}px" style:top="{tabList.top}px">
+    <div use:menu class="tabmenu tablist" role="menu" aria-label="All tabs" style:right="{tabList.right}px" style:top="{tabList.top}px">
       {#each tabs as t (t.key)}
         {@const st = stateOf(t)}
         <button role="menuitemradio" aria-checked={t.key === activeKey} class:cur={t.key === activeKey} onclick={() => ((activeKey = t.key), (tabList = null))}>
@@ -1224,7 +1245,7 @@
   {#if connecting}
     <ConnectDialog {vault} onunlock={() => (showUnlock = true)} onconnect={connectSsh} oncancel={() => (connecting = false)} />
   {/if}
-  <div class="toasts" aria-live="polite">
+  <div class="toasts" data-modal-keep>
     {#each toasts as t (t.id)}
       <div class="toast {t.kind}" role={t.kind === "error" ? "alert" : "status"}>
         <span class="ticon"><Icon name={t.kind === "error" ? "x" : t.kind === "success" ? "check" : "info"} size={16} /></span>
@@ -1461,7 +1482,7 @@
     padding: 0 5px;
     border-radius: 4px;
     background: var(--c);
-    color: var(--on-accent, #fff);
+    color: var(--on);
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -1469,12 +1490,12 @@
   }
   .envpill.prod {
     background: var(--red);
-    color: var(--bg);
+    color: var(--on-red);
   }
   .tunneldot {
     display: flex;
     flex: none;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .sub {
     min-width: 0;
@@ -1563,12 +1584,20 @@
     color: var(--fg);
   }
   .close {
-    padding: 4px 10px 4px 6px;
-    opacity: 0.7;
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    margin-right: 6px;
+    padding: 0;
+    border-radius: 5px;
+    color: var(--dim);
     cursor: pointer;
   }
   .close:hover {
-    opacity: 1;
+    background: var(--hover);
+    color: var(--fg);
   }
   /* Centred in the strip, on the same line as the traffic lights and the sidebar toggle. */
   .right {
@@ -1707,10 +1736,10 @@
     background: var(--hover);
   }
   .filesbtn.on {
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .filesbtn.warn {
-    color: var(--red);
+    color: var(--red-text);
   }
   .toasts {
     position: fixed;
@@ -1747,13 +1776,13 @@
     display: flex;
     flex: none;
     margin-top: 1px;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .toast.success .ticon {
-    color: var(--green);
+    color: var(--green-text);
   }
   .toast.error .ticon {
-    color: var(--red);
+    color: var(--red-text);
   }
   .toast .msg {
     flex: 1;
@@ -1761,20 +1790,26 @@
   }
   .toast button {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    min-width: 24px;
+    min-height: 24px;
     padding: 2px;
+    border-radius: 5px;
     cursor: pointer;
-    opacity: 0.6;
+    color: var(--dim);
   }
   .toast button:hover {
-    opacity: 1;
+    color: var(--fg);
   }
   .toast .tact {
     flex: none;
     padding: 1px 8px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 5px;
     font-weight: 500;
-    opacity: 1;
+    color: var(--fg);
   }
   .toast .tact:hover {
     background: var(--hover);
@@ -1845,14 +1880,32 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 8px;
+    height: 12px;
     z-index: 7;
+    display: grid;
+    place-items: center;
     cursor: grab;
     touch-action: none;
     transition: background 0.12s;
   }
+  /* A short handle shows where to grab once the pointer is over the pane. */
+  .grip span {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-strong);
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .leaf:hover .grip span,
+  .leaf.dragging .grip span {
+    opacity: 1;
+  }
   .grip:hover {
     background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .grip:hover span {
+    background: var(--fg);
   }
   .leaf.dragging .grip {
     cursor: grabbing;
@@ -1881,7 +1934,7 @@
     padding: 1px 7px;
     border-radius: 4px;
     background: var(--accent);
-    color: var(--on-accent, #fff);
+    color: var(--on-accent);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;

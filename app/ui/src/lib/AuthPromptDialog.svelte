@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { focus } from "./focus";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
   import type { AuthPrompt } from "./bindings/AuthPrompt";
 
   let { prompt, onanswer }: { prompt: AuthPrompt; onanswer: (answers: string[] | null) => void } = $props();
@@ -17,6 +18,7 @@
 
 <div class="dlg-backdrop top" role="presentation">
   <form
+    use:modal
     class="dlg"
     aria-label="Sign-in"
     onsubmit={(e) => (e.preventDefault(), ready && onanswer(answers))}

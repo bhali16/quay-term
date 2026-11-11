@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { focus } from "./focus";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
   import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 
   let { prompt, onanswer }: { prompt: HostKeyPrompt; onanswer: (trust: boolean) => void } = $props();
@@ -11,7 +12,7 @@
 </script>
 
 <div class="dlg-backdrop top" role="presentation">
-  <div class="dlg" role="alertdialog" aria-label="Unknown host key" tabindex="-1">
+  <div use:modal class="dlg" role="alertdialog" aria-label="Unknown host key" tabindex="-1">
     <h2>Trust this host?</h2>
     <p>
       The authenticity of <strong>{prompt.host}:{prompt.port}</strong> cannot be verified. This is the first time you

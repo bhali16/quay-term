@@ -63,6 +63,11 @@ confirm_close: boolean, tab_layout: TabLayout,
  */
 snippet_expand: boolean, 
 /**
+ * Mirror the terminal's text into the accessibility tree so a screen reader can read it.
+ * Off by default: it costs some speed on fast output.
+ */
+screen_reader: boolean, 
+/**
  * Save finished commands (from shell integration marks) so they can be searched across
  * sessions. Off until the user opts in; nothing is written while it is off.
  */

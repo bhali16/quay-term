@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { focus } from "./focus";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
 
   let {
     title,
@@ -26,7 +27,7 @@
 </script>
 
 <div class="dlg-backdrop" role="presentation">
-  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body" tabindex="-1">
+  <div use:modal class="dlg" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-body" tabindex="-1">
     <h2 id="confirm-title">{title}</h2>
     <p id="confirm-body">{body}</p>
     {#if dontAsk}

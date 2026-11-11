@@ -18,6 +18,8 @@
   import { settings } from "./settings.svelte";
   import { actionFor, isMac } from "./keys";
   import { focus } from "./focus";
+  import { inkOn } from "./themes";
+  import { menu as menuKeys } from "./modal";
   import { BlockTracker, parseExit, type Block } from "./blocks";
   import { REMOTE_SNIPPET } from "./shellIntegration";
   import { expansionAt, toInput } from "./snippets";
@@ -496,6 +498,7 @@
     term.options.fontFamily = v.font_family;
     term.options.fontSize = v.font_size;
     term.options.cursorBlink = v.cursor_blink;
+    term.options.screenReaderMode = v.screen_reader;
     term.options.scrollback = v.scrollback;
     term.options.theme = theme;
     if (active) requestAnimationFrame(() => fit.fit());
@@ -507,7 +510,9 @@
       const wantFocus = focused;
       requestAnimationFrame(() => {
         fit.fit();
-        if (wantFocus) term.focus();
+        // Someone walking the tab list with the arrow keys keeps focus there; Enter brings it here.
+        const onTabs = document.activeElement?.matches('[role="tab"]:focus-visible');
+        if (wantFocus && !onTabs) term.focus();
       });
     }
   });
@@ -528,6 +533,7 @@
       macOptionClickForcesSelection: true,
       rightClickSelectsWord: false,
       cursorBlink: v.cursor_blink,
+      screenReaderMode: v.screen_reader,
       scrollback: v.scrollback,
       theme: settings.theme.term,
     });
@@ -662,15 +668,15 @@
 {#if active}
   {#if color}<span class="strip" style:background={color}></span>{/if}
   <div class="badges">
-    {#if env}<span class="env" class:prod={/^prod/i.test(env)} style:--c={color ?? "var(--accent)"} title="Environment: {env}">{env}</span>{/if}
+    {#if env}<span class="env" class:prod={/^prod/i.test(env)} style:--c={color ?? "var(--accent)"} style:--on={inkOn(color)} title="Environment: {env}">{env}</span>{/if}
     {#if copied}<span class="copied" role="status">{copied}</span>{/if}
     {#if broadcasting}<span class="bcast" title="What you type here is also sent to the other selected panes">Broadcast</span>{/if}
   </div>
   {#if menu}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="shield" onmousedown={() => (menu = null)} oncontextmenu={(e) => (e.preventDefault(), (menu = null))}></div>
-    <div class="bmenu" role="menu" tabindex="-1" style:left="{menu.x}px" style:top="{menu.y}px" onkeydown={(e) => e.key === "Escape" && ((menu = null), term.focus())}>
-      <button role="menuitem" use:focus disabled={!menu.block.command} onclick={() => menuDo("command")}>Copy command</button>
+    <div use:menuKeys class="bmenu" role="menu" aria-label="Command block" tabindex="-1" style:left="{menu.x}px" style:top="{menu.y}px" onkeydown={(e) => e.key === "Escape" && ((menu = null), term.focus())}>
+      <button role="menuitem" disabled={!menu.block.command} onclick={() => menuDo("command")}>Copy command</button>
       <button role="menuitem" onclick={() => menuDo("output")}>Copy output</button>
       <button role="menuitem" onclick={() => menuDo("both")}>Copy both</button>
       <hr />
@@ -766,7 +772,7 @@
     padding: 1px 7px;
     border-radius: 4px;
     background: var(--c);
-    color: var(--on-accent, #fff);
+    color: var(--on);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -774,7 +780,7 @@
   }
   .env.prod {
     background: var(--red);
-    color: var(--bg);
+    color: var(--on-red);
   }
   .bar {
     position: absolute;
@@ -814,7 +820,7 @@
   .bar button {
     flex: none;
     padding: 3px 10px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: var(--hover);
     color: var(--fg);
@@ -857,7 +863,7 @@
     padding: 1px 7px;
     border-radius: 4px;
     background: var(--red);
-    color: var(--bg);
+    color: var(--on-red);
     font-size: 11px;
     font-weight: 600;
   }

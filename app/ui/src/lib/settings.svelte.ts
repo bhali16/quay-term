@@ -26,6 +26,7 @@ const fallback: Settings = {
   confirm_close: true,
   tab_layout: "horizontal",
   snippet_expand: false,
+  screen_reader: false,
   record_history: false,
   history_deny_patterns: DEFAULT_DENY,
 };

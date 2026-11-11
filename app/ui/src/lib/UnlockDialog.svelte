@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { focus } from "./focus";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
   import { vaultUnlock } from "./ipc";
 
   let { isNew, ondone, oncancel }: { isNew: boolean; ondone: () => void; oncancel: () => void } = $props();
@@ -29,7 +30,7 @@
 </script>
 
 <div class="dlg-backdrop" role="presentation">
-  <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit())} aria-label="Secret vault">
+  <form use:modal class="dlg" onsubmit={(e) => (e.preventDefault(), submit())} aria-label="Secret vault">
     <h2>{isNew ? "Set a master password" : "Unlock the secret vault"}</h2>
     <p class="hint">
       {isNew

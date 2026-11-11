@@ -37,7 +37,7 @@
     font: inherit;
     color: inherit;
     padding: 6px 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 5px;
     background: none;
     cursor: pointer;

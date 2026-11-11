@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { focus } from "./focus";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
   import Icon from "./Icon.svelte";
   import type { Snippet } from "./bindings/Snippet";
   import { fill, group, initialValues, matches, slug, variables } from "./snippets";
@@ -102,7 +103,7 @@
 </script>
 
 <div class="dlg-backdrop" role="presentation">
-  <div class="dlg snip" role="dialog" aria-label="Snippets">
+  <div use:modal class="dlg snip" role="dialog" aria-label="Snippets">
     {#if mode === "list"}
       <h2>Snippets</h2>
       <div class="search">
@@ -276,7 +277,7 @@
     box-sizing: border-box;
     resize: vertical;
     padding: 6px 8px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: var(--input);
     color: var(--fg);

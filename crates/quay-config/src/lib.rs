@@ -76,6 +76,9 @@ pub struct Settings {
     /// Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
     /// Needs shell integration marks, so it does nothing in a shell without them.
     pub snippet_expand: bool,
+    /// Mirror the terminal's text into the accessibility tree so a screen reader can read it.
+    /// Off by default: it costs some speed on fast output.
+    pub screen_reader: bool,
     /// Save finished commands (from shell integration marks) so they can be searched across
     /// sessions. Off until the user opts in; nothing is written while it is off.
     pub record_history: bool,
@@ -125,6 +128,7 @@ impl Default for Settings {
             confirm_close: true,
             tab_layout: TabLayout::Horizontal,
             snippet_expand: false,
+            screen_reader: false,
             record_history: false,
             history_deny_patterns: default_history_deny_patterns(),
         }

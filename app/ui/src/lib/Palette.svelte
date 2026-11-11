@@ -14,6 +14,7 @@
   import { onMount } from "svelte";
   import { focus } from "./focus";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
   import Icon from "./Icon.svelte";
   import { parseQuery, rank } from "./fuzzy";
   import { ago, applyFilter, collapse, hostsOf, noFilter, type HistoryFilter, type HistoryRow, type Range } from "./history";
@@ -160,7 +161,7 @@
 </script>
 
 <div class="dlg-backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
-  <div class="pal" role="dialog" aria-label="Command palette">
+  <div use:modal class="pal" role="dialog" aria-label="Command palette">
     <div class="box">
       <Icon name="search" size={16} />
       <input
@@ -328,12 +329,18 @@
   }
   .row.sel {
     background: var(--accent);
-    color: var(--on-accent, #fff);
+    color: var(--on-accent);
   }
   .ic {
     display: flex;
     flex: none;
-    opacity: 0.75;
+    color: var(--dim);
+  }
+  /* On the selected row everything takes the full on-accent colour: a faded one fails on the accent fill. */
+  .row.sel .ic,
+  .row.sel .s,
+  .row.sel .g {
+    color: inherit;
   }
   .t {
     flex: none;
@@ -349,12 +356,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 12px;
-    opacity: 0.65;
+    color: var(--dim);
   }
   .g {
     margin-left: auto;
     font-size: 11px;
-    opacity: 0.6;
+    color: var(--dim);
   }
   kbd {
     flex: none;
@@ -364,7 +371,6 @@
     border-radius: 4px;
     font: inherit;
     font-size: 11px;
-    opacity: 0.85;
   }
   .row.sel kbd {
     border-color: currentColor;
@@ -383,7 +389,7 @@
     font: inherit;
     color: var(--fg);
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     padding: 3px 8px;
     cursor: pointer;
@@ -409,7 +415,7 @@
   .filters .on {
     background: var(--accent);
     border-color: var(--accent);
-    color: var(--on-accent, #fff);
+    color: var(--on-accent);
   }
   .cmd {
     flex: none;
@@ -421,8 +427,7 @@
     font-size: 13px;
   }
   .ic.bad {
-    color: var(--red);
-    opacity: 1;
+    color: var(--red-text);
   }
   .row.sel .ic.bad {
     color: inherit;
@@ -430,6 +435,10 @@
   .del {
     flex: none;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
     margin-left: auto;
     padding: 2px;
     border: 0;
@@ -449,7 +458,7 @@
   }
   .link {
     font: inherit;
-    color: var(--accent);
+    color: var(--accent-text);
     background: none;
     border: 0;
     padding: 0;

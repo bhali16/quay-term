@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { onEscape } from "./escape";
+  import { modal } from "./modal";
+  import { roving } from "./roving";
   import Icon, { type Name } from "./Icon.svelte";
   import { settings } from "./settings.svelte";
   import { updates } from "./updates.svelte";
@@ -172,15 +174,15 @@
 </script>
 
 <div class="dlg-backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
-  <div class="dlg wide" role="dialog" aria-label="Settings">
-    <h2>Settings</h2>
+  <div use:modal class="dlg wide" role="dialog" aria-labelledby="settings-title">
+    <h2 id="settings-title">Settings</h2>
     <div class="layout">
-      <div class="tabs" role="tablist">
+      <div class="tabs" role="tablist" aria-orientation="vertical" aria-label="Settings sections" use:roving={{ selector: '[role="tab"]', vertical: true, activate: true }}>
         {#each tabs as t (t.id)}
-          <button role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}><Icon name={t.icon} size={15} />{t.label}</button>
+          <button role="tab" id="settings-tab-{t.id}" aria-controls="settings-panel" tabindex={tab === t.id ? 0 : -1} aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => (tab = t.id)}><Icon name={t.icon} size={15} />{t.label}</button>
         {/each}
       </div>
-      <div class="pane">
+      <div class="pane" role="tabpanel" id="settings-panel" aria-labelledby="settings-tab-{tab}">
         {#if tab === "appearance"}
           <h3>Theme</h3>
           <label>
@@ -254,6 +256,11 @@
           <label class="check">
             <input type="checkbox" checked={settings.value.snippet_expand} onchange={(e) => patch({ snippet_expand: e.currentTarget.checked })} />
             Experimental: type <code>;name</code> then Tab at a marked prompt to open that snippet
+          </label>
+          <h3>Accessibility</h3>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.screen_reader} onchange={(e) => patch({ screen_reader: e.currentTarget.checked })} />
+            Make terminal text readable by a screen reader (slower on fast output)
           </label>
           <h3>Notifications</h3>
           <label class="check">
@@ -448,13 +455,13 @@
     border-radius: 5px;
     background: none;
     cursor: pointer;
-    opacity: 0.75;
+    color: var(--dim);
   }
   .tabs button:hover {
     background: var(--hover);
+    color: var(--fg);
   }
   .tabs button.on {
-    opacity: 1;
     background: var(--accent);
     color: var(--on-accent);
   }
@@ -474,7 +481,7 @@
   .pane > .action {
     align-self: flex-start;
     padding: 6px 14px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: var(--input);
     color: var(--fg);
@@ -494,13 +501,13 @@
     position: relative;
     min-width: 0;
     height: 52px;
-    border: 2px solid var(--border);
+    border: 2px solid var(--border-strong);
     border-radius: 8px;
     cursor: pointer;
     font: 600 15px var(--font-mono);
   }
   .sw.on {
-    border-color: var(--accent);
+    border-color: var(--focus);
   }
   .sw i {
     position: absolute;
@@ -515,7 +522,7 @@
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    opacity: 0.6;
+    color: var(--dim);
   }
   .keys {
     display: grid;
@@ -528,7 +535,7 @@
   .copy {
     font: inherit;
     color: inherit;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 5px;
     background: var(--bg-alt);
     padding: 3px 10px;
@@ -540,7 +547,7 @@
     font-size: 12px;
   }
   .chip.rec {
-    border-color: var(--accent);
+    border-color: var(--focus);
   }
   .reset {
     padding: 3px 7px;
@@ -553,19 +560,19 @@
     font: 12.5px var(--font-mono);
     color: var(--fg);
     background: var(--input);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     padding: 6px 8px;
     resize: vertical;
   }
   .copy.danger {
     border-color: var(--red);
-    color: var(--red);
+    color: var(--red-text);
   }
   .blurb {
     margin: 0;
     font-size: 12.5px;
-    opacity: 0.75;
+    color: var(--dim);
   }
   .brow {
     display: flex;
@@ -577,7 +584,7 @@
   }
   .ok {
     margin: 0;
-    color: var(--green);
+    color: var(--green-text);
     font-size: 13px;
   }
   .about {
@@ -590,7 +597,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    opacity: 0.7;
+    color: var(--dim);
   }
   .copy {
     align-self: flex-start;
@@ -598,6 +605,6 @@
   }
   .err {
     margin: 0;
-    color: var(--red);
+    color: var(--red-text);
   }
 </style>

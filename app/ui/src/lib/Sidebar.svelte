@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { focus } from "./focus";
+  import { inkOn } from "./themes";
   import Icon from "./Icon.svelte";
   import type { Folder } from "./bindings/Folder";
   import type { LibraryView } from "./bindings/LibraryView";
@@ -169,6 +170,29 @@
   function abort() {
     finish();
   }
+
+  /** Tree keys: Up and Down walk the visible rows, Right opens a folder, Left closes it or goes to its parent. */
+  function treeKey(e: KeyboardEvent) {
+    const el = e.target as HTMLElement;
+    if (el.getAttribute("role") !== "treeitem" || e.altKey || e.ctrlKey || e.metaKey) return;
+    const items = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="treeitem"]')];
+    const i = items.indexOf(el);
+    const folder = el.dataset.folder ? Number(el.dataset.folder) : null;
+    let to: HTMLElement | undefined;
+    if (e.key === "ArrowDown") to = items[i + 1];
+    else if (e.key === "ArrowUp") to = items[i - 1];
+    else if (e.key === "Home") to = items[0];
+    else if (e.key === "End") to = items[items.length - 1];
+    else if (e.key === "ArrowRight" && folder !== null) {
+      if (collapsed[folder]) collapsed[folder] = false;
+      else if (items[i + 1]?.dataset.parent === el.dataset.folder) to = items[i + 1];
+    } else if (e.key === "ArrowLeft") {
+      if (folder !== null && !collapsed[folder]) collapsed[folder] = true;
+      else if (el.dataset.parent) to = items.find((x) => x.dataset.folder === el.dataset.parent);
+    } else return;
+    e.preventDefault();
+    to?.focus();
+  }
 </script>
 
 {#snippet folderInput()}
@@ -184,9 +208,12 @@
 {/snippet}
 
 {#snippet sessionRow(s: SavedSession)}
-  <div class="item session" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"}>
+  <div class="item session" role="none" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"}>
     <button
       class="main"
+      role="treeitem"
+      aria-selected={activeId === s.id}
+      data-parent={s.folder_id ?? ""}
       title={`${s.user}@${s.host}:${s.port}`}
       onpointerdown={(e) => pressed(e, { kind: "session", id: s.id, label: s.name })}
       ondblclick={() => onconnect(s)}
@@ -214,7 +241,7 @@
 
 {#snippet tree(parent: number | null)}
   {#each childrenOf(parent) as f, i (f.id)}
-    <div class="item folder" class:drop={dropTarget === f.id} data-drop={f.id}>
+    <div class="item folder" role="none" class:drop={dropTarget === f.id} data-drop={f.id}>
       {#if renaming === f.id}
         <input
           use:focus
@@ -225,6 +252,12 @@
       {:else}
         <button
           class="main"
+          role="treeitem"
+          aria-selected="false"
+          aria-expanded={!collapsed[f.id]}
+          aria-owns={collapsed[f.id] ? undefined : `folder-${f.id}`}
+          data-folder={f.id}
+          data-parent={f.parent_id ?? ""}
           onpointerdown={(e) => pressed(e, { kind: "folder", id: f.id, label: f.name })}
           onclick={() => !justDragged && (collapsed[f.id] = !collapsed[f.id])}
         >
@@ -244,7 +277,7 @@
       {/if}
     </div>
     {#if !collapsed[f.id]}
-      <div class="children" class:drop={dropTarget === f.id} data-drop={f.id}>
+      <div class="children" role="group" id="folder-{f.id}" class:drop={dropTarget === f.id} data-drop={f.id}>
         {#if creating?.parent === f.id}{@render folderInput()}{/if}
         {@render tree(f.id)}
         {#each sessionsIn(f.id) as s (s.id)}{@render sessionRow(s)}{/each}
@@ -282,6 +315,7 @@
           class="host"
           class:current={activeId === s.id}
           style:--c={s.color ?? "var(--accent)"}
+          style:--on={inkOn(s.color)}
           title={`${s.name}\n${s.user}@${s.host}`}
           aria-label={`Connect to ${s.name}`}
           onclick={() => onconnect(s)}
@@ -305,7 +339,8 @@
     <div class="tabsec">{@render tabs()}</div>
     <div class="seclabel">Sessions</div>
   {/if}
-  <div class="list" class:drop={dropTarget === "root"} data-drop="root">
+  <!-- svelte-ignore a11y_interactive_supports_focus -->
+  <div class="list" role="tree" aria-label="Saved sessions" class:drop={dropTarget === "root"} data-drop="root" onkeydown={treeKey}>
     {#if creating?.parent === null}{@render folderInput()}{/if}
     {#if searching}
       {#each library.sessions as s (s.id)}{@render sessionRow(s)}{:else}
@@ -377,7 +412,7 @@
     display: flex;
     gap: 2px;
     padding: 2px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 9px;
     background: var(--bg-deep);
   }
@@ -438,13 +473,13 @@
     flex: none;
     height: 34px;
     padding: 0 11px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 9px;
     background: var(--input);
     color: var(--dim);
   }
   .searchbox:focus-within {
-    border-color: var(--accent);
+    border-color: var(--focus);
   }
   .search {
     flex: 1;
@@ -482,7 +517,7 @@
     gap: 4px;
     padding: 6px 4px;
     font-size: 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: var(--surface);
   }
@@ -603,11 +638,17 @@
   }
   .acts button {
     display: flex;
-    padding: 3px 5px;
-    opacity: 0.7;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
+    border-radius: 5px;
+    color: var(--dim);
   }
   .acts button:hover {
-    opacity: 1;
+    background: var(--hover);
+    color: var(--fg);
   }
   .item input {
     flex: 1;
@@ -616,7 +657,7 @@
     padding: 2px 4px;
     font: inherit;
     color: inherit;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     background: var(--input);
   }
@@ -630,7 +671,7 @@
   .item.drop,
   .children.drop {
     background: color-mix(in srgb, var(--accent) 25%, transparent);
-    outline: 1px solid var(--accent);
+    outline: 1px solid var(--focus);
   }
   .list.drop {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -713,7 +754,7 @@
     height: 30px;
     border-radius: 8px;
     background: var(--c);
-    color: #fff;
+    color: var(--on);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.3px;

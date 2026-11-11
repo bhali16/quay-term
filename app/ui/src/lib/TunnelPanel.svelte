@@ -256,10 +256,10 @@
     line-height: 1.4;
   }
   .warn {
-    color: var(--yellow);
+    color: var(--yellow-text);
   }
   .err {
-    color: var(--red);
+    color: var(--red-text);
   }
   form {
     display: flex;
@@ -289,7 +289,7 @@
     font: inherit;
     color: var(--fg);
     background: var(--input, var(--bg));
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     padding: 5px 8px;
   }
@@ -306,6 +306,10 @@
   }
   .ibtn {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
     flex: none;
     padding: 4px;
     color: var(--dim);
@@ -318,7 +322,7 @@
     align-self: flex-start;
     padding: 6px 12px;
     background: var(--accent);
-    color: var(--on-accent, #fff);
+    color: var(--on-accent);
   }
   button:disabled {
     opacity: 0.4;

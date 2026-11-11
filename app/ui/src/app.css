@@ -42,7 +42,7 @@ body {
   box-sizing: border-box;
   border-radius: 12px;
   background: var(--surface);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border);
   font-size: 13px;
 }
 .dlg h2 {
@@ -75,7 +75,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-deep);
-  color: var(--green);
+  color: var(--green-text);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -104,14 +104,14 @@ body {
   font: inherit;
   color: inherit;
   padding: 7px 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--input);
 }
 .dlg input:focus-visible,
 .dlg select:focus-visible {
-  outline: 1px solid var(--accent);
-  border-color: var(--accent);
+  outline: 1px solid var(--focus);
+  border-color: var(--focus);
 }
 .dlg input[type="checkbox"] {
   padding: 0;
@@ -133,7 +133,7 @@ body {
   font: inherit;
   color: inherit;
   padding: 6px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   background: none;
   cursor: pointer;
@@ -149,7 +149,7 @@ body {
 }
 .dlg .error {
   margin: 0;
-  color: var(--red);
+  color: var(--red-text);
 }
 .dlg .hint {
   margin: 0;
@@ -157,34 +157,42 @@ body {
   font-size: 12px;
 }
 .dlg .hint.warn {
-  color: var(--red);
+  color: var(--red-text);
 }
 
 /* One look for every dropdown: no native chrome, a plain chevron. */
 select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  /* Two gradients draw the chevron in --dim, so it follows the theme (a data-URL image cannot). */
+  background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%) !important;
   background-repeat: no-repeat !important;
-  background-position: right 8px center !important;
-  background-size: 12px !important;
+  background-position: right 13px center, right 8px center !important;
+  background-size: 5px 5px !important;
   padding-right: 26px !important;
   cursor: pointer;
 }
 select:hover {
-  border-color: var(--accent);
+  border-color: var(--focus);
 }
 select:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
 /* Keyboard focus: one visible ring for every button. */
 button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .dlg .actions .primary,
 .dlg .actions .primary:disabled {
   color: var(--on-accent);
+}
+
+/* The same ring for anything else that takes keyboard focus (rows, panels, custom controls). */
+[tabindex]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }

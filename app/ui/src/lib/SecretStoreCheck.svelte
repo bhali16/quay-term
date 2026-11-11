@@ -35,7 +35,7 @@
 <style>
   .link {
     font: inherit;
-    color: var(--accent);
+    color: var(--accent-text);
     background: none;
     border: 0;
     padding: 0;
