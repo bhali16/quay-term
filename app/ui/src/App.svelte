@@ -1038,7 +1038,6 @@
     onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
     onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
     ondelete={removeSession}
-    onimport={doImport}
     onnewfolder={(name, parentId) => folderAction(() => folderCreate(name, parentId))()}
     onrenamefolder={(id, name) => folderAction(() => folderRename(id, name))()}
     ondeletefolder={removeFolder}
@@ -1315,6 +1314,7 @@
       {vault}
       onunlock={() => ((showSettings = false), (showUnlock = true))}
       onimported={() => (refresh(), snippetsLoad().then((x) => (snippets = x)))}
+      onsshimport={doImport}
     />
   {/if}
   {#if trustPrompt}

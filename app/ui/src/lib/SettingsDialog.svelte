@@ -20,10 +20,11 @@
   let {
     onclose,
     onimported,
+    onsshimport,
     vault = null,
     onunlock,
     initialTab,
-  }: { onclose: () => void; onimported?: () => void; vault?: VaultStatus | null; onunlock?: () => void; initialTab?: Tab } = $props();
+  }: { onclose: () => void; onimported?: () => void; onsshimport?: () => void; vault?: VaultStatus | null; onunlock?: () => void; initialTab?: Tab } = $props();
 
   let error = $state<string | null>(null);
   // Result of the last permission request, so a refusal is explained here instead of failing silently.
@@ -371,6 +372,9 @@
               <div class="brow"><Button size="sm" onclick={onunlock}>{vault.is_new ? "Set a master password…" : "Unlock…"}</Button></div>
             {/if}
           {/if}
+          <h3>Import from SSH config</h3>
+          <p class="blurb">Adds the hosts in ~/.ssh/config as saved sessions. Hosts you already have are skipped.</p>
+          <div class="brow"><Button size="sm" onclick={onsshimport}><Icon name="import" size={13} />Import hosts</Button></div>
           <h3>Move to another machine</h3>
           <p class="blurb">Saves your sessions, folders, jump hosts, tunnels and snippets (and, if you tick it, your command history) in one file, locked with a master password (Argon2id and ChaCha20-Poly1305). Importing adds what is missing and never changes what you have.</p>
           <label>

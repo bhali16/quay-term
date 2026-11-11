@@ -23,7 +23,6 @@
     onedit,
     onnew,
     ondelete,
-    onimport,
     onnewfolder,
     onrenamefolder,
     ondeletefolder,
@@ -51,7 +50,6 @@
     /** `folderId` preselects a folder in the editor. */
     onnew: (folderId: number | null) => void;
     ondelete: (s: SavedSession) => void;
-    onimport: () => void;
     onnewfolder: (name: string, parentId: number | null) => void;
     onrenamefolder: (id: number, name: string) => void;
     ondeletefolder: (id: number) => void;
@@ -304,7 +302,6 @@
       <button title="Search sessions" aria-label="Search sessions" onclick={oncollapse}><Icon name="search" size={17} /></button>
       <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={17} /></button>
       <button title="New folder" aria-label="New folder" onclick={() => (oncollapse(), startCreate(null))}><Icon name="folder-plus" size={17} /></button>
-      <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={17} /></button>
     </div>
     <div class="raildivider"></div>
     <div class="railhosts">
@@ -330,7 +327,6 @@
   <div class="tools">
     <Button size="sm" title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</Button>
     <Button size="sm" title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</Button>
-    <Button size="sm" title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={13} />Import</Button>
   </div>
   {#if tabs}
     <div class="seclabel">Tabs</div>
@@ -349,7 +345,7 @@
       {#if childrenOf(null).length > 0 && sessionsIn(null).length > 0}<div class="sep"></div>{/if}
       {#each sessionsIn(null) as s (s.id)}{@render sessionRow(s)}{/each}
       {#if library.sessions.length === 0 && library.folders.length === 0}
-        <p class="empty">No saved sessions yet. Press + to add one, or import your ~/.ssh/config.</p>
+        <p class="empty">No saved sessions yet. Press + to add one, or import your ~/.ssh/config in Settings &gt; Backup.</p>
       {/if}
     {/if}
   </div>
