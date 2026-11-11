@@ -32,6 +32,8 @@
   } from "./lib/ipc";
   import { compileDeny, recordable } from "./lib/history";
   import Sidebar from "./lib/Sidebar.svelte";
+  import Home from "./lib/Home.svelte";
+  import FolderDialog from "./lib/FolderDialog.svelte";
   import SessionDialog from "./lib/SessionDialog.svelte";
   import type { Result as SessionResult } from "./lib/SessionDialog.svelte";
   import type { SessionInput } from "./lib/bindings/SessionInput";
@@ -84,6 +86,8 @@
   type Tab = {
     key: number;
     title: string;
+    /** A new tab with nothing opened in it yet: it shows Home, and what is opened takes its place. */
+    home?: boolean;
     ssh: SshTarget | null;
     saved: Saved | null;
     /** Which panel the dock on the right shows; null when it is closed. */
@@ -277,12 +281,26 @@
     notify(tab, pane, c.exit === null || c.exit === 0 ? "Command finished" : "Command failed", body);
   }
 
+  /** Local shells are numbered on their own, so the first one is "Shell 1" whatever tabs came before. */
+  let shellCounter = 0;
   function newTab(ssh: SshTarget | null = null, saved: Saved | null = null) {
     const key = ++counter;
-    const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
+    const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${++shellCounter}`;
     // A saved session comes back with the split layout it was last closed with.
     const layout = (saved && loadShape(saved.id)) || { leaf: ++paneCounter };
-    tabs.push({ key, title, ssh, saved, layout, targets: {}, focus: P.leaves(layout)[0], zoom: null, dock: null, tunnelCount: 0, panes: {}, status: {}, activity: false });
+    const tab: Tab = { key, title, ssh, saved, layout, targets: {}, focus: P.leaves(layout)[0], zoom: null, dock: null, tunnelCount: 0, panes: {}, status: {}, activity: false };
+    // Opened from Home, it takes that tab's place, as a page does in a browser's new tab.
+    const at = tabs.findIndex((t) => t.key === activeKey && t.home);
+    if (at >= 0) tabs.splice(at, 1, tab);
+    else tabs.push(tab);
+    activeKey = key;
+  }
+  /** A new tab starts on Home, like a browser's new-tab page. One already in front is reused. */
+  function newHomeTab() {
+    if (tabs.some((t) => t.key === activeKey && t.home)) return;
+    const key = ++counter;
+    const leaf = ++paneCounter;
+    tabs.push({ key, title: "New tab", home: true, ssh: null, saved: null, layout: { leaf }, targets: {}, focus: leaf, zoom: null, dock: null, tunnelCount: 0, panes: {}, status: {}, activity: false });
     activeKey = key;
   }
 
@@ -440,6 +458,8 @@
   /** The sidebar was folded to the rail by a small window, not by the user. */
   let autoRail = false;
   function toggleSidebar() {
+    // With nothing saved there is no sidebar until it is asked for; that is not the choice kept for later.
+    if (!hasLibrary) return void (emptySide = !emptySide);
     autoRail = false;
     sidebarOpen = !sidebarOpen;
     // A choice made in a small window is for that window only.
@@ -524,7 +544,9 @@
   const say = (e: unknown) => toasts.error(e);
   async function refresh() {
     try {
-      library = await libraryLoad(query.trim() || undefined);
+      const q = query.trim();
+      library = await libraryLoad(q || undefined);
+      if (!q) hasLibrary = library.sessions.length + library.folders.length > 0;
     } catch (e) {
       say(e);
     }
@@ -558,7 +580,7 @@
     }
     rememberSession(s.id);
     const target: Saved = { id: s.id, label: s.name, secret, remember, jumps };
-    if (into === "split" && activeTab) splitWith(activeTab, target);
+    if (into === "split" && activeTab && !activeTab.home) splitWith(activeTab, target);
     else newTab(null, target);
   }
 
@@ -581,20 +603,6 @@
       /* recents are optional */
     }
   }
-  /** The menu beside the new-tab button. */
-  let newMenu = $state<{ left: number; top: number } | null>(null);
-  let newMenuSessions = $state<SavedSession[]>([]);
-  function openNewMenu(e: MouseEvent) {
-    if (newMenu) return void (newMenu = null);
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    newMenu = { left: r.left, top: r.bottom + 4 };
-    const pick = (all: SavedSession[]) =>
-      recentIds.map((id) => all.find((x) => x.id === id)).filter((x): x is SavedSession => !!x && !goneSessions.includes(x.id));
-    newMenuSessions = pick(library.sessions);
-    // The sidebar search may have narrowed `library`; recents come from the whole list.
-    if (query.trim()) libraryLoad().then((l) => newMenu && (newMenuSessions = pick(l.sessions))).catch(() => {});
-  }
-
   async function submitSession(r: SessionResult) {
     dialogError = null;
     try {
@@ -680,8 +688,23 @@
   };
 
   // Vertical tabs are a section of the sidebar. With the sidebar folded to the rail they go back to the strip.
-  const vertical = $derived(settings.value.tab_layout === "vertical" && sidebarOpen);
   const activeTab = $derived(tabs.find((t) => t.key === activeKey));
+  // ---- a new user, with no session or folder saved, gets no sidebar: just Home ----
+  /** Something is saved. Read from the whole library, not from a search of it. */
+  let hasLibrary = $state(false);
+  /** The sidebar, brought up with the toggle while nothing is saved. */
+  let emptySide = $state(false);
+  /** The sidebar is drawn at all, and drawn in full rather than as the rail. */
+  const sideShown = $derived(hasLibrary || emptySide);
+  const sideFull = $derived(hasLibrary ? sidebarOpen : emptySide);
+  /** Naming a new folder from Home. */
+  let namingFolder = $state(false);
+  const vertical = $derived(settings.value.tab_layout === "vertical" && sideFull);
+  /** Sessions offered on Home: the ones used lately, else the first few saved. */
+  const homeSessions = $derived.by(() => {
+    const used = recentIds.map((id) => shown.sessions.find((x) => x.id === id)).filter((x): x is SavedSession => !!x);
+    return { list: used.length ? used : shown.sessions.slice(0, 6), recent: used.length > 0 };
+  });
   // A tab you switch to has nothing unseen any more.
   $effect(() => {
     if (activeTab) activeTab.activity = false;
@@ -729,7 +752,7 @@
   }
   /** Why an action cannot run in the front tab (one sentence), or null when it can. */
   const whyNot = (a: Checked) =>
-    unavailable(a, { remote: !!activeTab && canDock(activeTab), panes: activeTab ? P.leaves(activeTab.layout).length : 0, tabs: tabs.length });
+    unavailable(a, { home: !!activeTab?.home, remote: !!activeTab && canDock(activeTab), panes: activeTab ? P.leaves(activeTab.layout).length : 0, tabs: tabs.length });
   /** A binding as shown in tooltips and the palette. */
   const keyOf = (a: Action) => formatShortcut(settings.bindings[a]);
   /** A tooltip with the action's shortcut after it, when it has one. */
@@ -765,7 +788,7 @@
       id: `tab:${t.key}`,
       group: "Tabs",
       title: t.title,
-      subtitle: t.key === activeKey ? "current tab" : t.ssh ? `${t.ssh.user}@${t.ssh.host}` : t.saved ? "saved session" : "local shell",
+      subtitle: t.key === activeKey ? "current tab" : t.ssh ? `${t.ssh.user}@${t.ssh.host}` : t.saved ? "saved session" : t.home ? "new tab" : "local shell",
       run: () => (activeKey = t.key),
     }));
     return [...acts, ...extra, ...sess, ...snips, ...open];
@@ -872,7 +895,8 @@
     muted = muted.filter((m) => !gone.includes(m));
     tabs.splice(i, 1);
     if (activeKey === key) activeKey = tabs[Math.min(i, tabs.length - 1)]?.key ?? 0;
-    if (tabs.length === 0) newTab();
+    // The last tab closed: back to Home.
+    if (tabs.length === 0) newHomeTab();
   }
 
   // ---- closing: ask first when it would end a running command or several connected panes ----
@@ -915,7 +939,7 @@
     confirmClose({ title: `Close ${list.length} tabs?`, body: `${who} a running command or several connected panes. Closing stops them.`, label: `Close ${list.length} tabs`, run });
   }
   /** The same thing again in a new tab: the same session or host, or another local shell. */
-  const duplicateTab = (tab: Tab) => newTab(tab.ssh, tab.saved);
+  const duplicateTab = (tab: Tab) => (tab.home ? newHomeTab() : newTab(tab.ssh, tab.saved));
   const canReconnect = (tab: Tab) => Object.values(tab.status).some((x) => x === "ended");
   /** Start every ended pane of the tab again. */
   function reconnectTab(tab: Tab) {
@@ -935,7 +959,7 @@
     if (why) return toast(why);
     const i = tabs.findIndex((t) => t.key === activeKey);
     switch (a) {
-      case "new_tab": return newTab();
+      case "new_tab": return newHomeTab();
       case "close_tab": return activeTab && requestClosePane(activeTab, activeTab.focus);
       case "broadcast_pane": return activeTab && toggleBroadcast([activeTab.focus]);
       case "broadcast_tab": return activeTab && toggleBroadcast(P.leaves(activeTab.layout));
@@ -1028,7 +1052,7 @@
         }
       }
     }, 3000);
-    newTab();
+    newHomeTab();
     refresh();
     snippetsLoad().then((s) => (snippets = s)).catch(say);
     loadVault().then(() => {
@@ -1117,13 +1141,14 @@
     <div class="vtabs" role="tablist" aria-label="Tabs" aria-orientation="vertical" use:roving={{ selector: '[role="tab"]', vertical: true, activate: true }}>{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}</div>
   {/snippet}
 
-<main class:mac={isMac} class:rail={!sidebarOpen} class:resizing style:--sidebar-w="{sidebarW}px" bind:clientWidth={winW}>
+<main class:mac={isMac} class:rail={!sideFull} class:noside={!sideShown} class:resizing style:--sidebar-w="{sidebarW}px" bind:clientWidth={winW}>
+  {#if sideShown}
   <Sidebar
-    railOnly={!sidebarOpen}
+    railOnly={!sideFull}
     library={shown}
     bind:query
     oncollapse={toggleSidebar}
-    toggleTitle={tip(`${sidebarOpen ? "Hide" : "Show"} sidebar`, "toggle_sidebar")}
+    toggleTitle={tip(`${sideFull ? "Hide" : "Show"} sidebar`, "toggle_sidebar")}
     onshell={() => newTab()}
     onssh={() => (connecting = true)}
     shellKey={keyOf("new_tab")}
@@ -1145,12 +1170,17 @@
     onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
     tabs={vertical ? sideTabs : undefined}
   />
-  {#if sidebarOpen}
+  {/if}
+  {#if sideFull}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="sbgrip" title="Drag to resize the sidebar. Double-click to reset." onpointerdown={dragSidebar} ondblclick={resetSidebarW}></div>
   {/if}
   <div class="col">
   <nav class="tabs" class:compact={navW < TOOLS_COMPACT} bind:clientWidth={navW} data-tauri-drag-region>
+    <!-- Not while Home is all there is: a new user has nothing in the sidebar to show. -->
+    {#if !sideShown && tabs.some((t) => !t.home)}
+      <Button variant="icon" title={tip("Show sidebar", "toggle_sidebar")} aria-label="Show sidebar" aria-expanded="false" onclick={toggleSidebar}><Icon name="panel-left" size={16} /></Button>
+    {/if}
     <!-- Tabs keep a readable width; when they do not all fit, the strip scrolls and the list button shows them all. -->
     <div
       class="strip"
@@ -1179,10 +1209,7 @@
       </Button>
     {/if}
     <div class="newtab" role="group" aria-label="New tab">
-      <Button variant="icon" title={tip("New local shell", "new_tab")} aria-label="New local shell" onclick={() => newTab()}><Icon name="plus" size={16} /></Button>
-      <Button variant="icon" class="more" title="New SSH connection, or a recent session" aria-label="More ways to open a tab" aria-haspopup="menu" aria-expanded={!!newMenu} onclick={openNewMenu}>
-        <Icon name="chevron-down" size={12} />
-      </Button>
+      <Button variant="icon" title={tip("New tab", "new_tab")} aria-label="New tab" onclick={newHomeTab}><Icon name="plus" size={16} /></Button>
     </div>
     <!-- The empty part of the strip moves the window, like a title bar. -->
     <div class="fill" data-tauri-drag-region></div>
@@ -1217,7 +1244,25 @@
       {@const zoomed = solo ? null : tab.zoom}
       <div class="tabview" class:hidden={tab.key !== activeKey} role="tabpanel" id="tabview-{tab.key}" aria-labelledby="tab-{tab.key}">
         <div class="term">
-          {#each lay.panes as p (p.id)}
+          {#if tab.home}
+            <Home
+              active={tab.key === activeKey}
+              sessions={homeSessions.list}
+              recent={homeSessions.recent}
+              total={shown.sessions.length}
+              paletteKey={keyOf("palette")}
+              sidebarKey={keyOf("toggle_sidebar")}
+              onshell={() => newTab()}
+              onssh={() => (connecting = true)}
+              onnew={() => ((dialogError = null), (editing_session = { session: null, folderId: null }))}
+              onimport={doImport}
+              onconnect={(s) => connectSaved(s)}
+              onpalette={() => openPalette()}
+              onfolder={() => (namingFolder = true)}
+              onsessions={sideFull ? undefined : toggleSidebar}
+            />
+          {/if}
+          {#each tab.home ? [] : lay.panes as p (p.id)}
             {@const v = P.zoomView(p.rect, p.id, zoomed)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
@@ -1357,27 +1402,12 @@
         <button role="menuitem" disabled={!canReconnect(mt)} onclick={() => (reconnectTab(mt), (tabMenu = null))}>{canDock(mt) ? "Reconnect" : "Restart shell"}</button>
         <button role="menuitem" onclick={() => (startRename(mt), (tabMenu = null))}><span class="mttl">Rename tab</span><kbd>F2</kbd></button>
         <hr />
-        <button role="menuitem" onclick={() => ((activeKey = mt.key), splitPane(mt, "row"), (tabMenu = null))}><span class="mttl">Split right</span><kbd>{keyOf("split_right")}</kbd></button>
-        <button role="menuitem" onclick={() => ((activeKey = mt.key), splitPane(mt, "col"), (tabMenu = null))}><span class="mttl">Split down</span><kbd>{keyOf("split_down")}</kbd></button>
+        <button role="menuitem" disabled={mt.home} onclick={() => ((activeKey = mt.key), splitPane(mt, "row"), (tabMenu = null))}><span class="mttl">Split right</span><kbd>{keyOf("split_right")}</kbd></button>
+        <button role="menuitem" disabled={mt.home} onclick={() => ((activeKey = mt.key), splitPane(mt, "col"), (tabMenu = null))}><span class="mttl">Split down</span><kbd>{keyOf("split_down")}</kbd></button>
         <hr />
         <button role="menuitem" onclick={() => (requestCloseTab(mt.key), (tabMenu = null))}>Close tab</button>
         <button role="menuitem" disabled={tabs.length < 2} onclick={() => (requestCloseTabs(tabs.filter((t) => t !== mt).map((t) => t.key)), (tabMenu = null))}>Close other tabs</button>
         <button role="menuitem" disabled={at === tabs.length - 1} onclick={() => (requestCloseTabs(tabs.slice(at + 1).map((t) => t.key)), (tabMenu = null))}>Close tabs to the right</button>
-      {/if}
-    </Menu>
-  {/if}
-  {#if newMenu}
-    <Menu label="New tab" left={newMenu.left} top={newMenu.top} onclose={() => (newMenu = null)}>
-      <button role="menuitem" onclick={() => ((newMenu = null), newTab())}><Icon name="terminal" size={14} /><span class="mttl">Local shell</span><kbd>{keyOf("new_tab")}</kbd></button>
-      <button role="menuitem" onclick={() => ((newMenu = null), (connecting = true))}><Icon name="server" size={14} /><span class="mttl">SSH connection…</span></button>
-      {#if newMenuSessions.length}
-        <hr />
-        <div class="mhead">Recent sessions</div>
-        {#each newMenuSessions as s (s.id)}
-          <button role="menuitem" title={`${s.user}@${s.host}`} onclick={() => ((newMenu = null), connectSaved(s))}>
-            <span class="mdot" style:background={s.color ?? "var(--accent)"}></span><span class="mttl">{s.name}</span>
-          </button>
-        {/each}
       {/if}
     </Menu>
   {/if}
@@ -1434,6 +1464,9 @@
         connectSaved(j.session, j.secret, j.remember, [...j.jumps, { id: j.hop.id, secret: pw, remember }], j.into);
       }}
     />
+  {/if}
+  {#if namingFolder}
+    <FolderDialog oncreate={(name) => ((namingFolder = false), folderAction(() => folderCreate(name, null))())} oncancel={() => (namingFolder = false)} />
   {/if}
   {#if connecting}
     <ConnectDialog {vault} onunlock={() => (showUnlock = true)} onconnect={connectSsh} oncancel={() => (connecting = false)} />
@@ -1543,6 +1576,10 @@
   /* The collapsed rail is narrower than the traffic lights, so the tabs start after them. */
   main.rail nav {
     padding-left: max(var(--space-3), calc(var(--lights) + var(--space-2) - var(--rail-w)));
+  }
+  /* No sidebar at all (a session is in front): the strip starts right after the traffic lights. */
+  main.noside nav {
+    padding-left: max(var(--space-3), calc(var(--lights) + var(--space-2)));
   }
   @media (prefers-reduced-motion: reduce) {
     nav {
@@ -1753,17 +1790,6 @@
     display: flex;
     align-self: center;
     flex: none;
-  }
-  /* The small arrow beside the plus: a narrow second half of the same control. */
-  .newtab :global(.btn.more) {
-    min-width: 16px;
-    padding: var(--space-1) 0;
-  }
-  .mdot {
-    flex: none;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
   }
   .fill {
     flex: 1;

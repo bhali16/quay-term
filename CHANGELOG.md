@@ -10,7 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - "Open in split" on a saved session's right-click menu connects it in a new pane of the tab in front. Such a tab's layout is not saved with a session.
 - Saved sessions have a right-click menu: Connect, Open in split, Edit, Duplicate, Move to folder and Delete. Folders have one too: New session here, New subfolder, Rename and Delete folder. Duplicate does not copy the saved password.
 - The tab menu adds Duplicate tab, Reconnect or Restart shell, Split right, Split down, Close other tabs and Close tabs to the right.
-- The arrow beside the new tab button opens a menu with Local shell, SSH connection and your recent sessions.
+- A new tab opens on Home, like a browser's new-tab page: large buttons for Local shell (L), SSH connection (S), New saved session (N), New folder (F), Import SSH config (I) and the command palette, and your recent sessions. What you open takes the tab's place. The app starts on Home instead of a local shell, and closing the last tab returns to it.
+- With no session or folder saved there is no sidebar, only Home. It appears once something is saved; the sidebar shortcut still brings it up before that.
 - Each split pane has a thin header that grows on hover, with the pane's title and buttons for broadcast, zoom and close. Panes without focus are dimmed slightly (Settings > Terminal > Split panes).
 - Settings > Appearance can follow the system's light or dark appearance, with a theme chosen for each.
 - Files panel: a breadcrumb path you can click or type into, columns you can sort by name, size or date, a switch for hidden files, a right-click menu on each row (Open, Download, Download to…, Rename, Delete), and transfers that show percent, speed and time left. A finished download has "Show in folder".

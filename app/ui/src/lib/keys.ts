@@ -38,7 +38,7 @@ export type Action =
   | "find";
 
 export const actionLabels: Record<Action, string> = {
-  new_tab: "New local tab",
+  new_tab: "New tab",
   close_tab: "Close pane or tab",
   broadcast_pane: "Send typing to this pane too (toggle)",
   broadcast_tab: "Send typing to all panes of this tab (toggle)",
