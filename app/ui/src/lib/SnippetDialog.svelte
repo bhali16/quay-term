@@ -1,5 +1,7 @@
 <script lang="ts">
   import { focus } from "./focus";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import Icon from "./Icon.svelte";
   import type { Snippet } from "./bindings/Snippet";
   import { fill, group, initialValues, matches, slug, variables } from "./snippets";
@@ -96,17 +98,10 @@
   function focusIf(node: HTMLElement, on: boolean) {
     if (on) requestAnimationFrame(() => node.focus());
   }
-  function onkey(e: KeyboardEvent) {
-    if (e.key !== "Escape") return;
-    if (mode === "list") onclose();
-    else mode = "list";
-  }
 </script>
 
-<svelte:window onkeydown={onkey} />
-
-<div class="dlg-backdrop" role="presentation">
-  <div class="dlg snip" role="dialog" aria-label="Snippets">
+<!-- Escape steps back to the list first, then closes. -->
+<Dialog label="Snippets" class="snip" onclose={() => (mode === "list" ? onclose() : (mode = "list"))}>
     {#if mode === "list"}
       <h2>Snippets</h2>
       <div class="search">
@@ -131,8 +126,8 @@
         {/each}
       </div>
       <div class="actions">
-        <button type="button" onclick={() => edit(null)}>New snippet</button>
-        <button type="button" class="primary" onclick={onclose}>Close</button>
+        <Button onclick={() => edit(null)}>New snippet</Button>
+        <Button variant="primary" onclick={onclose}>Close</Button>
       </div>
     {:else if mode === "fill" && current}
       <h2>{current.name}</h2>
@@ -162,8 +157,8 @@
       <label class="check"><input type="checkbox" bind:checked={enter} /> Run it (press Enter after the text). Off types it into the prompt to check first</label>
       {#if target !== "focused"}<p class="note"><Icon name="info" size={14} /><span>This types into several terminals at once.</span></p>{/if}
       <div class="actions">
-        <button type="button" onclick={() => (mode = "list")}>Back</button>
-        <button type="button" class="primary" onclick={send} use:focusIf={vars.length === 0}>Send</button>
+        <Button onclick={() => (mode = "list")}>Back</Button>
+        <Button variant="primary" onclick={send} initialFocus={vars.length === 0}>Send</Button>
       </div>
     {:else}
       <h2>{current ? "Edit snippet" : startDraft ? "Save command as snippet" : "New snippet"}</h2>
@@ -181,22 +176,21 @@
         </p>
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <div class="actions">
-          <button type="button" onclick={() => (mode = "list")}>Cancel</button>
-          <button type="submit" class="primary">Save</button>
+          <Button onclick={() => (mode = "list")}>Cancel</Button>
+          <Button type="submit" variant="primary">Save</Button>
         </div>
       </form>
     {/if}
-  </div>
-</div>
+</Dialog>
 
 <style>
-  .snip {
+  :global(.dlg.snip) {
     width: min(560px, calc(100vw - 48px));
   }
   .search {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     color: var(--dim);
   }
   .search input {
@@ -205,20 +199,20 @@
   .list {
     max-height: 340px;
     overflow-y: auto;
-    margin: 10px 0;
+    margin: var(--space-2) 0;
   }
   .folder {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin: 10px 0 4px;
+    gap: var(--space-2);
+    margin: var(--space-2) 0 var(--space-1);
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .item {
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-m);
   }
   .item:hover {
     background: var(--hover);
@@ -229,7 +223,7 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
-    padding: 6px 8px;
+    padding: var(--space-1) var(--space-2);
     text-align: left;
     cursor: pointer;
     background: none;
@@ -238,24 +232,24 @@
     font: inherit;
   }
   .nm {
-    font-size: 13.5px;
+    font-size: var(--text-m);
   }
   .short {
-    margin-left: 8px;
+    margin-left: var(--space-2);
     color: var(--dim);
-    font-family: var(--mono, monospace);
-    font-size: 11.5px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
   }
   .pv {
     overflow: hidden;
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .ic {
     display: flex;
-    padding: 6px;
+    padding: var(--space-2);
     color: var(--dim);
     cursor: pointer;
     background: none;
@@ -267,11 +261,11 @@
   .body {
     max-height: 140px;
     overflow: auto;
-    margin: 0 0 8px;
-    padding: 8px 10px;
-    border-radius: 6px;
+    margin: 0 0 var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-m);
     background: var(--input);
-    font-size: 12.5px;
+    font-size: var(--text-s);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -279,12 +273,12 @@
     width: 100%;
     box-sizing: border-box;
     resize: vertical;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-m);
     background: var(--input);
     color: var(--fg);
     font: inherit;
-    font-size: 12.5px;
+    font-size: var(--text-s);
   }
 </style>

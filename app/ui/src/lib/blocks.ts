@@ -89,6 +89,13 @@ export class BlockTracker<M extends Mark = Mark> {
     return b;
   }
 
+  /** The newest command has started and not finished. An older one cut off by a dropped
+   *  session does not count once a new prompt has appeared. */
+  running(): boolean {
+    const last = this.last();
+    return !!last && last.out !== null && last.end === null;
+  }
+
   /** D: the command finished. Ignored when no command is running (first prompt, empty Enter). */
   commandEnd(m: M, exit: number | null, now: number): Block<M> | null {
     const running = [...this.blocks].reverse().find((b) => b.out !== null && b.end === null);

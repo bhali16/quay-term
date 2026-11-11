@@ -42,6 +42,13 @@ pub enum TabLayout {
 pub struct Settings {
     /// Theme id; unknown ids fall back to the default theme in the UI.
     pub theme: String,
+    /// Follow the system's light or dark appearance: `theme_light` or `theme_dark` is used
+    /// instead of `theme`. Off by default, so an existing choice of theme is kept.
+    pub theme_match_system: bool,
+    /// Theme id used while the system is in light mode (with `theme_match_system`).
+    pub theme_light: String,
+    /// Theme id used while the system is in dark mode (with `theme_match_system`).
+    pub theme_dark: String,
     /// CSS font-family list for the terminal.
     pub font_family: String,
     pub font_size: u32,
@@ -65,14 +72,23 @@ pub struct Settings {
     pub notify_after_secs: u32,
     /// Put the first words of the command in the notification. Off shows only "Command finished".
     pub notify_show_command: bool,
-    /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
+    /// Action id -> shortcut such as `Cmd+T`. Only user overrides are stored. The value `none`
+    /// means the action has no shortcut (its key was given to another action).
     pub keybindings: BTreeMap<String, String>,
     /// Focus the pane under the mouse pointer without clicking it.
     pub focus_follows_mouse: bool,
+    /// Ask before closing a tab or pane that is running a command, or a tab with several
+    /// connected panes.
+    pub confirm_close: bool,
     pub tab_layout: TabLayout,
+    /// In a tab with several panes, draw the ones without focus slightly dimmed.
+    pub dim_unfocused_panes: bool,
     /// Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
     /// Needs shell integration marks, so it does nothing in a shell without them.
     pub snippet_expand: bool,
+    /// Mirror the terminal's text into the accessibility tree so a screen reader can read it.
+    /// Off by default: it costs some speed on fast output.
+    pub screen_reader: bool,
     /// Save finished commands (from shell integration marks) so they can be searched across
     /// sessions. Off until the user opts in; nothing is written while it is off.
     pub record_history: bool,
@@ -103,6 +119,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: "quay-dark".into(),
+            theme_match_system: false,
+            theme_light: "quay-light".into(),
+            theme_dark: "quay-dark".into(),
             font_family:
                 "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', ui-monospace, monospace"
                     .into(),
@@ -119,8 +138,11 @@ impl Default for Settings {
             notify_show_command: true,
             keybindings: BTreeMap::new(),
             focus_follows_mouse: false,
+            confirm_close: true,
             tab_layout: TabLayout::Horizontal,
+            dim_unfocused_panes: true,
             snippet_expand: false,
+            screen_reader: false,
             record_history: false,
             history_deny_patterns: default_history_deny_patterns(),
         }
@@ -219,6 +241,16 @@ mod tests {
     }
 
     #[test]
+    fn confirm_close_defaults_on_for_old_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        assert!(Settings::load(&p).confirm_close);
+        std::fs::write(&p, r#"{"confirm_close": false}"#).unwrap();
+        assert!(!Settings::load(&p).confirm_close);
+    }
+
+    #[test]
     fn tab_layout_defaults_to_horizontal_and_tolerates_unknown_values() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("s.json");
@@ -265,6 +297,27 @@ mod tests {
         let s = Settings::load(&p);
         assert!(s.record_history);
         assert_eq!(s.history_deny_patterns, vec!["x=".to_string()]);
+    }
+
+    #[test]
+    fn system_theme_is_off_and_pane_dimming_on_for_old_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"theme": "dracula"}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(!s.theme_match_system);
+        assert_eq!(s.theme, "dracula");
+        assert_eq!(s.theme_light, "quay-light");
+        assert_eq!(s.theme_dark, "quay-dark");
+        assert!(s.dim_unfocused_panes);
+        std::fs::write(
+            &p,
+            r#"{"theme_match_system": true, "theme_dark": "dracula", "dim_unfocused_panes": false}"#,
+        )
+        .unwrap();
+        let s = Settings::load(&p);
+        assert!(s.theme_match_system && !s.dim_unfocused_panes);
+        assert_eq!(s.theme_dark, "dracula");
     }
 
     #[test]

@@ -5,6 +5,22 @@
   --chrome-h: 42px;
   --sidebar-w: 260px;
   --rail-w: 48px;
+  /* Sizes. Use these, not raw px: sizes.test.ts fails on a raw radius or font size. */
+  --radius-s: 4px; /* chips, bars, small controls */
+  --radius-m: 6px; /* buttons, inputs, rows */
+  --radius-l: 10px; /* dialogs, menus, toasts, cards */
+  --text-xs: 11px; /* captions, badges, section labels */
+  --text-s: 12px; /* secondary text, mono text */
+  --text-m: 13px; /* body */
+  --text-l: 15px; /* emphasis */
+  --text-xl: 17px; /* dialog titles */
+  /* Spacing on a 4px step, for gaps, padding and margins. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
   font-family: var(--font-ui);
 }
 
@@ -32,51 +48,51 @@ body {
 .dlg {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   width: 400px;
   max-height: 90vh;
   overflow: auto;
   /* No bottom padding: the sticky .actions bar below supplies it, so the buttons
      sit in the same place whether or not the form has to scroll. */
-  padding: 22px 22px 0;
+  padding: var(--space-6) var(--space-6) 0;
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: var(--radius-l);
   background: var(--surface);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  font-size: 13px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border);
+  font-size: var(--text-m);
 }
 .dlg h2 {
-  margin: 0 0 4px;
-  font-size: 17px;
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xl);
   font-weight: 700;
 }
 .dlg label {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
+  gap: var(--space-1);
+  font-size: var(--text-s);
   color: var(--dim);
 }
 .dlg label input,
 .dlg label select {
-  font-size: 13px;
+  font-size: var(--text-m);
   color: var(--fg);
 }
 .dlg .mono {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--text-s);
 }
 .dlg .note {
   margin: 0;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   background: var(--bg-deep);
-  color: var(--green);
-  font-size: 12px;
+  color: var(--green-text);
+  font-size: var(--text-s);
   line-height: 1.4;
 }
 .dlg .note svg {
@@ -85,13 +101,13 @@ body {
 .dlg label.check {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: var(--space-2);
+  font-size: var(--text-m);
   color: var(--fg);
 }
 .dlg .row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .dlg .grow {
   flex: 1;
@@ -103,15 +119,15 @@ body {
 .dlg select {
   font: inherit;
   color: inherit;
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
   background: var(--input);
 }
 .dlg input:focus-visible,
 .dlg select:focus-visible {
-  outline: 1px solid var(--accent);
-  border-color: var(--accent);
+  outline: 1px solid var(--focus);
+  border-color: var(--focus);
 }
 .dlg input[type="checkbox"] {
   padding: 0;
@@ -123,68 +139,54 @@ body {
   z-index: 1;
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin: 4px -22px 0;
-  padding: 14px 22px;
+  gap: var(--space-2);
+  margin: var(--space-1) calc(var(--space-6) * -1) 0;
+  padding: var(--space-3) var(--space-6);
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
-.dlg .actions button {
-  font: inherit;
-  color: inherit;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: none;
-  cursor: pointer;
-}
-.dlg .actions .primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-.dlg .actions button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 .dlg .error {
   margin: 0;
-  color: var(--red);
+  color: var(--red-text);
 }
 .dlg .hint {
   margin: 0;
   color: var(--dim);
-  font-size: 12px;
+  font-size: var(--text-s);
 }
 .dlg .hint.warn {
-  color: var(--red);
+  color: var(--red-text);
 }
 
 /* One look for every dropdown: no native chrome, a plain chevron. */
 select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  /* Two gradients draw the chevron in --dim, so it follows the theme (a data-URL image cannot). */
+  background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%) !important;
   background-repeat: no-repeat !important;
-  background-position: right 8px center !important;
-  background-size: 12px !important;
-  padding-right: 26px !important;
+  background-position: right 13px center, right 8px center !important;
+  background-size: 5px 5px !important;
+  padding-right: var(--space-6) !important;
   cursor: pointer;
 }
 select:hover {
-  border-color: var(--accent);
+  border-color: var(--focus);
 }
 select:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
 /* Keyboard focus: one visible ring for every button. */
 button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
-.dlg .actions .primary,
-.dlg .actions .primary:disabled {
-  color: var(--on-accent);
+
+/* The same ring for anything else that takes keyboard focus (rows, panels, custom controls). */
+[tabindex]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }

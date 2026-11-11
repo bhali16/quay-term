@@ -1,15 +1,12 @@
 <script lang="ts">
-  import { focus } from "./focus";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import type { HostKeyPrompt } from "./bindings/HostKeyPrompt";
 
   let { prompt, onanswer }: { prompt: HostKeyPrompt; onanswer: (trust: boolean) => void } = $props();
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onanswer(false)} />
-
-<div class="dlg-backdrop top" role="presentation">
-  <div class="dlg" role="alertdialog" aria-label="Unknown host key" tabindex="-1">
-    <h2>Trust this host?</h2>
+<Dialog title="Trust this host?" alert top onclose={() => onanswer(false)}>
     <p>
       The authenticity of <strong>{prompt.host}:{prompt.port}</strong> cannot be verified. This is the first time you
       connect to it.
@@ -21,18 +18,14 @@
       <dd class="fp">{prompt.fingerprint}</dd>
     </dl>
     <p class="hint">Compare the fingerprint with one from the server's owner. Trusting saves it to known_hosts.</p>
-    <div class="actions">
-      <button use:focus onclick={() => onanswer(false)}>Cancel</button>
-      <button class="primary" onclick={() => onanswer(true)}>Trust and connect</button>
-    </div>
-  </div>
-</div>
+  {#snippet actions()}
+    <!-- Focus starts on Cancel, so a stray Enter never trusts a key. -->
+    <Button initialFocus onclick={() => onanswer(false)}>Cancel</Button>
+    <Button variant="primary" onclick={() => onanswer(true)}>Trust and connect</Button>
+  {/snippet}
+</Dialog>
 
 <style>
-  /* Above the other dialogs (z-index 10): a host-key prompt must never be hidden behind one. */
-  .top {
-    z-index: 20;
-  }
   p {
     margin: 0;
     line-height: 1.5;
@@ -40,11 +33,11 @@
   dl {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 6px 14px;
+    gap: var(--space-2) var(--space-4);
     margin: 0;
-    padding: 10px 12px;
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     background: var(--bg-deep);
   }
   dt {
@@ -55,7 +48,7 @@
   }
   .fp {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-s);
     word-break: break-all;
   }
 </style>

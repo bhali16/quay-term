@@ -46,6 +46,14 @@ pub struct SftpOpened {
     pub home: String,
 }
 
+/// A download that was queued: its transfer id and the local file it is written to.
+#[derive(Serialize, TS)]
+#[ts(export, export_to = "../../ui/src/lib/bindings/")]
+pub struct QueuedDownload {
+    pub id: TransferId,
+    pub path: String,
+}
+
 /// A transfer event tagged with the connection it belongs to.
 #[derive(Clone, Serialize, TS)]
 #[ts(export, export_to = "../../ui/src/lib/bindings/")]
@@ -227,31 +235,42 @@ pub fn sftp_upload(
         .collect())
 }
 
-/// Queue a download into the user's Downloads folder; returns where it goes.
+/// Queue a download into `dir`, or into the user's Downloads folder when none is given.
+/// Returns the transfer and the local file it goes to (never over a file that is already there).
 #[tauri::command]
 pub fn sftp_download(
     app: AppHandle,
     sftps: State<'_, Sftps>,
     id: u32,
     remote: String,
-) -> Result<String, String> {
+    dir: Option<String>,
+) -> Result<QueuedDownload, String> {
     let conn = sftps.get(id)?;
-    let dir = app
-        .path()
-        .download_dir()
-        .map_err(|_| "Could not find your Downloads folder.".to_string())?;
+    let dir = match dir {
+        Some(d) => {
+            let d = PathBuf::from(d);
+            if !d.is_dir() {
+                return Err(format!("{} is not a folder.", d.display()));
+            }
+            d
+        }
+        None => app
+            .path()
+            .download_dir()
+            .map_err(|_| "Could not find your Downloads folder.".to_string())?,
+    };
     let name = remote
         .rsplit('/')
         .find(|s| !s.is_empty())
         .unwrap_or("download");
     let local = free_name(&dir, name);
-    let shown = local.display().to_string();
-    conn.queue.submit(TransferRequest {
+    let path = local.display().to_string();
+    let id = conn.queue.submit(TransferRequest {
         direction: Direction::Download,
         local,
         remote,
     });
-    Ok(shown)
+    Ok(QueuedDownload { id, path })
 }
 
 /// `name`, or `name (2)`, `name (3)`... if something is already there.

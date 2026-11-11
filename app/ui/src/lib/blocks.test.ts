@@ -30,6 +30,23 @@ describe("BlockTracker", () => {
     expect(t.ran()).toHaveLength(0);
   });
 
+  it("reports a running command until it ends or a new prompt replaces it", () => {
+    const t = new BlockTracker();
+    expect(t.running()).toBe(false);
+    t.promptStart(mk(1));
+    t.promptEnd(mk(1), 2);
+    expect(t.running()).toBe(false);
+    t.commandStart(mk(2), 1000);
+    expect(t.running()).toBe(true);
+    t.commandEnd(mk(4), 0, 2000);
+    expect(t.running()).toBe(false);
+    // A command cut off by a dropped session never ends; the next prompt clears it.
+    t.promptStart(mk(5));
+    t.commandStart(mk(6), 3000);
+    t.promptStart(mk(9));
+    expect(t.running()).toBe(false);
+  });
+
   it("replaces a prompt that never ran a command", () => {
     const t = new BlockTracker();
     t.promptStart(mk(1));

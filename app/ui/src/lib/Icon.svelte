@@ -1,5 +1,5 @@
 <script lang="ts">
-  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left" | "palette" | "keyboard" | "info" | "search" | "check" | "lock" | "file" | "arrow-up" | "arrow-down" | "trash" | "refresh" | "swap";
+  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left" | "palette" | "keyboard" | "info" | "search" | "check" | "lock" | "file" | "arrow-up" | "arrow-down" | "trash" | "refresh" | "swap" | "alert" | "stop" | "maximize" | "radio" | "more" | "list" | "command";
   let { name, size = 16, tint = false }: { name: Name; size?: number; tint?: boolean } = $props();
 
   const folder = "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z";
@@ -32,6 +32,13 @@
     "arrow-up": ["m5 12 7-7 7 7", "M12 19V5"],
     "arrow-down": ["M12 5v14", "m19 12-7 7-7-7"],
     terminal: ["m4 17 6-6-6-6", "M12 19h8"],
+    alert: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z", "M12 8v5", "M12 16h.01"],
+    stop: ["M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"],
+    list: ["M3 6h.01", "M3 12h.01", "M3 18h.01", "M8 6h13", "M8 12h13", "M8 18h13"],
+    command: ["M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"],
+    more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
+    maximize: ["M8 3H5a2 2 0 0 0-2 2v3", "M21 8V5a2 2 0 0 0-2-2h-3", "M3 16v3a2 2 0 0 0 2 2h3", "M16 21h3a2 2 0 0 0 2-2v-3"],
+    radio: ["M4.9 19.1C1 15.2 1 8.8 4.9 4.9", "M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5", "M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z", "M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5", "M19.1 4.9C23 8.8 23 15.1 19.1 19"],
     swap: ["M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4"],
   };
 </script>

@@ -6,14 +6,19 @@
     subtitle?: string;
     /** Shortcut shown on the right. */
     hint?: string;
+    /** Why the item cannot run in the current tab. It is shown greyed out, with this as its subtitle. */
+    disabled?: string;
     run: () => void;
   };
 </script>
 
 <script lang="ts">
+  import { onMount } from "svelte";
   import { focus } from "./focus";
+  import Dialog from "./Dialog.svelte";
   import Icon from "./Icon.svelte";
   import { parseQuery, rank } from "./fuzzy";
+  import { formatShortcut } from "./keys";
   import { ago, applyFilter, collapse, hostsOf, noFilter, type HistoryFilter, type HistoryRow, type Range } from "./history";
   import type { HistoryEntry } from "./bindings/HistoryEntry";
 
@@ -125,10 +130,7 @@
   });
 
   function onkey(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onclose();
-    } else if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
+    if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
       e.preventDefault();
       sel = count ? (sel + 1) % count : 0;
     } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) {
@@ -139,7 +141,7 @@
       if (histMode) insert(hrows[sel]);
       else {
         const item = results[sel];
-        if (item) onrun(item);
+        if (item && !item.disabled) onrun(item);
       }
     } else if (histMode && e.key === "Delete" && e.shiftKey) {
       // Shift+Delete forgets the selected command (plain Delete still edits the query).
@@ -158,8 +160,7 @@
   const icon = (g: PaletteItem["group"]) => (g === "Sessions" ? "server" : g === "Snippets" ? "terminal" : g === "Tabs" ? "folder" : "search");
 </script>
 
-<div class="dlg-backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
-  <div class="pal" role="dialog" aria-label="Command palette">
+<Dialog label="Command palette" class="pal" plain backdropClose {onclose}>
     <div class="box">
       <Icon name="search" size={16} />
       <input
@@ -239,15 +240,17 @@
           data-i={i}
           class="row"
           class:sel={i === sel}
+          class:off={!!item.disabled}
           role="option"
           aria-selected={i === sel}
+          aria-disabled={!!item.disabled}
           tabindex="-1"
           onmousemove={() => (sel = i)}
-          onclick={() => onrun(item)}
+          onclick={() => !item.disabled && onrun(item)}
         >
           <span class="ic"><Icon name={icon(item.group)} size={15} /></span>
           <span class="t">{item.title}</span>
-          {#if item.subtitle}<span class="s">{item.subtitle}</span>{/if}
+          {#if item.disabled ?? item.subtitle}<span class="s">{item.disabled ?? item.subtitle}</span>{/if}
           {#if parsed.query.trim()}<span class="g">{item.group}</span>{/if}
           {#if item.hint}<kbd>{item.hint}</kbd>{/if}
         </div>
@@ -258,28 +261,23 @@
     </div>
     <div class="foot">
       {#if histMode}
-        <span><kbd>⇧⌦</kbd> forget</span>
+        <span><kbd>{formatShortcut("Shift+Delete")}</kbd> forget</span>
         <span class="sp"><kbd>↑↓</kbd> move <kbd>↵</kbd> type at prompt <kbd>esc</kbd> close</span>
       {:else}
         {#each modeHelp as [k, label] (k)}<span><kbd>{k}</kbd> {label}</span>{/each}
         <span class="sp"><kbd>↑↓</kbd> move <kbd>↵</kbd> run <kbd>esc</kbd> close</span>
       {/if}
     </div>
-  </div>
-</div>
+</Dialog>
 
 <style>
-  .dlg-backdrop {
-    align-items: flex-start;
-    padding-top: 12vh;
-  }
-  .pal {
+  :global(.pal) {
     width: min(640px, calc(100vw - 32px));
     max-height: 70vh;
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
     overflow: hidden;
@@ -287,8 +285,8 @@
   .box {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
     color: var(--dim);
   }
@@ -296,7 +294,7 @@
     flex: 1;
     min-width: 0;
     font: inherit;
-    font-size: 15px;
+    font-size: var(--text-l);
     color: var(--fg);
     background: none;
     border: 0;
@@ -306,11 +304,11 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 6px;
+    padding: var(--space-2);
   }
   .grp {
-    padding: 8px 8px 4px;
-    font-size: 11px;
+    padding: var(--space-2) var(--space-2) var(--space-1);
+    font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -319,20 +317,40 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 7px 8px;
-    border-radius: 7px;
-    font-size: 14px;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-2);
+    border-radius: var(--radius-m);
+    font-size: var(--text-m);
     cursor: pointer;
   }
   .row.sel {
     background: var(--accent);
-    color: var(--on-accent, #fff);
+    color: var(--on-accent);
+  }
+  /* Cannot run in this tab: the title is dimmed and the subtitle says why. Selected, it gets an
+     outline, not the accent fill, so it does not look like something Enter will run. */
+  .row.off {
+    cursor: default;
+  }
+  .row.off .t,
+  .row.off kbd {
+    color: var(--dim);
+  }
+  .row.off.sel {
+    background: var(--hover);
+    color: var(--fg);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
   }
   .ic {
     display: flex;
     flex: none;
-    opacity: 0.75;
+    color: var(--dim);
+  }
+  /* On the selected row everything takes the full on-accent colour: a faded one fails on the accent fill. */
+  .row.sel .ic,
+  .row.sel .s,
+  .row.sel .g {
+    color: inherit;
   }
   .t {
     flex: none;
@@ -347,23 +365,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
-    opacity: 0.65;
+    font-size: var(--text-s);
+    color: var(--dim);
   }
   .g {
     margin-left: auto;
-    font-size: 11px;
-    opacity: 0.6;
+    font-size: var(--text-xs);
+    color: var(--dim);
   }
   kbd {
     flex: none;
     margin-left: auto;
-    padding: 1px 6px;
+    padding: 1px var(--space-2);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font: inherit;
-    font-size: 11px;
-    opacity: 0.85;
+    font-size: var(--text-s);
+    letter-spacing: 0.04em;
   }
   .row.sel kbd {
     border-color: currentColor;
@@ -372,19 +390,19 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .filters select,
   .filters button {
     font: inherit;
     color: var(--fg);
     background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 3px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-m);
+    padding: 2px var(--space-2);
     cursor: pointer;
   }
   .filters select {
@@ -399,16 +417,16 @@
     margin-left: -1px;
   }
   .seg button:first-child {
-    border-radius: 6px 0 0 6px;
+    border-radius: var(--radius-m) 0 0 var(--radius-m);
     margin-left: 0;
   }
   .seg button:last-child {
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--radius-m) var(--radius-m) 0;
   }
   .filters .on {
     background: var(--accent);
     border-color: var(--accent);
-    color: var(--on-accent, #fff);
+    color: var(--on-accent);
   }
   .cmd {
     flex: none;
@@ -417,11 +435,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .ic.bad {
-    color: var(--red);
-    opacity: 1;
+    color: var(--red-text);
   }
   .row.sel .ic.bad {
     color: inherit;
@@ -429,10 +446,14 @@
   .del {
     flex: none;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
     margin-left: auto;
     padding: 2px;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     background: none;
     color: inherit;
     opacity: 0;
@@ -448,7 +469,7 @@
   }
   .link {
     font: inherit;
-    color: var(--accent);
+    color: var(--accent-text);
     background: none;
     border: 0;
     padding: 0;
@@ -456,18 +477,18 @@
     cursor: pointer;
   }
   .none {
-    padding: 18px;
+    padding: var(--space-5);
     text-align: center;
     color: var(--dim);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .foot {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px;
-    padding: 8px 14px;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-4);
     border-top: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--text-s);
     color: var(--dim);
   }
   .foot kbd {

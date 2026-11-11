@@ -4,6 +4,7 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
+  import { SearchAddon } from "@xterm/addon-search";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import "@xterm/xterm/css/xterm.css";
   import {
@@ -16,8 +17,11 @@
   } from "./ipc";
   import type { SshTarget } from "./bindings/SshTarget";
   import { settings } from "./settings.svelte";
-  import { actionFor, isMac } from "./keys";
-  import { focus } from "./focus";
+  import { actionFor, formatShortcut, isMac } from "./keys";
+  import Icon from "./Icon.svelte";
+  import { inkOn } from "./themes";
+  import Button from "./Button.svelte";
+  import Menu from "./Menu.svelte";
   import { BlockTracker, parseExit, type Block } from "./blocks";
   import { REMOTE_SNIPPET } from "./shellIntegration";
   import { expansionAt, toInput } from "./snippets";
@@ -36,6 +40,7 @@
     onconnected,
     focused = true,
     compact = false,
+    badgeRow = false,
     onfocus,
     oninput,
     broadcasting = false,
@@ -61,6 +66,8 @@
     onconnected?: () => void;
     focused?: boolean;
     compact?: boolean;
+    /** The app draws its own badges (Zoomed, Muted) over this pane, so keep the badge row free. */
+    badgeRow?: boolean;
     onfocus?: () => void;
     /** Text typed or pasted here, for the app to mirror to other panes. */
     oninput?: (data: string) => void;
@@ -77,6 +84,8 @@
     onfiles?: () => void;
   } = $props();
   const remote = $derived(ssh !== null || saved !== null);
+  /** Badges that stay get a row of their own above the terminal, so they never cover its first line. */
+  const header = $derived(!!env || broadcasting || badgeRow);
 
   let host: HTMLDivElement;
   let term: Terminal;
@@ -87,6 +96,10 @@
   let pendingPaste = $state<string | null>(null);
   let noisy = false;
   let lastExit = $state<string | null>(null);
+  const endedBar = $derived(ended && settings.value.show_hints && !hintDismissed && pendingPaste === null);
+  const endedText = $derived(`${remote ? "Disconnected" : "Shell exited"}${lastExit ? `: ${lastExit}` : ""}`);
+  /** Height of the "Disconnected" bar; the terminal ends above it, so the last lines (the error) stay readable. */
+  let barH = $state(0);
   const tracker = new BlockTracker<IMarker>(1000);
   let seenMarks = false;
   /** Last directory the shell reported (OSC 7); kept with each command for history. */
@@ -118,6 +131,8 @@
     if (ended) start();
   }
   export const isEnded = () => ended;
+  /** A command is running here (known only in a shell with command marks). */
+  export const isBusy = () => !ended && id !== null && tracker.running();
   export const focusTerminal = () => term?.focus();
 
   async function writeClipboard(text: string) {
@@ -173,6 +188,63 @@
     if (ok && text) term.paste(text);
     term.focus();
   }
+
+  // ---- find in scrollback ----
+  let search: SearchAddon;
+  let finding = $state(false);
+  let findText = $state("");
+  let findCase = $state(false);
+  /** Where the current match is among all of them; `count` is 0 when nothing matches. */
+  let found = $state({ index: -1, count: 0 });
+  let findInput = $state<HTMLInputElement>();
+  // The addon wants plain #rrggbb colours; they follow the theme.
+  const findOptions = () => ({
+    caseSensitive: findCase,
+    decorations: {
+      matchBackground: settings.theme.ui.border,
+      matchOverviewRuler: settings.theme.ui.yellow,
+      activeMatchBackground: settings.theme.ui.accent,
+      activeMatchColorOverviewRuler: settings.theme.ui.accent,
+    },
+  });
+  /** Open the find bar (or go back to it), with the selected text as the first thing to look for. */
+  export function openFind() {
+    const picked = term.getSelection();
+    if (picked && !picked.includes("\n")) findText = picked;
+    finding = true;
+    requestAnimationFrame(() => {
+      findInput?.focus();
+      findInput?.select();
+      if (findText) findStep(true, true);
+    });
+  }
+  /** Go to the next or previous match. `stay` keeps the current match while the text is still being typed. */
+  function findStep(forward: boolean, stay = false) {
+    if (!findText) {
+      search.clearDecorations();
+      found = { index: -1, count: 0 };
+      return;
+    }
+    if (forward) search.findNext(findText, { ...findOptions(), incremental: stay });
+    else search.findPrevious(findText, findOptions());
+  }
+  function closeFind() {
+    finding = false;
+    search.clearDecorations();
+    found = { index: -1, count: 0 };
+    term.focus();
+  }
+  function findKey(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      findStep(!e.shiftKey);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeFind();
+    }
+  }
+  const findLabel = $derived(!findText ? "" : found.count === 0 ? "No matches" : found.index < 0 ? `${found.count} matches` : `${found.index + 1} of ${found.count}`);
 
   // ---- command blocks (shell integration marks) ----
   const nowMs = () => Date.now();
@@ -485,6 +557,7 @@
     term.options.fontFamily = v.font_family;
     term.options.fontSize = v.font_size;
     term.options.cursorBlink = v.cursor_blink;
+    term.options.screenReaderMode = v.screen_reader;
     term.options.scrollback = v.scrollback;
     term.options.theme = theme;
     if (active) requestAnimationFrame(() => fit.fit());
@@ -496,7 +569,9 @@
       const wantFocus = focused;
       requestAnimationFrame(() => {
         fit.fit();
-        if (wantFocus) term.focus();
+        // Someone walking the tab list with the arrow keys keeps focus there; Enter brings it here.
+        const onTabs = document.activeElement?.matches('[role="tab"]:focus-visible');
+        if (wantFocus && !onTabs) term.focus();
       });
     }
   });
@@ -517,6 +592,7 @@
       macOptionClickForcesSelection: true,
       rightClickSelectsWord: false,
       cursorBlink: v.cursor_blink,
+      screenReaderMode: v.screen_reader,
       scrollback: v.scrollback,
       theme: settings.theme.term,
     });
@@ -555,6 +631,9 @@
         if (/^https?:\/\//i.test(uri)) openUrl(uri).catch(() => {});
       }),
     );
+    search = new SearchAddon();
+    term.loadAddon(search);
+    search.onDidChangeResults((r) => (found = { index: r.resultIndex, count: r.resultCount }));
     term.open(host);
     fit.fit();
     term.parser.registerOscHandler(133, onMark);
@@ -639,89 +718,76 @@
   });
 </script>
 
-<div class="term" class:hidden={!active} class:compact bind:this={host}></div>
+<div
+  class="term"
+  class:hidden={!active}
+  class:compact
+  class:header
+  class:barred={endedBar}
+  style:bottom={endedBar ? `${barH + 16}px` : undefined}
+  bind:this={host}
+></div>
 {#if active}
   {#if color}<span class="strip" style:background={color}></span>{/if}
   <div class="badges">
-    {#if env}<span class="env" class:prod={/^prod/i.test(env)} style:--c={color ?? "var(--accent)"} title="Environment: {env}">{env}</span>{/if}
+    {#if env}<span class="env" class:prod={/^prod/i.test(env)} style:--c={color ?? "var(--accent)"} style:--on={inkOn(color)} title="Environment: {env}">{env}</span>{/if}
     {#if copied}<span class="copied" role="status">{copied}</span>{/if}
     {#if broadcasting}<span class="bcast" title="What you type here is also sent to the other selected panes">Broadcast</span>{/if}
   </div>
+  {#if finding}
+    <div class="find" class:low={header} role="search">
+      <input
+        bind:this={findInput}
+        bind:value={findText}
+        oninput={() => findStep(true, true)}
+        onkeydown={findKey}
+        placeholder="Find"
+        aria-label="Find in scrollback"
+        autocapitalize="off"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span class="count" class:none={!!findText && found.count === 0} role="status">{findLabel}</span>
+      <Button variant="icon" active={findCase} aria-pressed={findCase} title="Match case" aria-label="Match case" onclick={() => ((findCase = !findCase), findStep(true, true))}><span class="aa">Aa</span></Button>
+      <Button variant="icon" title={`Previous match (${formatShortcut("Shift+Enter")})`} aria-label="Previous match" disabled={found.count === 0} onclick={() => findStep(false)}><Icon name="arrow-up" size={14} /></Button>
+      <Button variant="icon" title={`Next match (${formatShortcut("Enter")})`} aria-label="Next match" disabled={found.count === 0} onclick={() => findStep(true)}><Icon name="arrow-down" size={14} /></Button>
+      <Button variant="icon" title={`Close (${formatShortcut("Escape")})`} aria-label="Close find" onclick={closeFind}><Icon name="x" size={14} /></Button>
+    </div>
+  {/if}
   {#if menu}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="shield" onmousedown={() => (menu = null)} oncontextmenu={(e) => (e.preventDefault(), (menu = null))}></div>
-    <div class="bmenu" role="menu" tabindex="-1" style:left="{menu.x}px" style:top="{menu.y}px" onkeydown={(e) => e.key === "Escape" && ((menu = null), term.focus())}>
-      <button role="menuitem" use:focus disabled={!menu.block.command} onclick={() => menuDo("command")}>Copy command</button>
+    <Menu label="Command block" left={menu.x} top={menu.y} onclose={() => ((menu = null), term.focus())}>
+      <button role="menuitem" disabled={!menu.block.command} onclick={() => menuDo("command")}>Copy command</button>
       <button role="menuitem" onclick={() => menuDo("output")}>Copy output</button>
       <button role="menuitem" onclick={() => menuDo("both")}>Copy both</button>
       <hr />
       <button role="menuitem" onclick={() => menuDo("select")}>Select output</button>
       <button role="menuitem" disabled={!menu.block.command || !onsnippet} onclick={() => menuDo("snippet")}>Add to snippets</button>
       {#if !isMac}<hr /><button role="menuitem" onclick={() => menuDo("paste")}>Paste</button>{/if}
-    </div>
+    </Menu>
   {/if}
   {#if pendingPaste !== null}
     <div class="bar confirm" role="alertdialog" tabindex="-1" aria-label="Confirm paste" onkeydown={(e) => e.key === "Escape" && answerPaste(false)}>
       <span class="msg">Paste {pendingPaste.replace(/[\r\n]+$/, "").split(/\r\n|\r|\n/).length} lines into this {env ?? "production"} session?</span>
-      <button use:focus class="go" onclick={() => answerPaste(true)}>Paste</button>
-      <button onclick={() => answerPaste(false)}>Cancel</button>
+      <Button variant="primary" size="sm" initialFocus onclick={() => answerPaste(true)}>Paste</Button>
+      <Button size="sm" onclick={() => answerPaste(false)}>Cancel</Button>
     </div>
-  {:else if ended && settings.value.show_hints && !hintDismissed}
-    <div class="bar" role="status">
-      <span class="msg">{remote ? "Disconnected" : "Shell exited"}{lastExit ? `: ${lastExit}` : ""}</span>
-      <button class="go" onclick={() => (reconnect(), term.focus())}>{remote ? "Reconnect" : "Restart"} <kbd>R</kbd></button>
-      {#if remote && onfiles}<button onclick={onfiles}>Files</button>{/if}
-      <button aria-label="Dismiss" onclick={() => ((hintDismissed = true), term.focus())}>Dismiss</button>
+  {:else if endedBar}
+    <div class="bar" role="status" bind:offsetHeight={barH}>
+      <span class="msg wrap" title={endedText}>{endedText}</span>
+      <Button variant="primary" size="sm" onclick={() => (reconnect(), term.focus())}>{remote ? "Reconnect" : "Restart"} <kbd>R</kbd></Button>
+      {#if remote && onfiles}<Button size="sm" onclick={onfiles}>Files</Button>{/if}
+      <Button size="sm" onclick={() => ((hintDismissed = true), term.focus())}>Dismiss</Button>
     </div>
   {/if}
 {/if}
 
 <style>
-  .shield {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-  }
-  .bmenu {
-    position: fixed;
-    z-index: 41;
-    min-width: 170px;
-    padding: 4px;
-    background: var(--surface);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    display: flex;
-    flex-direction: column;
-  }
-  .bmenu button {
-    all: unset;
-    box-sizing: border-box;
-    padding: 6px 10px;
-    border-radius: 5px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .bmenu button:hover:not(:disabled),
-  .bmenu button:focus-visible {
-    background: var(--hover);
-  }
-  .bmenu button:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .bmenu hr {
-    border: 0;
-    border-top: 1px solid var(--border);
-    margin: 4px 2px;
-  }
   .term {
     position: absolute;
     inset: 0;
     /* content-box on purpose: FitAddon reads this element's computed width and
        does not subtract its padding, so border-box would overflow the window. */
-    padding: 20px 24px;
+    padding: var(--space-5) var(--space-6);
     background: var(--bg);
   }
   .badges {
@@ -731,8 +797,59 @@
     /* Above xterm's decorations (the block copy buttons sit at z-index 6). */
     z-index: 8;
     display: flex;
-    gap: 6px;
+    gap: var(--space-2);
     pointer-events: none;
+  }
+  /* Find in scrollback: a small bar in the pane's top right corner, over the text. */
+  .find {
+    position: absolute;
+    top: 6px;
+    right: 14px;
+    z-index: 9;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    max-width: calc(100% - 28px);
+    box-sizing: border-box;
+    padding: 2px var(--space-1) 2px var(--space-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+    font-size: var(--text-m);
+  }
+  /* Below the badge row when the pane has one. */
+  .find.low {
+    top: 26px;
+  }
+  .find:focus-within {
+    border-color: var(--focus);
+  }
+  .find input {
+    flex: 1 1 160px;
+    min-width: 60px;
+    width: 160px;
+    padding: 2px 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+  }
+  .find .count {
+    flex: none;
+    padding: 0 var(--space-1);
+    color: var(--dim);
+    font-size: var(--text-s);
+    white-space: nowrap;
+  }
+  .find .count.none {
+    color: var(--red-text);
+  }
+  .find .aa {
+    font-size: var(--text-s);
+    font-weight: 600;
+    line-height: 1;
   }
   .strip {
     position: absolute;
@@ -744,18 +861,18 @@
     pointer-events: none;
   }
   .env {
-    padding: 1px 7px;
-    border-radius: 4px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
     background: var(--c);
-    color: var(--on-accent, #fff);
-    font-size: 11px;
+    color: var(--on);
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
   .env.prod {
     background: var(--red);
-    color: var(--bg);
+    color: var(--on-red);
   }
   .bar {
     position: absolute;
@@ -765,13 +882,13 @@
     z-index: 3;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .bar.confirm {
     border-color: var(--red);
@@ -783,33 +900,30 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .bar button {
-    padding: 3px 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--hover);
-    color: var(--fg);
-    font: inherit;
-    cursor: pointer;
-  }
-  .bar button.go {
-    border-color: var(--accent);
+  /* The reason for a drop can be long: two lines here, the whole text in the tooltip. */
+  .bar .msg.wrap {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .bar kbd {
-    margin-left: 4px;
-    padding: 0 4px;
-    border-radius: 3px;
+    margin-left: var(--space-1);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-s);
     background: var(--bg);
     font: inherit;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--dim);
   }
   .copied {
-    padding: 1px 8px;
-    border-radius: 4px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
     background: var(--green);
     color: var(--bg);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     animation: copied-in 0.12s ease-out;
   }
@@ -825,15 +939,23 @@
     }
   }
   .bcast {
-    padding: 1px 7px;
-    border-radius: 4px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
     background: var(--red);
-    color: var(--bg);
-    font-size: 11px;
+    color: var(--on-red);
+    font-size: var(--text-xs);
     font-weight: 600;
   }
   .term.compact {
-    padding: 8px 10px;
+    padding: var(--space-2) var(--space-3);
+  }
+  /* Room for the badge row. The padding shrinks so the text does not move further than it has to. */
+  .term.header {
+    top: 22px;
+    padding-top: var(--space-1);
+  }
+  .term.barred {
+    padding-bottom: 0;
   }
   .hidden {
     visibility: hidden;

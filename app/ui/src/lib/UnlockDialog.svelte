@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import { focus } from "./focus";
   import { vaultUnlock } from "./ipc";
 
@@ -24,11 +26,7 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
-
-<div class="dlg-backdrop" role="presentation">
-  <form class="dlg" onsubmit={(e) => (e.preventDefault(), submit())} aria-label="Secret vault">
-    <h2>{isNew ? "Set a master password" : "Unlock the secret vault"}</h2>
+<Dialog title={isNew ? "Set a master password" : "Unlock the secret vault"} onclose={oncancel} onsubmit={(e) => (e.preventDefault(), submit())}>
     <p class="hint">
       {isNew
         ? "This computer has no system keychain, so saved passwords are kept in a file locked with a master password. You enter it once per launch."
@@ -37,9 +35,8 @@
     <input type="password" use:focus bind:value={pw} autocomplete="off" aria-label="Master password" />
     {#if isNew}<input type="password" bind:value={pw2} autocomplete="off" aria-label="Repeat the master password" />{/if}
     {#if error}<p class="error" role="alert">{error}</p>{/if}
-    <div class="actions">
-      <button type="button" onclick={oncancel}>Not now</button>
-      <button type="submit" class="primary" disabled={!pw || busy}>{busy ? "Working…" : isNew ? "Set password" : "Unlock"}</button>
-    </div>
-  </form>
-</div>
+  {#snippet actions()}
+    <Button onclick={oncancel}>Not now</Button>
+    <Button type="submit" variant="primary" disabled={!pw || busy}>{busy ? "Working…" : isNew ? "Set password" : "Unlock"}</Button>
+  {/snippet}
+</Dialog>

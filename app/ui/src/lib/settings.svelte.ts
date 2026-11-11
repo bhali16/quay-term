@@ -9,6 +9,9 @@ const FONT = "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', ui-monospac
 
 const fallback: Settings = {
   theme: "quay-dark",
+  theme_match_system: false,
+  theme_light: "quay-light",
+  theme_dark: "quay-dark",
   font_family: FONT,
   font_size: 14,
   cursor_blink: true,
@@ -23,15 +26,35 @@ const fallback: Settings = {
   notify_show_command: true,
   keybindings: {},
   focus_follows_mouse: false,
+  confirm_close: true,
   tab_layout: "horizontal",
+  dim_unfocused_panes: true,
   snippet_expand: false,
+  screen_reader: false,
   record_history: false,
   history_deny_patterns: DEFAULT_DENY,
 };
 
+/** The theme id in use: the chosen one, or the light or dark choice when following the system. */
+export function activeThemeId(v: Pick<Settings, "theme" | "theme_match_system" | "theme_light" | "theme_dark">, systemDark: boolean): string {
+  return v.theme_match_system ? (systemDark ? v.theme_dark : v.theme_light) : v.theme;
+}
+
+const darkQuery = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
+
 class Store {
   value = $state<Settings>(fallback);
-  theme = $derived(themeById(this.value.theme));
+  /** The system is in dark mode right now. */
+  systemDark = $state(darkQuery?.matches ?? true);
+  theme = $derived(themeById(activeThemeId(this.value, this.systemDark)));
+
+  constructor() {
+    // The system switched between light and dark: follow it at once if the user asked for that.
+    darkQuery?.addEventListener("change", (e) => {
+      this.systemDark = e.matches;
+      applyChrome(this.theme);
+    });
+  }
   bindings = $derived(resolve(this.value.keybindings));
 
   async load() {

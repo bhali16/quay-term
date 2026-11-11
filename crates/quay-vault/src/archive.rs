@@ -40,9 +40,9 @@ const MAX: Cost = Cost {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ArchiveError {
-    #[error("this is not a quay-term vault file")]
+    #[error("this is not a Quay Term vault file")]
     NotAVault,
-    #[error("the vault file asks for more memory or time than quay-term allows")]
+    #[error("the vault file asks for more memory or time than Quay Term allows")]
     TooCostly,
     #[error("wrong password, or the file is damaged")]
     WrongPasswordOrDamaged,

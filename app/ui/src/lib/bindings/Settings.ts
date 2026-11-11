@@ -7,6 +7,19 @@ export type Settings = {
  */
 theme: string, 
 /**
+ * Follow the system's light or dark appearance: `theme_light` or `theme_dark` is used
+ * instead of `theme`. Off by default, so an existing choice of theme is kept.
+ */
+theme_match_system: boolean, 
+/**
+ * Theme id used while the system is in light mode (with `theme_match_system`).
+ */
+theme_light: string, 
+/**
+ * Theme id used while the system is in dark mode (with `theme_match_system`).
+ */
+theme_dark: string, 
+/**
  * CSS font-family list for the terminal.
  */
 font_family: string, font_size: number, cursor_blink: boolean, scrollback: number, 
@@ -45,18 +58,33 @@ notify_after_secs: number,
  */
 notify_show_command: boolean, 
 /**
- * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
+ * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored. The value `none`
+ * means the action has no shortcut (its key was given to another action).
  */
 keybindings: { [key in string]: string }, 
 /**
  * Focus the pane under the mouse pointer without clicking it.
  */
-focus_follows_mouse: boolean, tab_layout: TabLayout, 
+focus_follows_mouse: boolean, 
+/**
+ * Ask before closing a tab or pane that is running a command, or a tab with several
+ * connected panes.
+ */
+confirm_close: boolean, tab_layout: TabLayout, 
+/**
+ * In a tab with several panes, draw the ones without focus slightly dimmed.
+ */
+dim_unfocused_panes: boolean, 
 /**
  * Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
  * Needs shell integration marks, so it does nothing in a shell without them.
  */
 snippet_expand: boolean, 
+/**
+ * Mirror the terminal's text into the accessibility tree so a screen reader can read it.
+ * Off by default: it costs some speed on fast output.
+ */
+screen_reader: boolean, 
 /**
  * Save finished commands (from shell integration marks) so they can be searched across
  * sessions. Off until the user opts in; nothing is written while it is off.

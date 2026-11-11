@@ -24,6 +24,7 @@ import type { Snippet } from "./bindings/Snippet";
 import type { HistoryEntry } from "./bindings/HistoryEntry";
 import type { NewHistoryEntry } from "./bindings/NewHistoryEntry";
 import type { SftpOpened } from "./bindings/SftpOpened";
+import type { QueuedDownload } from "./bindings/QueuedDownload";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
 
 /** Typed wrappers around Tauri commands. Types are generated from Rust by ts-rs. */
@@ -124,7 +125,8 @@ export const sftpDelete = (id: number, path: string) => invoke<void>("sftp_delet
 export const sftpUpload = (id: number, locals: string[], dir: string) =>
   invoke<number[]>("sftp_upload", { id, locals, dir });
 /** Resolves to the local path the file is being saved to. */
-export const sftpDownload = (id: number, remote: string) => invoke<string>("sftp_download", { id, remote });
+/** Queue a download into `dir`, or into the Downloads folder when none is given. */
+export const sftpDownload = (id: number, remote: string, dir: string | null = null) => invoke<QueuedDownload>("sftp_download", { id, remote, dir });
 export const sftpCancel = (id: number, transfer: number) => invoke<void>("sftp_cancel", { id, transfer });
 export const sftpClose = (id: number) => invoke<void>("sftp_close", { id });
 export const onSftpTransfer = (cb: (t: SftpTransfer) => void) =>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import Button from "./Button.svelte";
   import { tunnelList, tunnelStart, tunnelStop } from "./ipc";
   import type { TunnelInfo } from "./bindings/TunnelInfo";
   import type { TunnelKind } from "./bindings/TunnelKind";
@@ -10,14 +11,12 @@
     terminalId,
     saved = [],
     active,
-    onclose,
   }: {
     /** The terminal tab's session id while it is connected. */
     terminalId: () => number | null;
     /** Tunnels saved with this session, offered when not running. */
     saved?: TunnelSpec[];
     active: boolean;
-    onclose: () => void;
   } = $props();
 
   let running = $state<TunnelInfo[]>([]);
@@ -112,11 +111,6 @@
 </script>
 
 <aside aria-label="Tunnels">
-  <header>
-    <span class="title"><Icon name="swap" size={16} />Tunnels</span>
-    <button class="ibtn" aria-label="Close tunnels" onclick={onclose}><Icon name="x" size={16} /></button>
-  </header>
-
   <div class="body">
     {#if running.length === 0}
       <p class="empty">No tunnels yet. Add one below{saved.length ? ", or start a saved one" : ""}.</p>
@@ -126,7 +120,7 @@
         <div class="top">
           <span class="badge">{kindName(t.spec.kind)}</span>
           <span class="mono grow">{line(t)}</span>
-          <button class="ibtn" aria-label="Stop tunnel" title="Stop" onclick={() => stop(t)}><Icon name="x" size={14} /></button>
+          <Button variant="icon" aria-label="Stop tunnel" title="Stop" onclick={() => stop(t)}><Icon name="stop" size={13} /></Button>
         </div>
         {#if t.error}
           <p class="err">{t.error}</p>
@@ -149,7 +143,7 @@
           <div class="top">
             <span class="badge">{kindName(s.kind)}</span>
             <span class="mono grow">{s.kind === "dynamic" ? `${s.bind_host}:${s.bind_port}` : `${s.bind_host}:${s.bind_port} → ${s.dest_host}:${s.dest_port}`}</span>
-            <button class="ibtn" aria-label="Start saved tunnel" title="Start" disabled={busy} onclick={() => start(s)}><Icon name="play" size={14} /></button>
+            <Button variant="icon" aria-label="Start saved tunnel" title="Start" disabled={busy} onclick={() => start(s)}><Icon name="play" size={14} /></Button>
           </div>
         </div>
       {/each}
@@ -181,46 +175,32 @@
         <label class="check"><input type="checkbox" bind:checked={everyone} /> Let other devices on the network use it</label>
       {/if}
       {#if error}<p class="err">{error}</p>{/if}
-      <button type="submit" class="primary" disabled={!valid || busy}>Start tunnel</button>
+      <Button type="submit" variant="primary" disabled={!valid || busy}>Start tunnel</Button>
     </form>
   </div>
 </aside>
 
 <style>
+  /* Fills the dock that App draws; the dock owns the width, the edge and the close button. */
   aside {
-    width: clamp(280px, 34vw, 380px);
-    flex: none;
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg-alt);
-    border-left: 1px solid var(--border);
-    font-size: 13px;
+    font-size: var(--text-m);
     min-height: 0;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--border);
-  }
-  .title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
   }
   .body {
     flex: 1;
     overflow: auto;
-    padding: 10px;
+    padding: var(--space-3);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
   h3 {
-    margin: 8px 0 0;
-    font-size: 11px;
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--dim);
@@ -233,29 +213,29 @@
   }
   .item {
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px;
+    border-radius: var(--radius-m);
+    padding: var(--space-2);
     background: var(--bg);
   }
   .item.failed {
-    border-color: var(--danger, #d9534f);
+    border-color: var(--red);
   }
   .top {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .badge {
     flex: none;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 11px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
+    font-size: var(--text-xs);
     background: var(--hover);
     color: var(--dim);
   }
   .mono {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-s);
     overflow-wrap: anywhere;
   }
   .grow {
@@ -263,44 +243,44 @@
     min-width: 0;
   }
   .stats {
-    margin: 6px 0 0;
+    margin: var(--space-1) 0 0;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .warn,
   .err {
-    margin: 6px 0 0;
-    font-size: 12px;
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-s);
     line-height: 1.4;
   }
   .warn {
-    color: var(--warn, #d98e04);
+    color: var(--yellow-text);
   }
   .err {
-    color: var(--danger, #d9534f);
+    color: var(--red-text);
   }
   form {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
   label {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     color: var(--dim);
   }
   label.check {
     flex-direction: row;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
   }
   .row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .narrow {
     width: 84px;
@@ -310,39 +290,11 @@
     font: inherit;
     color: var(--fg);
     background: var(--input, var(--bg));
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-m);
+    padding: var(--space-1) var(--space-2);
   }
   input[type="checkbox"] {
     padding: 0;
-  }
-  button {
-    font: inherit;
-    color: inherit;
-    background: none;
-    border: 0;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  .ibtn {
-    display: flex;
-    flex: none;
-    padding: 4px;
-    color: var(--dim);
-  }
-  .ibtn:hover:not(:disabled) {
-    background: var(--hover);
-    color: var(--fg);
-  }
-  .primary {
-    align-self: flex-start;
-    padding: 6px 12px;
-    background: var(--accent);
-    color: var(--on-accent, #fff);
-  }
-  button:disabled {
-    opacity: 0.4;
-    cursor: default;
   }
 </style>

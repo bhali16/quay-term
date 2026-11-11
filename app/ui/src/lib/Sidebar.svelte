@@ -1,6 +1,10 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import { focus } from "./focus";
+  import { inkOn } from "./themes";
   import Icon from "./Icon.svelte";
+  import Button from "./Button.svelte";
+  import Menu from "./Menu.svelte";
   import type { Folder } from "./bindings/Folder";
   import type { LibraryView } from "./bindings/LibraryView";
   import type { SavedSession } from "./bindings/SavedSession";
@@ -13,20 +17,27 @@
     openIds = [],
     activeId = null,
     oncollapse,
+    toggleTitle = "",
     onshell,
     onssh,
     shellKey = "",
+    paletteKey = "",
+    onimport,
     onconnect,
+    onsplit,
+    onduplicate,
     onedit,
     onnew,
     ondelete,
-    onimport,
     onnewfolder,
     onrenamefolder,
     ondeletefolder,
     onmovesession,
     onmovefolder,
+    tabs,
   }: {
+    /** The open tabs, listed above the sessions (vertical tab layout). Not shown in the rail. */
+    tabs?: Snippet;
     library: LibraryView;
     query: string;
     version?: string;
@@ -35,17 +46,25 @@
     openIds?: number[];
     activeId?: number | null;
     oncollapse: () => void;
+    /** Tooltip of the hide/show button at the bottom, with its shortcut. */
+    toggleTitle?: string;
     /** New tab: a local shell, or an SSH connection (opens the connect dialog). */
     onshell: () => void;
     onssh: () => void;
     /** Shortcut shown in the shell button's tooltip. */
     shellKey?: string;
+    /** Shortcut of the command palette, named in the empty state. */
+    paletteKey?: string;
+    /** Import hosts from ~/.ssh/config (offered while the list is empty). */
+    onimport?: () => void;
     onconnect: (s: SavedSession) => void;
+    /** Open the session as a new pane in the front tab. */
+    onsplit?: (s: SavedSession) => void;
+    onduplicate?: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
     /** `folderId` preselects a folder in the editor. */
     onnew: (folderId: number | null) => void;
     ondelete: (s: SavedSession) => void;
-    onimport: () => void;
     onnewfolder: (name: string, parentId: number | null) => void;
     onrenamefolder: (id: number, name: string) => void;
     ondeletefolder: (id: number) => void;
@@ -60,6 +79,8 @@
   let folderName = $state("");
 
   const searching = $derived(query.trim() !== "");
+  /** Nothing saved yet (and not just a search with no hits): the empty state does the prompting. */
+  const blank = $derived(!searching && library.sessions.length === 0 && library.folders.length === 0);
   const childrenOf = (parent: number | null) => library.folders.filter((f) => f.parent_id === parent);
   const sessionsIn = (folder: number | null) => library.sessions.filter((s) => s.folder_id === folder);
 
@@ -93,9 +114,6 @@
   function cancelFolderEdit() {
     creating = null;
     renaming = null;
-  }
-  function confirmDelete(s: SavedSession) {
-    if (confirm(`Delete "${s.name}"? Its saved password, if any, is removed too.`)) ondelete(s);
   }
 
   // ---- drag and drop (pointer events: works in every webview and does not
@@ -165,6 +183,54 @@
   function abort() {
     finish();
   }
+
+  // ---- right-click menus on a session or a folder (also Shift+F10 and the menu key) ----
+  type Ctx = { x: number; y: number; session?: SavedSession; folder?: Folder; moving?: boolean };
+  let ctx = $state<Ctx | null>(null);
+  function openCtx(e: MouseEvent, what: { session?: SavedSession; folder?: Folder }) {
+    e.preventDefault();
+    // Opened from the keyboard there is no pointer position: use the row.
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const byKey = e.clientX === 0 && e.clientY === 0;
+    ctx = { x: byKey ? r.left + 24 : e.clientX, y: byKey ? r.bottom : e.clientY, ...what };
+  }
+  /** Run a menu choice, then close the menu (in that order: the items read the menu's own state). */
+  const pick = (run: () => void) => () => (run(), (ctx = null));
+  /** Every folder with its depth, in tree order, for "Move to folder". */
+  const folderList = $derived.by(() => {
+    const out: { folder: Folder; depth: number }[] = [];
+    const walk = (parent: number | null, depth: number) => {
+      for (const f of library.folders.filter((x) => x.parent_id === parent)) {
+        out.push({ folder: f, depth });
+        walk(f.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  });
+
+  /** Tree keys: Up and Down walk the visible rows, Right opens a folder, Left closes it or goes to its parent. */
+  function treeKey(e: KeyboardEvent) {
+    const el = e.target as HTMLElement;
+    if (el.getAttribute("role") !== "treeitem" || e.altKey || e.ctrlKey || e.metaKey) return;
+    const items = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="treeitem"]')];
+    const i = items.indexOf(el);
+    const folder = el.dataset.folder ? Number(el.dataset.folder) : null;
+    let to: HTMLElement | undefined;
+    if (e.key === "ArrowDown") to = items[i + 1];
+    else if (e.key === "ArrowUp") to = items[i - 1];
+    else if (e.key === "Home") to = items[0];
+    else if (e.key === "End") to = items[items.length - 1];
+    else if (e.key === "ArrowRight" && folder !== null) {
+      if (collapsed[folder]) collapsed[folder] = false;
+      else if (items[i + 1]?.dataset.parent === el.dataset.folder) to = items[i + 1];
+    } else if (e.key === "ArrowLeft") {
+      if (folder !== null && !collapsed[folder]) collapsed[folder] = true;
+      else if (el.dataset.parent) to = items.find((x) => x.dataset.folder === el.dataset.parent);
+    } else return;
+    e.preventDefault();
+    to?.focus();
+  }
 </script>
 
 {#snippet folderInput()}
@@ -180,9 +246,12 @@
 {/snippet}
 
 {#snippet sessionRow(s: SavedSession)}
-  <div class="item session" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"}>
+  <div class="item session" role="none" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"} oncontextmenu={(e) => openCtx(e, { session: s })}>
     <button
       class="main"
+      role="treeitem"
+      aria-selected={activeId === s.id}
+      data-parent={s.folder_id ?? ""}
       title={`${s.user}@${s.host}:${s.port}`}
       onpointerdown={(e) => pressed(e, { kind: "session", id: s.id, label: s.name })}
       ondblclick={() => onconnect(s)}
@@ -201,16 +270,14 @@
       </span>
     </button>
     <span class="acts">
-      <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
-      <button title="Edit" aria-label={`Edit ${s.name}`} onclick={() => onedit(s)}><Icon name="pencil" size={13} /></button>
-      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => confirmDelete(s)}><Icon name="x" size={14} /></button>
+      <button title="Connect (right-click for more)" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
     </span>
   </div>
 {/snippet}
 
 {#snippet tree(parent: number | null)}
   {#each childrenOf(parent) as f, i (f.id)}
-    <div class="item folder" class:drop={dropTarget === f.id} data-drop={f.id}>
+    <div class="item folder" role="none" class:drop={dropTarget === f.id} data-drop={f.id} oncontextmenu={(e) => renaming !== f.id && openCtx(e, { folder: f })}>
       {#if renaming === f.id}
         <input
           use:focus
@@ -221,6 +288,12 @@
       {:else}
         <button
           class="main"
+          role="treeitem"
+          aria-selected="false"
+          aria-expanded={!collapsed[f.id]}
+          aria-owns={collapsed[f.id] ? undefined : `folder-${f.id}`}
+          data-folder={f.id}
+          data-parent={f.parent_id ?? ""}
           onpointerdown={(e) => pressed(e, { kind: "folder", id: f.id, label: f.name })}
           onclick={() => !justDragged && (collapsed[f.id] = !collapsed[f.id])}
         >
@@ -229,18 +302,12 @@
           <span class="name">{f.name}</span>
         </button>
         <span class="acts">
-          <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
-          <button title="New subfolder" aria-label={`New subfolder in ${f.name}`} onclick={() => startCreate(f.id)}><Icon name="folder-plus" size={14} /></button>
-          <button title="Rename" aria-label={`Rename ${f.name}`} onclick={() => startRename(f.id, f.name)}><Icon name="pencil" size={13} /></button>
-          <button
-            title="Delete folder"
-            aria-label={`Delete folder ${f.name}`}
-            onclick={() => confirm(`Delete folder "${f.name}"? Its sessions and subfolders are kept.`) && ondeletefolder(f.id)}><Icon name="x" size={14} /></button>
+          <button title="New session in this folder (right-click for more)" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
         </span>
       {/if}
     </div>
     {#if !collapsed[f.id]}
-      <div class="children" class:drop={dropTarget === f.id} data-drop={f.id}>
+      <div class="children" role="group" id="folder-{f.id}" class:drop={dropTarget === f.id} data-drop={f.id}>
         {#if creating?.parent === f.id}{@render folderInput()}{/if}
         {@render tree(f.id)}
         {#each sessionsIn(f.id) as s (s.id)}{@render sessionRow(s)}{/each}
@@ -248,6 +315,18 @@
     {/if}
     {#if i < childrenOf(parent).length - 1}<div class="sep"></div>{/if}
   {/each}
+{/snippet}
+
+{#snippet toggle()}
+  <button
+    class="sbtoggle"
+    aria-label={railOnly ? "Show sidebar" : "Hide sidebar"}
+    aria-expanded={!railOnly}
+    title={toggleTitle || (railOnly ? "Show sidebar" : "Hide sidebar")}
+    onclick={oncollapse}
+  >
+    <Icon name="panel-left" size={17} />
+  </button>
 {/snippet}
 
 {#snippet newTabButtons(vertical: boolean)}
@@ -258,7 +337,7 @@
 {/snippet}
 
 <div class="sb" class:rail={railOnly}>
-<!-- Room for the window's traffic lights and the toggle that App draws over them. -->
+<!-- Room for the window's traffic lights. -->
 <div class="head" data-tauri-drag-region>
   {#if !railOnly}{@render newTabButtons(false)}{/if}
 </div>
@@ -269,7 +348,6 @@
       <button title="Search sessions" aria-label="Search sessions" onclick={oncollapse}><Icon name="search" size={17} /></button>
       <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={17} /></button>
       <button title="New folder" aria-label="New folder" onclick={() => (oncollapse(), startCreate(null))}><Icon name="folder-plus" size={17} /></button>
-      <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={17} /></button>
     </div>
     <div class="raildivider"></div>
     <div class="railhosts">
@@ -278,6 +356,7 @@
           class="host"
           class:current={activeId === s.id}
           style:--c={s.color ?? "var(--accent)"}
+          style:--on={inkOn(s.color)}
           title={`${s.name}\n${s.user}@${s.host}`}
           aria-label={`Connect to ${s.name}`}
           onclick={() => onconnect(s)}
@@ -287,16 +366,24 @@
         </button>
       {/each}
     </div>
+    {@render toggle()}
   </aside>
 {:else}
 <aside class:dragging={drag !== null}>
   <div class="searchbox"><Icon name="search" size={14} /><input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" /></div>
-  <div class="tools">
-    <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</button>
-    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</button>
-    <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={13} />Import</button>
-  </div>
-  <div class="list" class:drop={dropTarget === "root"} data-drop="root">
+  {#if !blank || creating}
+    <div class="tools">
+      <Button size="sm" title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</Button>
+      <Button size="sm" title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</Button>
+    </div>
+  {/if}
+  {#if tabs}
+    <div class="seclabel">Tabs</div>
+    <div class="tabsec">{@render tabs()}</div>
+    <div class="seclabel">Sessions</div>
+  {/if}
+  <!-- svelte-ignore a11y_interactive_supports_focus -->
+  <div class="list" role="tree" aria-label="Saved sessions" class:drop={dropTarget === "root"} data-drop="root" onkeydown={treeKey}>
     {#if creating?.parent === null}{@render folderInput()}{/if}
     {#if searching}
       {#each library.sessions as s (s.id)}{@render sessionRow(s)}{:else}
@@ -306,15 +393,57 @@
       {@render tree(null)}
       {#if childrenOf(null).length > 0 && sessionsIn(null).length > 0}<div class="sep"></div>{/if}
       {#each sessionsIn(null) as s (s.id)}{@render sessionRow(s)}{/each}
-      {#if library.sessions.length === 0 && library.folders.length === 0}
-        <p class="empty">No saved sessions yet. Press + to add one, or import your ~/.ssh/config.</p>
+      {#if blank && !creating}
+        <div class="first">
+          <p>No saved sessions yet.</p>
+          <Button variant="primary" size="sm" onclick={() => onnew(null)}><Icon name="plus" size={13} />New session</Button>
+          {#if onimport}<Button size="sm" onclick={onimport}><Icon name="import" size={13} />Import from ~/.ssh/config</Button>{/if}
+          {#if paletteKey}<p class="tip">Press <kbd>{paletteKey}</kbd> to search every action, session and tab.</p>{/if}
+        </div>
       {/if}
     {/if}
   </div>
-  {#if version}<div class="footer"><span class="version">{version}</span></div>{/if}
+  <div class="footer">{@render toggle()}<span class="version">{version}</span></div>
 </aside>
 {/if}
 </div>
+
+{#if ctx?.session}
+  {@const s = ctx.session}
+  {#key ctx.moving}
+    {#if ctx.moving}
+      <Menu label="Move {s.name} to a folder" left={ctx.x} top={ctx.y} scroll onclose={() => (ctx = null)}>
+        <div class="mhead">Move to</div>
+        <button role="menuitemradio" aria-checked={s.folder_id === null} onclick={pick(() => s.folder_id !== null && onmovesession(s.id, null))}>Top level</button>
+        {#each folderList as { folder, depth } (folder.id)}
+          <button role="menuitemradio" aria-checked={s.folder_id === folder.id} style:padding-left="calc(var(--space-3) + {depth} * var(--space-3))" onclick={pick(() => s.folder_id !== folder.id && onmovesession(s.id, folder.id))}>
+            <Icon name="folder" size={14} />{folder.name}
+          </button>
+        {/each}
+      </Menu>
+    {:else}
+      <Menu label={s.name} left={ctx.x} top={ctx.y} onclose={() => (ctx = null)}>
+        <button role="menuitem" onclick={pick(() => onconnect(s))}>Connect</button>
+        {#if onsplit}<button role="menuitem" onclick={pick(() => onsplit(s))}>Open in split</button>{/if}
+        <hr />
+        <button role="menuitem" onclick={pick(() => onedit(s))}>Edit…</button>
+        {#if onduplicate}<button role="menuitem" onclick={pick(() => onduplicate(s))}>Duplicate</button>{/if}
+        <button role="menuitem" disabled={library.folders.length === 0} onclick={() => (ctx = { ...ctx!, moving: true })}>Move to folder…</button>
+        <hr />
+        <button role="menuitem" onclick={pick(() => ondelete(s))}>Delete</button>
+      </Menu>
+    {/if}
+  {/key}
+{:else if ctx?.folder}
+  {@const f = ctx.folder}
+  <Menu label={f.name} left={ctx.x} top={ctx.y} onclose={() => (ctx = null)}>
+    <button role="menuitem" onclick={pick(() => onnew(f.id))}>New session here</button>
+    <button role="menuitem" onclick={pick(() => startCreate(f.id))}>New subfolder</button>
+    <button role="menuitem" onclick={pick(() => startRename(f.id, f.name))}>Rename</button>
+    <hr />
+    <button role="menuitem" onclick={pick(() => ondeletefolder(f.id))}>Delete folder</button>
+  </Menu>
+{/if}
 
 {#if drag}
   <div class="ghost" style:left={`${dragPos.x + 12}px`} style:top={`${dragPos.y + 12}px`}>{drag.label}</div>
@@ -361,15 +490,15 @@
     justify-content: flex-end;
     flex: none;
     height: var(--chrome-h);
-    padding: 0 12px;
+    padding: 0 var(--space-3);
   }
   /* New tab: a local shell or an SSH connection. Recessed pair, the hovered half rises. */
   .dual {
     display: flex;
     gap: 2px;
     padding: 2px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-l);
     background: var(--bg-deep);
   }
   .dual button {
@@ -378,7 +507,7 @@
     justify-content: center;
     width: 30px;
     height: 24px;
-    border-radius: 7px;
+    border-radius: var(--radius-m);
     color: var(--dim);
   }
   .dual button:hover {
@@ -397,34 +526,52 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    gap: 10px;
+    gap: var(--space-3);
     width: calc(var(--sidebar-w) - 1px);
     box-sizing: border-box;
-    padding: 4px 12px 12px;
-    font-size: 13px;
+    padding: var(--space-1) var(--space-3) var(--space-3);
+    font-size: var(--text-m);
     min-height: 0;
+  }
+  /* Vertical tabs live here, so the window has one left column, not two. */
+  .seclabel {
+    flex: none;
+    margin: 2px var(--space-1) calc(var(--space-1) * -1);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .tabsec {
+    flex: 0 1 auto;
+    min-height: 38px;
+    max-height: 40%;
+    margin: 0 calc(var(--space-1) * -1);
+    padding: 0 var(--space-1);
+    overflow-y: auto;
   }
   .searchbox {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     flex: none;
     height: 34px;
-    padding: 0 11px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-l);
     background: var(--input);
     color: var(--dim);
   }
   .searchbox:focus-within {
-    border-color: var(--accent);
+    border-color: var(--focus);
   }
   .search {
     flex: 1;
     min-width: 0;
     padding: 0;
     font: inherit;
-    font-size: 13.5px;
+    font-size: var(--text-m);
     color: var(--fg);
     border: 0;
     outline: 0;
@@ -440,24 +587,20 @@
     border: 0;
     cursor: pointer;
   }
+  /* Wraps to a second line when the sidebar is dragged narrow, so no label is cut. */
   .tools {
     display: flex;
-    gap: 6px;
+    flex-wrap: wrap;
+    gap: var(--space-2);
     flex: none;
   }
-  .tools button {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 6px 4px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+  .tools :global(.btn) {
+    flex: 1 0 auto;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-1);
     background: var(--surface);
   }
-  .tools button:hover {
+  .tools :global(.btn:hover) {
     background: var(--hover);
   }
   .ficon,
@@ -476,17 +619,19 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
-    margin: 0 -4px;
-    padding: 0 4px;
+    margin: 0 calc(var(--space-1) * -1);
+    padding: 0 var(--space-1);
   }
   .item {
+    position: relative;
     display: flex;
     align-items: center;
     margin: 1px 0;
-    padding-right: 4px;
-    border-radius: 6px;
+    padding-right: var(--space-1);
+    border-radius: var(--radius-m);
   }
   .item:hover,
+  .item:focus-within,
   .item.current {
     background: var(--hover);
   }
@@ -503,7 +648,7 @@
   }
   .sep {
     height: 1px;
-    margin: 6px 8px;
+    margin: var(--space-1) var(--space-2);
     background: var(--border);
   }
   .main {
@@ -511,8 +656,8 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
     text-align: left;
   }
   .name {
@@ -525,14 +670,14 @@
   .meta {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     flex: 0 1000 auto;
     min-width: 0;
     margin-left: auto;
   }
   .tags {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
     min-width: 0;
     overflow: hidden;
   }
@@ -543,20 +688,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 2px 8px;
+    padding: 2px var(--space-2);
     border: 1px solid var(--border);
-    border-radius: 9px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     color: var(--dim);
-    font-size: 11px;
+    font-size: var(--text-xs);
     line-height: 1.2;
   }
   .tag.more {
     flex: none;
-  }
-  .item:hover .tags,
-  .item:focus-within .tags {
-    display: none;
   }
   .caret {
     display: flex;
@@ -564,9 +705,18 @@
     margin-left: -2px;
     color: var(--dim);
   }
+  /* The row's actions lie over its right end, on an edge that fades into the row. The name and
+     tags stay where they are, so nothing moves when the pointer comes in. */
   .acts {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
     display: none;
-    flex: none;
+    align-items: center;
+    padding: 0 var(--space-1) 0 var(--space-5);
+    border-radius: 0 var(--radius-m) var(--radius-m) 0;
+    background: linear-gradient(to right, transparent, var(--hover) var(--space-5));
   }
   .item:hover .acts,
   .item:focus-within .acts {
@@ -574,21 +724,27 @@
   }
   .acts button {
     display: flex;
-    padding: 3px 5px;
-    opacity: 0.7;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
+    border-radius: var(--radius-m);
+    color: var(--dim);
   }
   .acts button:hover {
-    opacity: 1;
+    background: var(--hover);
+    color: var(--fg);
   }
   .item input {
     flex: 1;
     min-width: 0;
-    margin: 3px 4px;
-    padding: 2px 4px;
+    margin: 2px var(--space-1);
+    padding: 2px var(--space-1);
     font: inherit;
     color: inherit;
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-s);
     background: var(--input);
   }
   aside.dragging {
@@ -596,12 +752,12 @@
     cursor: grabbing;
   }
   .children {
-    margin-left: 16px;
+    margin-left: var(--space-4);
   }
   .item.drop,
   .children.drop {
     background: color-mix(in srgb, var(--accent) 25%, transparent);
-    outline: 1px solid var(--accent);
+    outline: 1px solid var(--focus);
   }
   .list.drop {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -609,34 +765,76 @@
   .ghost {
     position: fixed;
     z-index: 30;
-    padding: 3px 8px;
-    border-radius: 5px;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-m);
     background: var(--accent);
     color: var(--on-accent);
-    font-size: 12px;
+    font-size: var(--text-s);
     pointer-events: none;
     opacity: 0.9;
   }
   .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     flex: none;
-    padding: 10px 4px 0;
+    padding: var(--space-1) var(--space-1) 0 0;
     border-top: 1px solid var(--border);
   }
+  /* Hide or show the sidebar: last thing in it, in the same corner in both states. */
+  .sbtoggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-m);
+    color: var(--dim);
+  }
+  .sbtoggle:hover {
+    color: var(--fg);
+    background: var(--hover);
+  }
   .version {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--dim);
   }
   .empty {
-    margin: 12px 4px;
+    margin: var(--space-3) var(--space-1);
     color: var(--dim);
+  }
+  /* Nothing saved yet: the two ways to get a first session, and where everything else is found. */
+  .first {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin: var(--space-3) var(--space-1);
+    color: var(--dim);
+  }
+  .first p {
+    margin: 0;
+  }
+  .first .tip {
+    margin-top: var(--space-2);
+    font-size: var(--text-s);
+    line-height: 1.5;
+  }
+  .first kbd {
+    padding: 1px var(--space-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-s);
+    color: var(--fg);
+    font: inherit;
   }
 
   /* ---- collapsed rail ---- */
   aside.rail {
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     width: calc(var(--rail-w) - 1px);
-    padding: 4px 0 10px;
+    padding: var(--space-1) 0 var(--space-2);
   }
   .railtools {
     display: flex;
@@ -650,7 +848,7 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     color: var(--dim);
   }
   .railtools button:hover {
@@ -672,8 +870,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 4px 0;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -682,10 +880,10 @@
     flex: none;
     width: 30px;
     height: 30px;
-    border-radius: 8px;
+    border-radius: var(--radius-l);
     background: var(--c);
-    color: #fff;
-    font-size: 11px;
+    color: var(--on);
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.3px;
   }
@@ -700,7 +898,7 @@
     top: 7px;
     bottom: 7px;
     width: 3px;
-    border-radius: 2px;
+    border-radius: var(--radius-s);
     background: var(--c);
   }
   .host .live {

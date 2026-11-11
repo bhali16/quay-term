@@ -5,6 +5,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-11
+
+### Added
+- Find in scrollback (Cmd+F, or Ctrl+Shift+F on Windows and Linux): a bar in the pane with the match count, match case, and previous and next.
+- "Open in split" on a saved session's right-click menu connects it in a new pane of the tab in front. Such a tab's layout is not saved with a session.
+- Saved sessions have a right-click menu: Connect, Open in split, Edit, Duplicate, Move to folder and Delete. Folders have one too: New session here, New subfolder, Rename and Delete folder. Duplicate does not copy the saved password.
+- The tab menu adds Duplicate tab, Reconnect or Restart shell, Split right, Split down, Close other tabs and Close tabs to the right.
+- A new tab opens on Home, like a browser's new-tab page: large buttons for Local shell (L), SSH connection (S), New saved session (N), New folder (F), Import SSH config (I) and the command palette, and your recent sessions. What you open takes the tab's place. The app starts on Home instead of a local shell, and closing the last tab returns to it.
+- With no session or folder saved there is no sidebar, only Home. It appears once something is saved; the sidebar shortcut still brings it up before that.
+- Each split pane has a thin header that grows on hover, with the pane's title and buttons for broadcast, zoom and close. Panes without focus are dimmed slightly (Settings > Terminal > Split panes).
+- Settings > Appearance can follow the system's light or dark appearance, with a theme chosen for each.
+- Files panel: a breadcrumb path you can click or type into, columns you can sort by name, size or date, a switch for hidden files, a right-click menu on each row (Open, Download, Download to…, Rename, Delete), and transfers that show percent, speed and time left. A finished download has "Show in folder".
+- Shortcuts can be left unset, and a shortcut that is already taken says which action has it and offers Replace. The list is grouped and can be filtered.
+- Sessions and folders are deleted with an Undo toast instead of a question. Deleting a snippet has Undo too.
+- Quay Term asks before closing a tab that is running a command or has several connected panes (Settings > General, on by default).
+- The sidebar and the side panels can be resized by dragging, and the widths are remembered. The tab strip scrolls, with a list of all tabs.
+- Keyboard use: dialogs keep focus inside them, and arrow keys work in the tab strip, the session tree, the Settings tabs and the menus. On a tab, F2 renames, Delete closes and Enter moves to the terminal.
+- Setting for screen readers (Settings > Terminal > Accessibility).
+
+### Changed
+- Settings has a General tab (tab bar, closing tabs, updates, notifications). Terminal settings are grouped under headings, and Backup is split into separate Export and Import cards.
+- The button that hides and shows the sidebar is at the bottom of the sidebar. The sidebar folds to a narrow rail in a small window.
+- Files and Tunnels share one panel on the right, which lays over the terminal when there is no room beside it. Vertical tabs are listed in the sidebar.
+- An action that cannot run in the tab in front is greyed out in the command palette with the reason, and its shortcut shows the reason in a toast.
+- Text, borders and focus rings meet contrast minimums in every theme.
+- Shortcuts are written one way everywhere: symbols on macOS, words on Windows and Linux.
+- Error toasts stay until dismissed and say what failed in one sentence, with the original message behind Details.
+- "Import from ~/.ssh/config" is in Settings > Backup, the command palette and the empty sidebar.
+
+### Fixed
+- In the session editor, Enter saves an existing session instead of connecting, and each tunnel has room for its destination host.
+- On computers without a system keychain, the app names the master-password file instead of the keychain and offers Unlock when it is locked.
+- Escape closes only the dialog or menu on top.
+- Escape while renaming a tab restores the old name.
+
 ## [0.4.1] - 2026-11-10
 
 ### Added
