@@ -129,24 +129,6 @@ body {
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
-.dlg .actions button {
-  font: inherit;
-  color: inherit;
-  padding: 6px 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  background: none;
-  cursor: pointer;
-}
-.dlg .actions .primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-.dlg .actions button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 .dlg .error {
   margin: 0;
   color: var(--red-text);
@@ -184,10 +166,6 @@ select:focus-visible {
 button:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;
-}
-.dlg .actions .primary,
-.dlg .actions .primary:disabled {
-  color: var(--on-accent);
 }
 
 /* The same ring for anything else that takes keyboard focus (rows, panels, custom controls). */

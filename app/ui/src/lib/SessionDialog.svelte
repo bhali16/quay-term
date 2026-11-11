@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
-  import { onEscape } from "./escape";
-  import { modal } from "./modal";
+  import { untrack } from "svelte";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import SecretStoreCheck, { canStore, storeName } from "./SecretStoreCheck.svelte";
   import type { VaultStatus } from "./bindings/VaultStatus";
   import Icon from "./Icon.svelte";
@@ -133,12 +133,9 @@
     onsubmit({ input, secret: update, transient: typed && !keep ? secret : null, connect });
   }
 
-  onMount(() => onEscape(() => oncancel()));
 </script>
 
-<div class="dlg-backdrop" role="presentation">
-  <form use:modal class="dlg" onsubmit={(e) => (e.preventDefault(), submit(!session))} aria-label="Session">
-    <h2>{session ? "Edit session" : draft ? "Save this connection" : "New session"}</h2>
+<Dialog title={session ? "Edit session" : draft ? "Save this connection" : "New session"} onclose={oncancel} onsubmit={(e) => (e.preventDefault(), submit(!session))}>
     <section class="sec" aria-labelledby="sec-conn">
     <h3 id="sec-conn">Connection</h3>
     <label>Name <input bind:value={name} placeholder="Optional, defaults to user@host" /></label>
@@ -224,7 +221,7 @@
     <section class="sec tunnels" aria-labelledby="sec-tun">
       <div class="thead">
         <h3 id="sec-tun">Tunnels{tunnels.length ? ` (${tunnels.length})` : ""}</h3>
-        <button type="button" class="small" title="Add a port forward that is saved with this session" onclick={addTunnel}><Icon name="plus" size={14} />Add</button>
+        <Button variant="ghost" size="sm" title="Add a port forward that is saved with this session" onclick={addTunnel}><Icon name="plus" size={14} />Add</Button>
       </div>
       {#each tunnels as t, i (i)}
         <div class="tun">
@@ -239,7 +236,7 @@
               {t.kind === "remote" ? "Server port" : "Local port"}
               <input type="number" min="0" max="65535" bind:value={t.bind_port} />
             </label>
-            <button type="button" class="small remove" aria-label="Remove tunnel" title="Remove tunnel" onclick={() => tunnels.splice(i, 1)}><Icon name="trash" size={14} /></button>
+            <Button variant="icon" aria-label="Remove tunnel" title="Remove tunnel" onclick={() => tunnels.splice(i, 1)}><Icon name="trash" size={14} /></Button>
           </div>
           {#if t.kind !== "dynamic"}
             <div class="row">
@@ -257,19 +254,18 @@
       {/each}
     </section>
     {#if error}<p class="error">{error}</p>{/if}
-    <div class="actions">
-      <button type="button" onclick={oncancel}>Cancel</button>
-      <!-- Enter saves an existing session; it connects only when the session is new. -->
-      {#if session}
-        <button type="button" disabled={!valid} onclick={() => submit(true)}>Save &amp; connect</button>
-        <button type="submit" class="primary" disabled={!valid}>Save</button>
-      {:else}
-        <button type="button" disabled={!valid} onclick={() => submit(false)}>Save</button>
-        <button type="submit" class="primary" disabled={!valid}>Save &amp; connect</button>
-      {/if}
-    </div>
-  </form>
-</div>
+  {#snippet actions()}
+    <Button onclick={oncancel}>Cancel</Button>
+    <!-- Enter saves an existing session; it connects only when the session is new. -->
+    {#if session}
+      <Button disabled={!valid} onclick={() => submit(true)}>Save &amp; connect</Button>
+      <Button type="submit" variant="primary" disabled={!valid}>Save</Button>
+    {:else}
+      <Button disabled={!valid} onclick={() => submit(false)}>Save</Button>
+      <Button type="submit" variant="primary" disabled={!valid}>Save &amp; connect</Button>
+    {/if}
+  {/snippet}
+</Dialog>
 
 <style>
   .swatches {
@@ -356,25 +352,5 @@
   .tun .grow select {
     width: 100%;
     box-sizing: border-box;
-  }
-  .tun .remove {
-    flex: none;
-    height: 32px;
-  }
-  .small {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 6px;
-    background: none;
-    border: 0;
-    color: var(--dim);
-    cursor: pointer;
-    border-radius: 4px;
-    font: inherit;
-  }
-  .small:hover {
-    background: var(--hover);
-    color: var(--fg);
   }
 </style>

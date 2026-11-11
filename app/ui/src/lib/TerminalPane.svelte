@@ -17,9 +17,9 @@
   import type { SshTarget } from "./bindings/SshTarget";
   import { settings } from "./settings.svelte";
   import { actionFor, isMac } from "./keys";
-  import { focus } from "./focus";
   import { inkOn } from "./themes";
-  import { menu as menuKeys } from "./modal";
+  import Button from "./Button.svelte";
+  import Menu from "./Menu.svelte";
   import { BlockTracker, parseExit, type Block } from "./blocks";
   import { REMOTE_SNIPPET } from "./shellIntegration";
   import { expansionAt, toInput } from "./snippets";
@@ -673,9 +673,7 @@
     {#if broadcasting}<span class="bcast" title="What you type here is also sent to the other selected panes">Broadcast</span>{/if}
   </div>
   {#if menu}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="shield" onmousedown={() => (menu = null)} oncontextmenu={(e) => (e.preventDefault(), (menu = null))}></div>
-    <div use:menuKeys class="bmenu" role="menu" aria-label="Command block" tabindex="-1" style:left="{menu.x}px" style:top="{menu.y}px" onkeydown={(e) => e.key === "Escape" && ((menu = null), term.focus())}>
+    <Menu label="Command block" left={menu.x} top={menu.y} onclose={() => ((menu = null), term.focus())}>
       <button role="menuitem" disabled={!menu.block.command} onclick={() => menuDo("command")}>Copy command</button>
       <button role="menuitem" onclick={() => menuDo("output")}>Copy output</button>
       <button role="menuitem" onclick={() => menuDo("both")}>Copy both</button>
@@ -683,64 +681,25 @@
       <button role="menuitem" onclick={() => menuDo("select")}>Select output</button>
       <button role="menuitem" disabled={!menu.block.command || !onsnippet} onclick={() => menuDo("snippet")}>Add to snippets</button>
       {#if !isMac}<hr /><button role="menuitem" onclick={() => menuDo("paste")}>Paste</button>{/if}
-    </div>
+    </Menu>
   {/if}
   {#if pendingPaste !== null}
     <div class="bar confirm" role="alertdialog" tabindex="-1" aria-label="Confirm paste" onkeydown={(e) => e.key === "Escape" && answerPaste(false)}>
       <span class="msg">Paste {pendingPaste.replace(/[\r\n]+$/, "").split(/\r\n|\r|\n/).length} lines into this {env ?? "production"} session?</span>
-      <button use:focus class="go" onclick={() => answerPaste(true)}>Paste</button>
-      <button onclick={() => answerPaste(false)}>Cancel</button>
+      <Button variant="primary" size="sm" initialFocus onclick={() => answerPaste(true)}>Paste</Button>
+      <Button size="sm" onclick={() => answerPaste(false)}>Cancel</Button>
     </div>
   {:else if endedBar}
     <div class="bar" role="status" bind:offsetHeight={barH}>
       <span class="msg wrap" title={endedText}>{endedText}</span>
-      <button class="go" onclick={() => (reconnect(), term.focus())}>{remote ? "Reconnect" : "Restart"} <kbd>R</kbd></button>
-      {#if remote && onfiles}<button onclick={onfiles}>Files</button>{/if}
-      <button aria-label="Dismiss" onclick={() => ((hintDismissed = true), term.focus())}>Dismiss</button>
+      <Button variant="primary" size="sm" onclick={() => (reconnect(), term.focus())}>{remote ? "Reconnect" : "Restart"} <kbd>R</kbd></Button>
+      {#if remote && onfiles}<Button size="sm" onclick={onfiles}>Files</Button>{/if}
+      <Button size="sm" onclick={() => ((hintDismissed = true), term.focus())}>Dismiss</Button>
     </div>
   {/if}
 {/if}
 
 <style>
-  .shield {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-  }
-  .bmenu {
-    position: fixed;
-    z-index: 41;
-    min-width: 170px;
-    padding: 4px;
-    background: var(--surface);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    display: flex;
-    flex-direction: column;
-  }
-  .bmenu button {
-    all: unset;
-    box-sizing: border-box;
-    padding: 6px 10px;
-    border-radius: 5px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .bmenu button:hover:not(:disabled),
-  .bmenu button:focus-visible {
-    background: var(--hover);
-  }
-  .bmenu button:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  .bmenu hr {
-    border: 0;
-    border-top: 1px solid var(--border);
-    margin: 4px 2px;
-  }
   .term {
     position: absolute;
     inset: 0;
@@ -816,19 +775,6 @@
     line-clamp: 2;
     white-space: normal;
     overflow-wrap: anywhere;
-  }
-  .bar button {
-    flex: none;
-    padding: 3px 10px;
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    background: var(--hover);
-    color: var(--fg);
-    font: inherit;
-    cursor: pointer;
-  }
-  .bar button.go {
-    border-color: var(--accent);
   }
   .bar kbd {
     margin-left: 4px;

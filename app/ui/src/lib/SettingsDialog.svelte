@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { onEscape } from "./escape";
-  import { modal } from "./modal";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import { roving } from "./roving";
   import Icon, { type Name } from "./Icon.svelte";
   import { settings } from "./settings.svelte";
@@ -73,7 +73,7 @@
     loadCount();
   }
 
-  const actions = Object.keys(actionLabels) as Action[];
+  const actionIds = Object.keys(actionLabels) as Action[];
 
   async function patch(p: Partial<typeof settings.value>) {
     error = await settings.update({ ...settings.value, ...p });
@@ -92,7 +92,7 @@
     e.stopPropagation();
     const d = describe(e);
     if (d) {
-      const clash = actions.find((a) => a !== recording && settings.bindings[a] === d);
+      const clash = actionIds.find((a) => a !== recording && settings.bindings[a] === d);
       if (clash) error = `${formatShortcut(d)} is already used by "${actionLabels[clash]}".`;
       else setBinding(recording, d);
       recording = null;
@@ -102,8 +102,7 @@
   onMount(() => {
     getDiagnostics().then((d) => (diag = d));
     window.addEventListener("keydown", onkey, true);
-    const off = onEscape(() => (recording ? (recording = null) : onclose()));
-    return () => (off(), window.removeEventListener("keydown", onkey, true));
+    return () => window.removeEventListener("keydown", onkey, true);
   });
 
   // ---- encrypted backup ----
@@ -173,9 +172,8 @@
   }
 </script>
 
-<div class="dlg-backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
-  <div use:modal class="dlg wide" role="dialog" aria-labelledby="settings-title">
-    <h2 id="settings-title">Settings</h2>
+<!-- Escape cancels a shortcut being recorded first, then closes. -->
+<Dialog title="Settings" class="wide" backdropClose onclose={() => (recording ? (recording = null) : onclose())}>
     <div class="layout">
       <div class="tabs" role="tablist" aria-orientation="vertical" aria-label="Settings sections" use:roving={{ selector: '[role="tab"]', vertical: true, activate: true }}>
         {#each tabs as t (t.id)}
@@ -298,12 +296,12 @@
           {/if}
         {:else if tab === "shortcuts"}
           <div class="keys">
-            {#each actions as a (a)}
+            {#each actionIds as a (a)}
               <span>{actionLabels[a]}</span>
               <button class="chip" class:rec={recording === a} onclick={() => ((error = null), (recording = recording === a ? null : a))}>
                 {recording === a ? "Press keys…" : formatShortcut(settings.bindings[a])}
               </button>
-              <button class="reset" title="Reset to default" disabled={!settings.value.keybindings[a]} onclick={() => setBinding(a, null)}>↺</button>
+              <Button size="sm" title="Reset to default" aria-label={`Reset ${actionLabels[a]} to default`} disabled={!settings.value.keybindings[a]} onclick={() => setBinding(a, null)}>↺</Button>
             {/each}
           </div>
         {:else if tab === "history"}
@@ -344,7 +342,7 @@
             <p class="hint warn" role="status">Not a valid pattern, ignored: {denyInvalid.join(", ")}</p>
           {/if}
           <div class="brow">
-            <button class="copy" onclick={() => patch({ history_deny_patterns: [...DEFAULT_DENY] })}>Restore default patterns</button>
+            <Button size="sm" onclick={() => patch({ history_deny_patterns: [...DEFAULT_DENY] })}>Restore default patterns</Button>
           </div>
           <h3>Saved history</h3>
           <p class="blurb">
@@ -353,10 +351,10 @@
           </p>
           <div class="brow">
             {#if confirmForget}
-              <button class="copy danger" onclick={forgetAll}>Delete all history</button>
-              <button class="copy" onclick={() => (confirmForget = false)}>Cancel</button>
+              <Button variant="danger" size="sm" onclick={forgetAll}>Delete all history</Button>
+              <Button size="sm" onclick={() => (confirmForget = false)}>Cancel</Button>
             {:else}
-              <button class="copy" disabled={!histCount} onclick={() => ((histNote = null), (confirmForget = true))}>Forget all history…</button>
+              <Button size="sm" disabled={!histCount} onclick={() => ((histNote = null), (confirmForget = true))}>Forget all history…</Button>
             {/if}
           </div>
           {#if histNote}<p class="ok" role="status">{histNote}</p>{/if}
@@ -370,7 +368,7 @@
               {vault.mode === "unlocked" ? "It is unlocked for this launch." : "It is locked."}
             </p>
             {#if vault.mode === "locked"}
-              <div class="brow"><button class="copy" onclick={onunlock}>{vault.is_new ? "Set a master password…" : "Unlock…"}</button></div>
+              <div class="brow"><Button size="sm" onclick={onunlock}>{vault.is_new ? "Set a master password…" : "Unlock…"}</Button></div>
             {/if}
           {/if}
           <h3>Move to another machine</h3>
@@ -386,8 +384,8 @@
           <label class="check"><input type="checkbox" bind:checked={withSecrets} /> Include saved passwords and key passphrases</label>
           <label class="check"><input type="checkbox" bind:checked={withHistory} disabled={!histCount} /> Include command history{histCount ? ` (${histCount} ${histCount === 1 ? "entry" : "entries"})` : ""}</label>
           <div class="brow">
-            <button class="copy" disabled={busy || pw.length < 8} onclick={doExport}>Export…</button>
-            <button class="copy" disabled={busy || !pw} onclick={doImport}>Import…</button>
+            <Button size="sm" disabled={busy || pw.length < 8} onclick={doExport}>Export…</Button>
+            <Button size="sm" disabled={busy || !pw} onclick={doImport}>Import…</Button>
           </div>
           {#if pw && pw.length < 8}<p class="blurb">A master password needs at least 8 characters to export.</p>{/if}
           {#if busy}<p class="blurb">Working… this takes a moment on purpose.</p>{/if}
@@ -398,14 +396,14 @@
             <span>Version {diag.version} · {diag.os} {diag.arch}</span>
             <span class="path" title={diag.log_dir}>Logs: {diag.log_dir}</span>
             <span class="path" title={diag.settings_file}>Settings: {diag.settings_file}</span>
-            <button class="copy" onclick={copyDiag}>{copied ? "Copied" : "Copy diagnostics"}</button>
+            <Button size="sm" onclick={copyDiag}>{copied ? "Copied" : "Copy diagnostics"}</Button>
           </div>
           <h3>Updates</h3>
           <div class="about" aria-live="polite">
             {#if updates.state.kind === "available"}
               <span>Version {updates.state.version} is available.</span>
               {#if updates.state.notes}<span class="path" title={updates.state.notes}>{updates.state.notes}</span>{/if}
-              <button class="copy" onclick={() => updates.install()}>Install and restart</button>
+              <Button size="sm" onclick={() => updates.install()}>Install and restart</Button>
             {:else if updates.state.kind === "downloading"}
               <span>Downloading {updates.state.version}{updates.state.percent === null ? "…" : ` – ${updates.state.percent}%`}</span>
             {:else if updates.state.kind === "checking"}
@@ -413,19 +411,20 @@
             {:else}
               {#if updates.state.kind === "current"}<span>You are on the latest version.</span>{/if}
               {#if updates.state.kind === "error"}<span class="err">Could not check: {updates.state.message}</span>{/if}
-              <button class="copy" onclick={() => updates.check()}>Check for updates</button>
+              <Button size="sm" onclick={() => updates.check()}>Check for updates</Button>
             {/if}
           </div>
         {/if}
       </div>
     </div>
     {#if error}<p class="err">{error}</p>{/if}
-    <div class="actions"><button class="primary" onclick={onclose}>Done</button></div>
-  </div>
-</div>
+  {#snippet actions()}
+    <Button variant="primary" onclick={onclose}>Done</Button>
+  {/snippet}
+</Dialog>
 
 <style>
-  .wide {
+  :global(.dlg.wide) {
     width: 760px;
     max-width: 94vw;
   }
@@ -530,9 +529,7 @@
     gap: 6px 8px;
     align-items: center;
   }
-  .chip,
-  .reset,
-  .copy {
+  .chip {
     font: inherit;
     color: inherit;
     border: 1px solid var(--border-strong);
@@ -551,13 +548,6 @@
   .chip.rec {
     border-color: var(--focus);
   }
-  .reset {
-    padding: 3px 7px;
-  }
-  .reset:disabled {
-    opacity: 0.3;
-    cursor: default;
-  }
   .deny {
     font: 12.5px var(--font-mono);
     color: var(--fg);
@@ -567,10 +557,6 @@
     padding: 6px 8px;
     resize: vertical;
   }
-  .copy.danger {
-    border-color: var(--red);
-    color: var(--red-text);
-  }
   .blurb {
     margin: 0;
     font-size: 12.5px;
@@ -579,10 +565,6 @@
   .brow {
     display: flex;
     gap: 8px;
-  }
-  .copy:disabled {
-    opacity: 0.4;
-    cursor: default;
   }
   .ok {
     margin: 0;
@@ -600,10 +582,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--dim);
-  }
-  .copy {
-    align-self: flex-start;
-    margin-top: 4px;
   }
   .err {
     margin: 0;

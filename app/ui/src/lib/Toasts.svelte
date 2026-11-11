@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from "./Button.svelte";
   import Icon from "./Icon.svelte";
   import { toasts } from "./toastStore.svelte";
 
@@ -28,8 +29,8 @@
           {#if open.includes(t.id)}<pre class="detail">{t.detail}</pre>{/if}
         {/if}
       </div>
-      {#if t.action}<button class="tact" onclick={() => toasts.act(t.id)}>{t.action.label}</button>{/if}
-      <button class="x" aria-label="Dismiss" title="Dismiss" onclick={() => toasts.close(t.id)}><Icon name="x" size={14} /></button>
+      {#if t.action}<Button size="sm" onclick={() => toasts.act(t.id)}>{t.action.label}</Button>{/if}
+      <Button variant="icon" aria-label="Dismiss" title="Dismiss" onclick={() => toasts.close(t.id)}><Icon name="x" size={14} /></Button>
     </div>
   {/each}
 </div>
@@ -94,37 +95,10 @@
     overflow-wrap: anywhere;
     line-height: 1.4;
   }
-  button {
-    all: unset;
-    box-sizing: border-box;
-    flex: none;
-    border-radius: 5px;
-    cursor: pointer;
-  }
-  .x {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    color: var(--dim);
-  }
-  .x:hover {
-    color: var(--fg);
-    background: var(--hover);
-  }
-  .tact {
-    min-height: 24px;
-    padding: 0 9px;
-    border: 1px solid var(--border-strong);
-    font-weight: 500;
-    line-height: 22px;
-    color: var(--fg);
-  }
-  .tact:hover {
-    background: var(--hover);
-  }
   .more {
+    all: unset;
+    border-radius: 4px;
+    cursor: pointer;
     font-size: 12px;
     color: var(--dim);
     text-decoration: underline;
@@ -148,7 +122,7 @@
     overflow-wrap: anywhere;
     user-select: text;
   }
-  button:focus-visible {
+  .more:focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 1px;
   }

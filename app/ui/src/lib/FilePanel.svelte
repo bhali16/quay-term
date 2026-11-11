@@ -20,6 +20,7 @@
   } from "./ipc";
   import { focus } from "./focus";
   import Icon from "./Icon.svelte";
+  import Button from "./Button.svelte";
   import type { Entry } from "./bindings/Entry";
   import type { SftpTransfer } from "./bindings/SftpTransfer";
   import type { SshTarget } from "./bindings/SshTarget";
@@ -208,8 +209,8 @@
         onkeydown={(e) => e.key === "Enter" && go(pathInput)}
         spellcheck="false"
       />
-      <button class="ibtn" title="Parent folder" aria-label="Parent folder" disabled={path === "/"} onclick={() => go(parent(path))}><Icon name="arrow-up" size={15} /></button>
-      <button class="ibtn" title="Refresh" aria-label="Refresh" onclick={reload}><Icon name="refresh" size={15} /></button>
+      <Button variant="icon" title="Parent folder" aria-label="Parent folder" disabled={path === "/"} onclick={() => go(parent(path))}><Icon name="arrow-up" size={15} /></Button>
+      <Button variant="icon" title="Refresh" aria-label="Refresh" onclick={reload}><Icon name="refresh" size={15} /></Button>
     {:else}
       <span class="path dim">{status === "connecting" ? "Connecting…" : "Not connected"}</span>
     {/if}
@@ -219,13 +220,13 @@
     <div class="grow"></div>
   {:else if status === "failed"}
     <p class="msg err">{error}</p>
-    <p class="msg"><button class="btn" onclick={connect}>Try again</button></p>
+    <p class="msg"><Button size="sm" onclick={connect}>Try again</Button></p>
     <div class="grow"></div>
   {:else}
     <div class="actions">
-      <button class="btn" onclick={() => (edit = { kind: "mkdir", value: "" })}>New folder</button>
-      <button class="btn" onclick={chooseFiles}>Upload files</button>
-      <button class="btn" onclick={chooseFolder}>Upload folder</button>
+      <Button size="sm" onclick={() => (edit = { kind: "mkdir", value: "" })}>New folder</Button>
+      <Button size="sm" onclick={chooseFiles}>Upload files</Button>
+      <Button size="sm" onclick={chooseFolder}>Upload folder</Button>
     </div>
     {#if error}<p class="msg err">{error}</p>{/if}
 
@@ -308,7 +309,7 @@
                 <span class="small">{sizeText(t.total)}</span>
               {/if}
               {#if running}
-                <button class="ibtn" title="Cancel" aria-label="Cancel transfer" onclick={() => sftpCancel(conn!, t.id)}><Icon name="stop" size={13} /></button>
+                <Button variant="icon" title="Cancel" aria-label="Cancel transfer" onclick={() => sftpCancel(conn!, t.id)}><Icon name="stop" size={13} /></Button>
               {/if}
             </div>
             {#if t.state !== "failed" && t.state !== "cancelled"}
@@ -355,19 +356,6 @@
   button:disabled {
     opacity: 0.35;
     cursor: default;
-  }
-  .ibtn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    min-height: 24px;
-    flex: none;
-    padding: 4px;
-    color: var(--dim);
-  }
-  .ibtn:hover:not(:disabled) {
-    color: var(--fg);
   }
   .pathbar {
     display: flex;
@@ -422,13 +410,6 @@
     gap: 6px;
     flex: none;
     padding: 8px 12px 4px;
-  }
-  .btn {
-    padding: 4px 10px;
-    font-size: 12px;
-    white-space: nowrap;
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
   }
   .msg {
     margin: 8px 12px;

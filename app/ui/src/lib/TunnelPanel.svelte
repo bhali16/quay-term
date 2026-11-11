@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Icon from "./Icon.svelte";
+  import Button from "./Button.svelte";
   import { tunnelList, tunnelStart, tunnelStop } from "./ipc";
   import type { TunnelInfo } from "./bindings/TunnelInfo";
   import type { TunnelKind } from "./bindings/TunnelKind";
@@ -119,7 +120,7 @@
         <div class="top">
           <span class="badge">{kindName(t.spec.kind)}</span>
           <span class="mono grow">{line(t)}</span>
-          <button class="ibtn" aria-label="Stop tunnel" title="Stop" onclick={() => stop(t)}><Icon name="stop" size={13} /></button>
+          <Button variant="icon" aria-label="Stop tunnel" title="Stop" onclick={() => stop(t)}><Icon name="stop" size={13} /></Button>
         </div>
         {#if t.error}
           <p class="err">{t.error}</p>
@@ -142,7 +143,7 @@
           <div class="top">
             <span class="badge">{kindName(s.kind)}</span>
             <span class="mono grow">{s.kind === "dynamic" ? `${s.bind_host}:${s.bind_port}` : `${s.bind_host}:${s.bind_port} → ${s.dest_host}:${s.dest_port}`}</span>
-            <button class="ibtn" aria-label="Start saved tunnel" title="Start" disabled={busy} onclick={() => start(s)}><Icon name="play" size={14} /></button>
+            <Button variant="icon" aria-label="Start saved tunnel" title="Start" disabled={busy} onclick={() => start(s)}><Icon name="play" size={14} /></Button>
           </div>
         </div>
       {/each}
@@ -174,7 +175,7 @@
         <label class="check"><input type="checkbox" bind:checked={everyone} /> Let other devices on the network use it</label>
       {/if}
       {#if error}<p class="err">{error}</p>{/if}
-      <button type="submit" class="primary" disabled={!valid || busy}>Start tunnel</button>
+      <Button type="submit" variant="primary" disabled={!valid || busy}>Start tunnel</Button>
     </form>
   </div>
 </aside>
@@ -295,37 +296,5 @@
   }
   input[type="checkbox"] {
     padding: 0;
-  }
-  button {
-    font: inherit;
-    color: inherit;
-    background: none;
-    border: 0;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  .ibtn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    min-height: 24px;
-    flex: none;
-    padding: 4px;
-    color: var(--dim);
-  }
-  .ibtn:hover:not(:disabled) {
-    background: var(--hover);
-    color: var(--fg);
-  }
-  .primary {
-    align-self: flex-start;
-    padding: 6px 12px;
-    background: var(--accent);
-    color: var(--on-accent);
-  }
-  button:disabled {
-    opacity: 0.4;
-    cursor: default;
   }
 </style>

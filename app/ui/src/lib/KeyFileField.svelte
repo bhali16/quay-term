@@ -1,6 +1,7 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { homeDir, join } from "@tauri-apps/api/path";
+  import Button from "./Button.svelte";
 
   let { value = $bindable("") }: { value: string } = $props();
 
@@ -19,7 +20,7 @@
   Key file
   <span class="field">
     <input class="mono" bind:value placeholder="~/.ssh/id_ed25519" />
-    <button type="button" onclick={browse}>Browse…</button>
+    <Button onclick={browse}>Browse…</Button>
   </span>
 </label>
 
@@ -31,18 +32,5 @@
   .field input {
     flex: 1;
     min-width: 0;
-  }
-  .field button {
-    flex: none;
-    font: inherit;
-    color: inherit;
-    padding: 6px 12px;
-    border: 1px solid var(--border-strong);
-    border-radius: 5px;
-    background: none;
-    cursor: pointer;
-  }
-  .field button:hover {
-    background: var(--hover);
   }
 </style>

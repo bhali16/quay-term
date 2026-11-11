@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { focus } from "./focus";
-  import { onEscape } from "./escape";
-  import { modal } from "./modal";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import Icon from "./Icon.svelte";
   import type { Snippet } from "./bindings/Snippet";
   import { fill, group, initialValues, matches, slug, variables } from "./snippets";
@@ -99,11 +98,10 @@
   function focusIf(node: HTMLElement, on: boolean) {
     if (on) requestAnimationFrame(() => node.focus());
   }
-  onMount(() => onEscape(() => (mode === "list" ? onclose() : (mode = "list"))));
 </script>
 
-<div class="dlg-backdrop" role="presentation">
-  <div use:modal class="dlg snip" role="dialog" aria-label="Snippets">
+<!-- Escape steps back to the list first, then closes. -->
+<Dialog label="Snippets" class="snip" onclose={() => (mode === "list" ? onclose() : (mode = "list"))}>
     {#if mode === "list"}
       <h2>Snippets</h2>
       <div class="search">
@@ -128,8 +126,8 @@
         {/each}
       </div>
       <div class="actions">
-        <button type="button" onclick={() => edit(null)}>New snippet</button>
-        <button type="button" class="primary" onclick={onclose}>Close</button>
+        <Button onclick={() => edit(null)}>New snippet</Button>
+        <Button variant="primary" onclick={onclose}>Close</Button>
       </div>
     {:else if mode === "fill" && current}
       <h2>{current.name}</h2>
@@ -159,8 +157,8 @@
       <label class="check"><input type="checkbox" bind:checked={enter} /> Run it (press Enter after the text). Off types it into the prompt to check first</label>
       {#if target !== "focused"}<p class="note"><Icon name="info" size={14} /><span>This types into several terminals at once.</span></p>{/if}
       <div class="actions">
-        <button type="button" onclick={() => (mode = "list")}>Back</button>
-        <button type="button" class="primary" onclick={send} use:focusIf={vars.length === 0}>Send</button>
+        <Button onclick={() => (mode = "list")}>Back</Button>
+        <Button variant="primary" onclick={send} initialFocus={vars.length === 0}>Send</Button>
       </div>
     {:else}
       <h2>{current ? "Edit snippet" : startDraft ? "Save command as snippet" : "New snippet"}</h2>
@@ -178,16 +176,15 @@
         </p>
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <div class="actions">
-          <button type="button" onclick={() => (mode = "list")}>Cancel</button>
-          <button type="submit" class="primary">Save</button>
+          <Button onclick={() => (mode = "list")}>Cancel</Button>
+          <Button type="submit" variant="primary">Save</Button>
         </div>
       </form>
     {/if}
-  </div>
-</div>
+</Dialog>
 
 <style>
-  .snip {
+  :global(.dlg.snip) {
     width: min(560px, calc(100vw - 48px));
   }
   .search {

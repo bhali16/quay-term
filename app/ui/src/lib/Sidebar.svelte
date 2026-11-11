@@ -3,6 +3,7 @@
   import { focus } from "./focus";
   import { inkOn } from "./themes";
   import Icon from "./Icon.svelte";
+  import Button from "./Button.svelte";
   import type { Folder } from "./bindings/Folder";
   import type { LibraryView } from "./bindings/LibraryView";
   import type { SavedSession } from "./bindings/SavedSession";
@@ -327,9 +328,9 @@
 <aside class:dragging={drag !== null}>
   <div class="searchbox"><Icon name="search" size={14} /><input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" /></div>
   <div class="tools">
-    <button title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</button>
-    <button title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</button>
-    <button title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={13} />Import</button>
+    <Button size="sm" title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</Button>
+    <Button size="sm" title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</Button>
+    <Button size="sm" title="Import hosts from ~/.ssh/config" aria-label="Import from SSH config" onclick={onimport}><Icon name="import" size={13} />Import</Button>
   </div>
   {#if tabs}
     <div class="seclabel">Tabs</div>
@@ -506,19 +507,13 @@
     gap: 6px;
     flex: none;
   }
-  .tools button {
+  .tools :global(.btn) {
     flex: 1 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     gap: 4px;
-    padding: 6px 4px;
-    font-size: 12px;
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    padding: 5px 4px;
     background: var(--surface);
   }
-  .tools button:hover {
+  .tools :global(.btn:hover) {
     background: var(--hover);
   }
   .ficon,

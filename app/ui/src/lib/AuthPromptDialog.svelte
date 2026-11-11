@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import { focus } from "./focus";
-  import { onEscape } from "./escape";
-  import { modal } from "./modal";
   import type { AuthPrompt } from "./bindings/AuthPrompt";
 
   let { prompt, onanswer }: { prompt: AuthPrompt; onanswer: (answers: string[] | null) => void } = $props();
@@ -11,19 +10,9 @@
   // svelte-ignore state_referenced_locally
   let answers = $state<string[]>(prompt.prompts.map(() => ""));
   const ready = $derived(answers.every((a) => a.length > 0));
-
-  // Level 1: drawn above every other dialog, so it owns Escape whichever opened first.
-  onMount(() => onEscape(() => onanswer(null), 1));
 </script>
 
-<div class="dlg-backdrop top" role="presentation">
-  <form
-    use:modal
-    class="dlg"
-    aria-label="Sign-in"
-    onsubmit={(e) => (e.preventDefault(), ready && onanswer(answers))}
-  >
-    <h2>Sign in to {prompt.host}:{prompt.port}</h2>
+<Dialog title={`Sign in to ${prompt.host}:${prompt.port}`} top onclose={() => onanswer(null)} onsubmit={(e) => (e.preventDefault(), ready && onanswer(answers))}>
     {#if prompt.instructions}
       <p class="hint">{prompt.instructions}</p>
     {/if}
@@ -42,18 +31,13 @@
         {/if}
       </label>
     {/each}
-    <div class="actions">
-      <button type="button" onclick={() => onanswer(null)}>Cancel</button>
-      <button type="submit" class="primary" disabled={!ready}>Continue</button>
-    </div>
-  </form>
-</div>
+  {#snippet actions()}
+    <Button onclick={() => onanswer(null)}>Cancel</Button>
+    <Button type="submit" variant="primary" disabled={!ready}>Continue</Button>
+  {/snippet}
+</Dialog>
 
 <style>
-  /* Same layer as the host-key prompt: it must never hide behind another dialog. */
-  .top {
-    z-index: 20;
-  }
   .hint {
     margin: 0;
     line-height: 1.5;

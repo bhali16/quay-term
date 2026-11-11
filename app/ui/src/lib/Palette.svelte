@@ -13,8 +13,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { focus } from "./focus";
-  import { onEscape } from "./escape";
-  import { modal } from "./modal";
+  import Dialog from "./Dialog.svelte";
   import Icon from "./Icon.svelte";
   import { parseQuery, rank } from "./fuzzy";
   import { formatShortcut } from "./keys";
@@ -128,8 +127,6 @@
     el?.scrollIntoView({ block: "nearest" });
   });
 
-  onMount(() => onEscape(() => onclose()));
-
   function onkey(e: KeyboardEvent) {
     if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
       e.preventDefault();
@@ -161,8 +158,7 @@
   const icon = (g: PaletteItem["group"]) => (g === "Sessions" ? "server" : g === "Snippets" ? "terminal" : g === "Tabs" ? "folder" : "search");
 </script>
 
-<div class="dlg-backdrop" role="presentation" onmousedown={(e) => e.target === e.currentTarget && onclose()}>
-  <div use:modal class="pal" role="dialog" aria-label="Command palette">
+<Dialog label="Command palette" class="pal" plain backdropClose {onclose}>
     <div class="box">
       <Icon name="search" size={16} />
       <input
@@ -268,15 +264,10 @@
         <span class="sp"><kbd>↑↓</kbd> move <kbd>↵</kbd> run <kbd>esc</kbd> close</span>
       {/if}
     </div>
-  </div>
-</div>
+</Dialog>
 
 <style>
-  .dlg-backdrop {
-    align-items: flex-start;
-    padding-top: 12vh;
-  }
-  .pal {
+  :global(.pal) {
     width: min(640px, calc(100vw - 32px));
     max-height: 70vh;
     display: flex;

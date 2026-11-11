@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import KeyFileField from "./KeyFileField.svelte";
-  import { onEscape } from "./escape";
-  import { modal } from "./modal";
   import SecretStoreCheck, { canStore } from "./SecretStoreCheck.svelte";
   import type { VaultStatus } from "./bindings/VaultStatus";
   import { focus } from "./focus";
@@ -44,13 +43,9 @@
           : { method };
     onconnect({ host: host.trim(), port, user: user.trim(), auth }, { save, keepSecret: keepSecret && canStore(vault) });
   }
-
-  onMount(() => onEscape(() => oncancel()));
 </script>
 
-<div class="dlg-backdrop" role="presentation">
-  <form use:modal class="dlg" onsubmit={submit} aria-label="New SSH connection">
-    <h2>New SSH connection</h2>
+<Dialog title="New SSH connection" onclose={oncancel} onsubmit={submit}>
     <div class="row">
       <label class="grow">Host <input class="mono" use:focus bind:value={host} placeholder="example.com" /></label>
       <label class="narrow">Port <input type="number" bind:value={port} min="1" max="65535" /></label>
@@ -74,9 +69,8 @@
     {#if save && method !== "agent"}
       <SecretStoreCheck bind:checked={keepSecret} {vault} {onunlock} what={method === "key" ? "passphrase" : "password"} />
     {/if}
-    <div class="actions">
-      <button type="button" onclick={oncancel}>Cancel</button>
-      <button type="submit" class="primary" disabled={!valid}>Connect</button>
-    </div>
-  </form>
-</div>
+  {#snippet actions()}
+    <Button onclick={oncancel}>Cancel</Button>
+    <Button type="submit" variant="primary" disabled={!valid}>Connect</Button>
+  {/snippet}
+</Dialog>

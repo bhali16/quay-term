@@ -56,7 +56,9 @@
   import type { ToastKind } from "./lib/toasts";
   import SnippetDialog from "./lib/SnippetDialog.svelte";
   import UnlockDialog from "./lib/UnlockDialog.svelte";
-  import ConfirmDialog from "./lib/ConfirmDialog.svelte";
+  import Confirm from "./lib/Confirm.svelte";
+  import Button from "./lib/Button.svelte";
+  import Menu from "./lib/Menu.svelte";
   import type { VaultStatus } from "./lib/bindings/VaultStatus";
   import type { Target } from "./lib/SnippetDialog.svelte";
   import type { Snippet } from "./lib/bindings/Snippet";
@@ -65,7 +67,7 @@
   import { actionFor, actionLabels, formatShortcut, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
   import { inkOn } from "./lib/themes";
-  import { menu, setFocusFallback } from "./lib/modal";
+  import { setFocusFallback } from "./lib/modal";
   import { roving } from "./lib/roving";
   import { DOCK, dockFit, dragWidth, NARROW, readWidth, SIDEBAR, TOOLS_COMPACT, writeWidth } from "./lib/layout";
   import { runningTunnels, tabState, type TabState } from "./lib/tabs";
@@ -949,7 +951,6 @@
 
 <svelte:window
   onpagehide={() => toasts.flush()}
-  onkeydowncapture={(e) => e.key === "Escape" && (tabMenu || tabList) && ((tabMenu = null), (tabList = null), e.stopPropagation())}
   {onkeydown}
 />
 
@@ -1064,8 +1065,8 @@
       {#if !vertical}{#each tabs as tab (tab.key)}{@render tabItem(tab)}{/each}{/if}
     </div>
     {#if !vertical && stripOverflows}
-      <button
-        class="settings"
+      <Button
+        variant="icon"
         title="All tabs"
         aria-label="All tabs ({tabs.length})"
         aria-haspopup="menu"
@@ -1076,26 +1077,26 @@
         }}
       >
         <Icon name="chevron-down" size={16} />
-      </button>
+      </Button>
     {/if}
     <div class="right">
       {#if activeTab && canDock(activeTab)}
-        <button class="filesbtn" class:on={activeTab.dock === "files"} aria-label="Files" aria-pressed={activeTab.dock === "files"} title="Browse files on this host (SFTP)" onclick={() => toggleDock(activeTab, "files")}>
+        <Button variant="ghost" active={activeTab.dock === "files"} aria-label="Files" aria-pressed={activeTab.dock === "files"} title="Browse files on this host (SFTP)" onclick={() => toggleDock(activeTab, "files")}>
           <Icon name="folder" size={16} /><span class="txt">Files</span>
-        </button>
-        <button class="filesbtn" class:on={activeTab.dock === "tunnels"} aria-label="Tunnels" aria-pressed={activeTab.dock === "tunnels"} title="Port forwards over this connection" onclick={() => toggleDock(activeTab, "tunnels")}>
+        </Button>
+        <Button variant="ghost" active={activeTab.dock === "tunnels"} aria-label="Tunnels" aria-pressed={activeTab.dock === "tunnels"} title="Port forwards over this connection" onclick={() => toggleDock(activeTab, "tunnels")}>
           <Icon name="swap" size={16} /><span class="txt">Tunnels</span>
-        </button>
+        </Button>
       {/if}
       {#if broadcast.length}
-        <button class="filesbtn on warn" title="Stop broadcasting to {broadcast.length} panes" aria-label="Stop broadcasting to {broadcast.length} panes" onclick={() => (broadcast = [])}>
+        <Button variant="ghost" class="warn" title="Stop broadcasting to {broadcast.length} panes" aria-label="Stop broadcasting to {broadcast.length} panes" onclick={() => (broadcast = [])}>
           <Icon name="stop" size={14} /><span class="txt">Broadcast</span> {broadcast.length}
-        </button>
+        </Button>
       {/if}
-      <button class="filesbtn" title={`Snippets (${keyOf("snippets")})`} aria-label="Snippets" onclick={() => (showSnippets = true)}>
+      <Button variant="ghost" title={`Snippets (${keyOf("snippets")})`} aria-label="Snippets" onclick={() => (showSnippets = true)}>
         <Icon name="terminal" size={16} /><span class="txt">Snippets</span>
-      </button>
-      <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
+      </Button>
+      <Button variant="icon" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></Button>
     </div>
   </nav>
   <div class="body">
@@ -1190,7 +1191,7 @@
                   <Icon name="swap" size={15} />Tunnels{#if tab.tunnelCount > 0}<span class="count">{tab.tunnelCount}</span>{/if}
                 </button>
               </div>
-              <button class="settings" title="Close panel" aria-label="Close side panel" onclick={() => closeDock(tab)}><Icon name="x" size={16} /></button>
+              <Button variant="icon" title="Close panel" aria-label="Close side panel" onclick={() => closeDock(tab)}><Icon name="x" size={16} /></Button>
             </header>
             {#if tab.files}
               <div class="dockbody" class:off={tab.dock !== "files"}>
@@ -1215,27 +1216,25 @@
   </div>
   {#if tabMenu}
     {@const mt = tabs.find((t) => t.key === tabMenu!.key)}
-    <div class="tabmenu-bg" role="presentation" onclick={() => (tabMenu = null)} oncontextmenu={(e) => (e.preventDefault(), (tabMenu = null))}></div>
-    <div use:menu class="tabmenu" role="menu" aria-label="Tab" style:left="{tabMenu.x}px" style:top="{tabMenu.y}px">
+    <Menu label="Tab" left={tabMenu.x} top={tabMenu.y} onclose={() => (tabMenu = null)}>
       {#if mt?.ssh && !mt.saved}
         <button role="menuitem" onclick={() => ((tabMenu = null), saveConnection(mt))}>Save this connection…</button>
       {/if}
       <button role="menuitem" onclick={() => (mt && startRename(mt), (tabMenu = null))}>Rename tab</button>
       <button role="menuitem" onclick={() => (requestCloseTab(tabMenu!.key), (tabMenu = null))}>Close tab</button>
-    </div>
+    </Menu>
   {/if}
   {#if tabList}
-    <div class="tabmenu-bg" role="presentation" onclick={() => (tabList = null)} oncontextmenu={(e) => (e.preventDefault(), (tabList = null))}></div>
-    <div use:menu class="tabmenu tablist" role="menu" aria-label="All tabs" style:right="{tabList.right}px" style:top="{tabList.top}px">
+    <Menu label="All tabs" right={tabList.right} top={tabList.top} scroll onclose={() => (tabList = null)}>
       {#each tabs as t (t.key)}
         {@const st = stateOf(t)}
-        <button role="menuitemradio" aria-checked={t.key === activeKey} class:cur={t.key === activeKey} onclick={() => ((activeKey = t.key), (tabList = null))}>
+        <button role="menuitemradio" aria-checked={t.key === activeKey} onclick={() => ((activeKey = t.key), (tabList = null))}>
           <span class="sshdot {st}" class:none={st === "local"}></span>
-          <span class="ttl">{t.title}</span>
+          <span class="mttl">{t.title}</span>
           {#if t.activity}<span class="activity"></span>{/if}
         </button>
       {/each}
-    </div>
+    </Menu>
   {/if}
   {#if editing_session}
     {#key editing_session}
@@ -1303,7 +1302,7 @@
   {/if}
   {#if closeAsk}
     {#key closeAsk}
-      <ConfirmDialog title={closeAsk.title} body={closeAsk.body} confirmLabel={closeAsk.label} dontAsk onconfirm={(never) => answerClose(true, never)} oncancel={() => answerClose(false)} />
+      <Confirm title={closeAsk.title} body={closeAsk.body} confirmLabel={closeAsk.label} dontAsk onconfirm={(never) => answerClose(true, never)} oncancel={() => answerClose(false)} />
     {/key}
   {/if}
   {#if showUnlock && vault}
@@ -1411,35 +1410,6 @@
     nav {
       transition: none;
     }
-  }
-  .tabmenu-bg {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-  }
-  .tabmenu {
-    position: fixed;
-    z-index: 41;
-    min-width: 180px;
-    padding: 4px;
-    background: var(--bg-alt);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  }
-  .tabmenu button {
-    display: block;
-    width: 100%;
-    padding: 6px 10px;
-    text-align: left;
-    background: none;
-    border: 0;
-    border-radius: 5px;
-    color: var(--fg);
-    cursor: pointer;
-  }
-  .tabmenu button:hover {
-    background: var(--hover);
   }
   /* One pixel taller than the strip's content, so the active tab can cover the strip's bottom border. */
   .strip {
@@ -1637,9 +1607,8 @@
     margin-left: 4px;
     padding-right: 2px;
   }
-  nav > .settings {
+  nav > :global(.btn) {
     align-self: center;
-    flex: none;
   }
   /* A narrow strip keeps the icons and drops the words; each button still has its tooltip and label. */
   nav.compact .txt {
@@ -1648,21 +1617,7 @@
   nav.compact .right {
     gap: 2px;
   }
-  .tablist {
-    max-width: min(320px, calc(100vw - 16px));
-    max-height: min(420px, calc(100vh - 80px));
-    overflow-y: auto;
-  }
-  .tablist button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .tablist .cur {
-    background: var(--hover);
-    box-shadow: inset 2px 0 0 var(--accent);
-  }
-  .tablist .ttl {
+  .mttl {
     flex: 1;
     white-space: nowrap;
   }
@@ -1749,37 +1704,9 @@
   .dockbody.off {
     display: none;
   }
-  .filesbtn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    color: var(--dim);
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .filesbtn:hover {
-    color: var(--fg);
-    background: var(--hover);
-  }
-  .filesbtn.on {
-    color: var(--accent-text);
-  }
-  .filesbtn.warn {
+  /* Broadcast is on: the button that stops it is red. */
+  nav :global(.btn.warn) {
     color: var(--red-text);
-  }
-  .settings {
-    display: flex;
-    align-items: center;
-    padding: 5px 6px;
-    border-radius: 6px;
-    color: var(--dim);
-    cursor: pointer;
-  }
-  .settings:hover {
-    color: var(--fg);
-    background: var(--hover);
   }
   .tabview {
     position: absolute;
