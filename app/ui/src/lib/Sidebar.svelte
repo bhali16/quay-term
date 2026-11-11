@@ -4,6 +4,7 @@
   import { inkOn } from "./themes";
   import Icon from "./Icon.svelte";
   import Button from "./Button.svelte";
+  import Menu from "./Menu.svelte";
   import type { Folder } from "./bindings/Folder";
   import type { LibraryView } from "./bindings/LibraryView";
   import type { SavedSession } from "./bindings/SavedSession";
@@ -16,10 +17,15 @@
     openIds = [],
     activeId = null,
     oncollapse,
+    toggleTitle = "",
     onshell,
     onssh,
     shellKey = "",
+    paletteKey = "",
+    onimport,
     onconnect,
+    onsplit,
+    onduplicate,
     onedit,
     onnew,
     ondelete,
@@ -40,12 +46,21 @@
     openIds?: number[];
     activeId?: number | null;
     oncollapse: () => void;
+    /** Tooltip of the hide/show button at the bottom, with its shortcut. */
+    toggleTitle?: string;
     /** New tab: a local shell, or an SSH connection (opens the connect dialog). */
     onshell: () => void;
     onssh: () => void;
     /** Shortcut shown in the shell button's tooltip. */
     shellKey?: string;
+    /** Shortcut of the command palette, named in the empty state. */
+    paletteKey?: string;
+    /** Import hosts from ~/.ssh/config (offered while the list is empty). */
+    onimport?: () => void;
     onconnect: (s: SavedSession) => void;
+    /** Open the session as a new pane in the front tab. */
+    onsplit?: (s: SavedSession) => void;
+    onduplicate?: (s: SavedSession) => void;
     onedit: (s: SavedSession) => void;
     /** `folderId` preselects a folder in the editor. */
     onnew: (folderId: number | null) => void;
@@ -64,6 +79,8 @@
   let folderName = $state("");
 
   const searching = $derived(query.trim() !== "");
+  /** Nothing saved yet (and not just a search with no hits): the empty state does the prompting. */
+  const blank = $derived(!searching && library.sessions.length === 0 && library.folders.length === 0);
   const childrenOf = (parent: number | null) => library.folders.filter((f) => f.parent_id === parent);
   const sessionsIn = (folder: number | null) => library.sessions.filter((s) => s.folder_id === folder);
 
@@ -167,6 +184,31 @@
     finish();
   }
 
+  // ---- right-click menus on a session or a folder (also Shift+F10 and the menu key) ----
+  type Ctx = { x: number; y: number; session?: SavedSession; folder?: Folder; moving?: boolean };
+  let ctx = $state<Ctx | null>(null);
+  function openCtx(e: MouseEvent, what: { session?: SavedSession; folder?: Folder }) {
+    e.preventDefault();
+    // Opened from the keyboard there is no pointer position: use the row.
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const byKey = e.clientX === 0 && e.clientY === 0;
+    ctx = { x: byKey ? r.left + 24 : e.clientX, y: byKey ? r.bottom : e.clientY, ...what };
+  }
+  /** Run a menu choice, then close the menu (in that order: the items read the menu's own state). */
+  const pick = (run: () => void) => () => (run(), (ctx = null));
+  /** Every folder with its depth, in tree order, for "Move to folder". */
+  const folderList = $derived.by(() => {
+    const out: { folder: Folder; depth: number }[] = [];
+    const walk = (parent: number | null, depth: number) => {
+      for (const f of library.folders.filter((x) => x.parent_id === parent)) {
+        out.push({ folder: f, depth });
+        walk(f.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  });
+
   /** Tree keys: Up and Down walk the visible rows, Right opens a folder, Left closes it or goes to its parent. */
   function treeKey(e: KeyboardEvent) {
     const el = e.target as HTMLElement;
@@ -204,7 +246,7 @@
 {/snippet}
 
 {#snippet sessionRow(s: SavedSession)}
-  <div class="item session" role="none" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"}>
+  <div class="item session" role="none" class:current={activeId === s.id} data-drop={s.folder_id ?? "root"} oncontextmenu={(e) => openCtx(e, { session: s })}>
     <button
       class="main"
       role="treeitem"
@@ -228,16 +270,14 @@
       </span>
     </button>
     <span class="acts">
-      <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
-      <button title="Edit" aria-label={`Edit ${s.name}`} onclick={() => onedit(s)}><Icon name="pencil" size={13} /></button>
-      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => ondelete(s)}><Icon name="trash" size={13} /></button>
+      <button title="Connect (right-click for more)" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
     </span>
   </div>
 {/snippet}
 
 {#snippet tree(parent: number | null)}
   {#each childrenOf(parent) as f, i (f.id)}
-    <div class="item folder" role="none" class:drop={dropTarget === f.id} data-drop={f.id}>
+    <div class="item folder" role="none" class:drop={dropTarget === f.id} data-drop={f.id} oncontextmenu={(e) => renaming !== f.id && openCtx(e, { folder: f })}>
       {#if renaming === f.id}
         <input
           use:focus
@@ -262,13 +302,7 @@
           <span class="name">{f.name}</span>
         </button>
         <span class="acts">
-          <button title="New session in this folder" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
-          <button title="New subfolder" aria-label={`New subfolder in ${f.name}`} onclick={() => startCreate(f.id)}><Icon name="folder-plus" size={14} /></button>
-          <button title="Rename" aria-label={`Rename ${f.name}`} onclick={() => startRename(f.id, f.name)}><Icon name="pencil" size={13} /></button>
-          <button
-            title="Delete folder"
-            aria-label={`Delete folder ${f.name}`}
-            onclick={() => ondeletefolder(f.id)}><Icon name="trash" size={13} /></button>
+          <button title="New session in this folder (right-click for more)" aria-label={`New session in ${f.name}`} onclick={() => onnew(f.id)}><Icon name="plus" size={14} /></button>
         </span>
       {/if}
     </div>
@@ -283,6 +317,18 @@
   {/each}
 {/snippet}
 
+{#snippet toggle()}
+  <button
+    class="sbtoggle"
+    aria-label={railOnly ? "Show sidebar" : "Hide sidebar"}
+    aria-expanded={!railOnly}
+    title={toggleTitle || (railOnly ? "Show sidebar" : "Hide sidebar")}
+    onclick={oncollapse}
+  >
+    <Icon name="panel-left" size={17} />
+  </button>
+{/snippet}
+
 {#snippet newTabButtons(vertical: boolean)}
   <div class="dual" class:vertical role="group" aria-label="New tab">
     <button title={`New shell${shellKey ? ` (${shellKey})` : ""}`} aria-label="New local shell" onclick={onshell}><Icon name="terminal" size={15} /></button>
@@ -291,7 +337,7 @@
 {/snippet}
 
 <div class="sb" class:rail={railOnly}>
-<!-- Room for the window's traffic lights and the toggle that App draws over them. -->
+<!-- Room for the window's traffic lights. -->
 <div class="head" data-tauri-drag-region>
   {#if !railOnly}{@render newTabButtons(false)}{/if}
 </div>
@@ -320,14 +366,17 @@
         </button>
       {/each}
     </div>
+    {@render toggle()}
   </aside>
 {:else}
 <aside class:dragging={drag !== null}>
   <div class="searchbox"><Icon name="search" size={14} /><input class="search" type="search" placeholder="Search sessions" bind:value={query} aria-label="Search sessions" /></div>
-  <div class="tools">
-    <Button size="sm" title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</Button>
-    <Button size="sm" title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</Button>
-  </div>
+  {#if !blank || creating}
+    <div class="tools">
+      <Button size="sm" title="New session" aria-label="New session" onclick={() => onnew(null)}><Icon name="plus" size={13} />Session</Button>
+      <Button size="sm" title="New folder" aria-label="New folder" onclick={() => startCreate(null)}><Icon name="plus" size={13} />Folder</Button>
+    </div>
+  {/if}
   {#if tabs}
     <div class="seclabel">Tabs</div>
     <div class="tabsec">{@render tabs()}</div>
@@ -344,15 +393,57 @@
       {@render tree(null)}
       {#if childrenOf(null).length > 0 && sessionsIn(null).length > 0}<div class="sep"></div>{/if}
       {#each sessionsIn(null) as s (s.id)}{@render sessionRow(s)}{/each}
-      {#if library.sessions.length === 0 && library.folders.length === 0}
-        <p class="empty">No saved sessions yet. Press + to add one, or import your ~/.ssh/config in Settings &gt; Backup.</p>
+      {#if blank && !creating}
+        <div class="first">
+          <p>No saved sessions yet.</p>
+          <Button variant="primary" size="sm" onclick={() => onnew(null)}><Icon name="plus" size={13} />New session</Button>
+          {#if onimport}<Button size="sm" onclick={onimport}><Icon name="import" size={13} />Import from ~/.ssh/config</Button>{/if}
+          {#if paletteKey}<p class="tip">Press <kbd>{paletteKey}</kbd> to search every action, session and tab.</p>{/if}
+        </div>
       {/if}
     {/if}
   </div>
-  {#if version}<div class="footer"><span class="version">{version}</span></div>{/if}
+  <div class="footer">{@render toggle()}<span class="version">{version}</span></div>
 </aside>
 {/if}
 </div>
+
+{#if ctx?.session}
+  {@const s = ctx.session}
+  {#key ctx.moving}
+    {#if ctx.moving}
+      <Menu label="Move {s.name} to a folder" left={ctx.x} top={ctx.y} scroll onclose={() => (ctx = null)}>
+        <div class="mhead">Move to</div>
+        <button role="menuitemradio" aria-checked={s.folder_id === null} onclick={pick(() => s.folder_id !== null && onmovesession(s.id, null))}>Top level</button>
+        {#each folderList as { folder, depth } (folder.id)}
+          <button role="menuitemradio" aria-checked={s.folder_id === folder.id} style:padding-left="calc(var(--space-3) + {depth} * var(--space-3))" onclick={pick(() => s.folder_id !== folder.id && onmovesession(s.id, folder.id))}>
+            <Icon name="folder" size={14} />{folder.name}
+          </button>
+        {/each}
+      </Menu>
+    {:else}
+      <Menu label={s.name} left={ctx.x} top={ctx.y} onclose={() => (ctx = null)}>
+        <button role="menuitem" onclick={pick(() => onconnect(s))}>Connect</button>
+        {#if onsplit}<button role="menuitem" onclick={pick(() => onsplit(s))}>Open in split</button>{/if}
+        <hr />
+        <button role="menuitem" onclick={pick(() => onedit(s))}>Edit…</button>
+        {#if onduplicate}<button role="menuitem" onclick={pick(() => onduplicate(s))}>Duplicate</button>{/if}
+        <button role="menuitem" disabled={library.folders.length === 0} onclick={() => (ctx = { ...ctx!, moving: true })}>Move to folder…</button>
+        <hr />
+        <button role="menuitem" onclick={pick(() => ondelete(s))}>Delete</button>
+      </Menu>
+    {/if}
+  {/key}
+{:else if ctx?.folder}
+  {@const f = ctx.folder}
+  <Menu label={f.name} left={ctx.x} top={ctx.y} onclose={() => (ctx = null)}>
+    <button role="menuitem" onclick={pick(() => onnew(f.id))}>New session here</button>
+    <button role="menuitem" onclick={pick(() => startCreate(f.id))}>New subfolder</button>
+    <button role="menuitem" onclick={pick(() => startRename(f.id, f.name))}>Rename</button>
+    <hr />
+    <button role="menuitem" onclick={pick(() => ondeletefolder(f.id))}>Delete folder</button>
+  </Menu>
+{/if}
 
 {#if drag}
   <div class="ghost" style:left={`${dragPos.x + 12}px`} style:top={`${dragPos.y + 12}px`}>{drag.label}</div>
@@ -532,6 +623,7 @@
     padding: 0 var(--space-1);
   }
   .item {
+    position: relative;
     display: flex;
     align-items: center;
     margin: 1px 0;
@@ -539,6 +631,7 @@
     border-radius: var(--radius-m);
   }
   .item:hover,
+  .item:focus-within,
   .item.current {
     background: var(--hover);
   }
@@ -606,19 +699,24 @@
   .tag.more {
     flex: none;
   }
-  .item:hover .tags,
-  .item:focus-within .tags {
-    display: none;
-  }
   .caret {
     display: flex;
     width: 13px;
     margin-left: -2px;
     color: var(--dim);
   }
+  /* The row's actions lie over its right end, on an edge that fades into the row. The name and
+     tags stay where they are, so nothing moves when the pointer comes in. */
   .acts {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
     display: none;
-    flex: none;
+    align-items: center;
+    padding: 0 var(--space-1) 0 var(--space-5);
+    border-radius: 0 var(--radius-m) var(--radius-m) 0;
+    background: linear-gradient(to right, transparent, var(--hover) var(--space-5));
   }
   .item:hover .acts,
   .item:focus-within .acts {
@@ -676,9 +774,27 @@
     opacity: 0.9;
   }
   .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     flex: none;
-    padding: var(--space-2) var(--space-1) 0;
+    padding: var(--space-1) var(--space-1) 0 0;
     border-top: 1px solid var(--border);
+  }
+  /* Hide or show the sidebar: last thing in it, in the same corner in both states. */
+  .sbtoggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-m);
+    color: var(--dim);
+  }
+  .sbtoggle:hover {
+    color: var(--fg);
+    background: var(--hover);
   }
   .version {
     font-size: var(--text-xs);
@@ -687,6 +803,30 @@
   .empty {
     margin: var(--space-3) var(--space-1);
     color: var(--dim);
+  }
+  /* Nothing saved yet: the two ways to get a first session, and where everything else is found. */
+  .first {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin: var(--space-3) var(--space-1);
+    color: var(--dim);
+  }
+  .first p {
+    margin: 0;
+  }
+  .first .tip {
+    margin-top: var(--space-2);
+    font-size: var(--text-s);
+    line-height: 1.5;
+  }
+  .first kbd {
+    padding: 1px var(--space-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-s);
+    color: var(--fg);
+    font: inherit;
   }
 
   /* ---- collapsed rail ---- */

@@ -7,6 +7,19 @@ export type Settings = {
  */
 theme: string, 
 /**
+ * Follow the system's light or dark appearance: `theme_light` or `theme_dark` is used
+ * instead of `theme`. Off by default, so an existing choice of theme is kept.
+ */
+theme_match_system: boolean, 
+/**
+ * Theme id used while the system is in light mode (with `theme_match_system`).
+ */
+theme_light: string, 
+/**
+ * Theme id used while the system is in dark mode (with `theme_match_system`).
+ */
+theme_dark: string, 
+/**
  * CSS font-family list for the terminal.
  */
 font_family: string, font_size: number, cursor_blink: boolean, scrollback: number, 
@@ -45,7 +58,8 @@ notify_after_secs: number,
  */
 notify_show_command: boolean, 
 /**
- * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored.
+ * Action id -> shortcut such as `Cmd+T`. Only user overrides are stored. The value `none`
+ * means the action has no shortcut (its key was given to another action).
  */
 keybindings: { [key in string]: string }, 
 /**
@@ -57,6 +71,10 @@ focus_follows_mouse: boolean,
  * connected panes.
  */
 confirm_close: boolean, tab_layout: TabLayout, 
+/**
+ * In a tab with several panes, draw the ones without focus slightly dimmed.
+ */
+dim_unfocused_panes: boolean, 
 /**
  * Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
  * Needs shell integration marks, so it does nothing in a shell without them.

@@ -34,7 +34,8 @@ export type Action =
   | "rerun_last"
   | "select_block"
   | "enable_integration"
-  | "history_search";
+  | "history_search"
+  | "find";
 
 export const actionLabels: Record<Action, string> = {
   new_tab: "New local tab",
@@ -72,7 +73,22 @@ export const actionLabels: Record<Action, string> = {
   select_block: "Select output of the command in view",
   enable_integration: "Enable command marks in this remote shell",
   history_search: "Search command history",
+  find: "Find in scrollback",
 };
+
+/** The sections of Settings > Shortcuts, in the order they are shown. */
+export const actionGroups: { name: string; actions: Action[] }[] = [
+  { name: "Tabs", actions: ["new_tab", "close_tab", "next_tab", "prev_tab"] },
+  {
+    name: "Panes",
+    actions: ["split_right", "split_down", "zoom_pane", "focus_left", "focus_right", "focus_up", "focus_down", "resize_left", "resize_right", "resize_up", "resize_down", "broadcast_pane", "broadcast_tab", "mute_pane"],
+  },
+  {
+    name: "Commands",
+    actions: ["find", "prev_prompt", "next_prompt", "copy_last_output", "select_last_output", "copy_last_command", "rerun_last", "select_block", "enable_integration", "history_search", "snippets"],
+  },
+  { name: "App", actions: ["palette", "toggle_sidebar", "toggle_files", "settings", "zoom_in", "zoom_out", "zoom_reset"] },
+];
 
 export const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 
@@ -114,6 +130,7 @@ export const defaultBindings: Record<Action, string> = {
   select_block: isMac ? "Alt+Cmd+J" : "Ctrl+Alt+J",
   enable_integration: isMac ? "Alt+Shift+Cmd+I" : "Ctrl+Alt+Shift+I",
   history_search: isMac ? "Shift+Cmd+H" : "Ctrl+Alt+H",
+  find: isMac ? "Cmd+F" : "Ctrl+Shift+F",
 };
 
 const MODS = ["Ctrl", "Alt", "Shift", "Cmd"] as const;
@@ -146,9 +163,12 @@ export function normalize(s: string): string {
   return [...MODS.filter((m) => have.has(m)), key.length === 1 ? key.toUpperCase() : key].join("+");
 }
 
+/** Stored for an action whose shortcut was taken by another one: it has none until the user sets one. */
+export const UNBOUND = "none";
+
 export function resolve(overrides: Record<string, string>): Record<Action, string> {
   const out = { ...defaultBindings };
-  for (const a of Object.keys(out) as Action[]) if (overrides[a]) out[a] = normalize(overrides[a]);
+  for (const a of Object.keys(out) as Action[]) if (overrides[a]) out[a] = overrides[a] === UNBOUND ? "" : normalize(overrides[a]);
   return out;
 }
 
@@ -156,6 +176,7 @@ export function resolve(overrides: Record<string, string>): Record<Action, strin
 export function actionFor(e: KeyboardEvent, bindings: Record<Action, string>): Action | null {
   const d = describe(e);
   if (!d) return null;
+  // An action without a shortcut is "", which no key event describes.
   return (Object.keys(bindings) as Action[]).find((a) => bindings[a] === d) ?? null;
 }
 

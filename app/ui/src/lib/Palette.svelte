@@ -6,6 +6,8 @@
     subtitle?: string;
     /** Shortcut shown on the right. */
     hint?: string;
+    /** Why the item cannot run in the current tab. It is shown greyed out, with this as its subtitle. */
+    disabled?: string;
     run: () => void;
   };
 </script>
@@ -139,7 +141,7 @@
       if (histMode) insert(hrows[sel]);
       else {
         const item = results[sel];
-        if (item) onrun(item);
+        if (item && !item.disabled) onrun(item);
       }
     } else if (histMode && e.key === "Delete" && e.shiftKey) {
       // Shift+Delete forgets the selected command (plain Delete still edits the query).
@@ -238,15 +240,17 @@
           data-i={i}
           class="row"
           class:sel={i === sel}
+          class:off={!!item.disabled}
           role="option"
           aria-selected={i === sel}
+          aria-disabled={!!item.disabled}
           tabindex="-1"
           onmousemove={() => (sel = i)}
-          onclick={() => onrun(item)}
+          onclick={() => !item.disabled && onrun(item)}
         >
           <span class="ic"><Icon name={icon(item.group)} size={15} /></span>
           <span class="t">{item.title}</span>
-          {#if item.subtitle}<span class="s">{item.subtitle}</span>{/if}
+          {#if item.disabled ?? item.subtitle}<span class="s">{item.disabled ?? item.subtitle}</span>{/if}
           {#if parsed.query.trim()}<span class="g">{item.group}</span>{/if}
           {#if item.hint}<kbd>{item.hint}</kbd>{/if}
         </div>
@@ -322,6 +326,20 @@
   .row.sel {
     background: var(--accent);
     color: var(--on-accent);
+  }
+  /* Cannot run in this tab: the title is dimmed and the subtitle says why. Selected, it gets an
+     outline, not the accent fill, so it does not look like something Enter will run. */
+  .row.off {
+    cursor: default;
+  }
+  .row.off .t,
+  .row.off kbd {
+    color: var(--dim);
+  }
+  .row.off.sel {
+    background: var(--hover);
+    color: var(--fg);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
   }
   .ic {
     display: flex;

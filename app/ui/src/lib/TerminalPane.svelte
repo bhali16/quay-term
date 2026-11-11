@@ -4,6 +4,7 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
+  import { SearchAddon } from "@xterm/addon-search";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import "@xterm/xterm/css/xterm.css";
   import {
@@ -16,7 +17,8 @@
   } from "./ipc";
   import type { SshTarget } from "./bindings/SshTarget";
   import { settings } from "./settings.svelte";
-  import { actionFor, isMac } from "./keys";
+  import { actionFor, formatShortcut, isMac } from "./keys";
+  import Icon from "./Icon.svelte";
   import { inkOn } from "./themes";
   import Button from "./Button.svelte";
   import Menu from "./Menu.svelte";
@@ -186,6 +188,63 @@
     if (ok && text) term.paste(text);
     term.focus();
   }
+
+  // ---- find in scrollback ----
+  let search: SearchAddon;
+  let finding = $state(false);
+  let findText = $state("");
+  let findCase = $state(false);
+  /** Where the current match is among all of them; `count` is 0 when nothing matches. */
+  let found = $state({ index: -1, count: 0 });
+  let findInput = $state<HTMLInputElement>();
+  // The addon wants plain #rrggbb colours; they follow the theme.
+  const findOptions = () => ({
+    caseSensitive: findCase,
+    decorations: {
+      matchBackground: settings.theme.ui.border,
+      matchOverviewRuler: settings.theme.ui.yellow,
+      activeMatchBackground: settings.theme.ui.accent,
+      activeMatchColorOverviewRuler: settings.theme.ui.accent,
+    },
+  });
+  /** Open the find bar (or go back to it), with the selected text as the first thing to look for. */
+  export function openFind() {
+    const picked = term.getSelection();
+    if (picked && !picked.includes("\n")) findText = picked;
+    finding = true;
+    requestAnimationFrame(() => {
+      findInput?.focus();
+      findInput?.select();
+      if (findText) findStep(true, true);
+    });
+  }
+  /** Go to the next or previous match. `stay` keeps the current match while the text is still being typed. */
+  function findStep(forward: boolean, stay = false) {
+    if (!findText) {
+      search.clearDecorations();
+      found = { index: -1, count: 0 };
+      return;
+    }
+    if (forward) search.findNext(findText, { ...findOptions(), incremental: stay });
+    else search.findPrevious(findText, findOptions());
+  }
+  function closeFind() {
+    finding = false;
+    search.clearDecorations();
+    found = { index: -1, count: 0 };
+    term.focus();
+  }
+  function findKey(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      findStep(!e.shiftKey);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeFind();
+    }
+  }
+  const findLabel = $derived(!findText ? "" : found.count === 0 ? "No matches" : found.index < 0 ? `${found.count} matches` : `${found.index + 1} of ${found.count}`);
 
   // ---- command blocks (shell integration marks) ----
   const nowMs = () => Date.now();
@@ -572,6 +631,9 @@
         if (/^https?:\/\//i.test(uri)) openUrl(uri).catch(() => {});
       }),
     );
+    search = new SearchAddon();
+    term.loadAddon(search);
+    search.onDidChangeResults((r) => (found = { index: r.resultIndex, count: r.resultCount }));
     term.open(host);
     fit.fit();
     term.parser.registerOscHandler(133, onMark);
@@ -672,6 +734,26 @@
     {#if copied}<span class="copied" role="status">{copied}</span>{/if}
     {#if broadcasting}<span class="bcast" title="What you type here is also sent to the other selected panes">Broadcast</span>{/if}
   </div>
+  {#if finding}
+    <div class="find" class:low={header} role="search">
+      <input
+        bind:this={findInput}
+        bind:value={findText}
+        oninput={() => findStep(true, true)}
+        onkeydown={findKey}
+        placeholder="Find"
+        aria-label="Find in scrollback"
+        autocapitalize="off"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span class="count" class:none={!!findText && found.count === 0} role="status">{findLabel}</span>
+      <Button variant="icon" active={findCase} aria-pressed={findCase} title="Match case" aria-label="Match case" onclick={() => ((findCase = !findCase), findStep(true, true))}><span class="aa">Aa</span></Button>
+      <Button variant="icon" title={`Previous match (${formatShortcut("Shift+Enter")})`} aria-label="Previous match" disabled={found.count === 0} onclick={() => findStep(false)}><Icon name="arrow-up" size={14} /></Button>
+      <Button variant="icon" title={`Next match (${formatShortcut("Enter")})`} aria-label="Next match" disabled={found.count === 0} onclick={() => findStep(true)}><Icon name="arrow-down" size={14} /></Button>
+      <Button variant="icon" title={`Close (${formatShortcut("Escape")})`} aria-label="Close find" onclick={closeFind}><Icon name="x" size={14} /></Button>
+    </div>
+  {/if}
   {#if menu}
     <Menu label="Command block" left={menu.x} top={menu.y} onclose={() => ((menu = null), term.focus())}>
       <button role="menuitem" disabled={!menu.block.command} onclick={() => menuDo("command")}>Copy command</button>
@@ -717,6 +799,57 @@
     display: flex;
     gap: var(--space-2);
     pointer-events: none;
+  }
+  /* Find in scrollback: a small bar in the pane's top right corner, over the text. */
+  .find {
+    position: absolute;
+    top: 6px;
+    right: 14px;
+    z-index: 9;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    max-width: calc(100% - 28px);
+    box-sizing: border-box;
+    padding: 2px var(--space-1) 2px var(--space-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-m);
+    background: var(--surface);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+    font-size: var(--text-m);
+  }
+  /* Below the badge row when the pane has one. */
+  .find.low {
+    top: 26px;
+  }
+  .find:focus-within {
+    border-color: var(--focus);
+  }
+  .find input {
+    flex: 1 1 160px;
+    min-width: 60px;
+    width: 160px;
+    padding: 2px 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+  }
+  .find .count {
+    flex: none;
+    padding: 0 var(--space-1);
+    color: var(--dim);
+    font-size: var(--text-s);
+    white-space: nowrap;
+  }
+  .find .count.none {
+    color: var(--red-text);
+  }
+  .find .aa {
+    font-size: var(--text-s);
+    font-weight: 600;
+    line-height: 1;
   }
   .strip {
     position: absolute;

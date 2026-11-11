@@ -1,5 +1,5 @@
 import { describe as suite, expect, it } from "vitest";
-import { actionFor, defaultBindings, describe, formatShortcut, normalize, resolve } from "./keys";
+import { actionFor, actionGroups, actionLabels, defaultBindings, describe, formatShortcut, normalize, resolve, UNBOUND } from "./keys";
 
 const ev = (init: Partial<KeyboardEvent>) => init as KeyboardEvent;
 
@@ -36,6 +36,25 @@ suite("resolve and actionFor", () => {
     const b = resolve({ new_tab: "alt+n" });
     expect(actionFor(ev({ key: "n", code: "KeyN", altKey: true }), b)).toBe("new_tab");
     expect(actionFor(ev({ key: "q", code: "KeyQ" }), b)).toBeNull();
+  });
+});
+
+suite("an action without a shortcut", () => {
+  it("has no binding and matches no key", () => {
+    const b = resolve({ new_tab: UNBOUND, close_tab: defaultBindings.new_tab });
+    expect(b.new_tab).toBe("");
+    expect(formatShortcut(b.new_tab)).toBe("");
+    const combo = defaultBindings.new_tab.split("+");
+    const key = combo[combo.length - 1];
+    const e = ev({ key: key.toLowerCase(), code: `Key${key}`, metaKey: combo.includes("Cmd"), ctrlKey: combo.includes("Ctrl"), shiftKey: combo.includes("Shift"), altKey: combo.includes("Alt") });
+    expect(actionFor(e, b)).toBe("close_tab");
+  });
+});
+
+suite("shortcut groups", () => {
+  it("list every action exactly once", () => {
+    const listed = actionGroups.flatMap((g) => g.actions).sort();
+    expect(listed).toEqual(Object.keys(actionLabels).sort());
   });
 });
 

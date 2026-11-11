@@ -89,6 +89,22 @@
     background: var(--hover);
     box-shadow: inset 2px 0 0 var(--accent);
   }
+  /* A caption above a group of items, and a shortcut at the end of one. */
+  .menu :global(.mhead) {
+    padding: var(--space-1) var(--space-3) 2px;
+    color: var(--dim);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .menu :global(kbd) {
+    margin-left: auto;
+    padding-left: var(--space-4);
+    color: var(--dim);
+    font: inherit;
+    font-size: var(--text-s);
+  }
   .menu :global(hr) {
     width: 100%;
     box-sizing: border-box;

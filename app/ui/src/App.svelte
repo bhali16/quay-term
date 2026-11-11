@@ -71,6 +71,7 @@
   import { roving } from "./lib/roving";
   import { DOCK, dockFit, dragWidth, NARROW, readWidth, SIDEBAR, TOOLS_COMPACT, writeWidth } from "./lib/layout";
   import { runningTunnels, tabState, type TabState } from "./lib/tabs";
+  import { pushRecent, unavailable, type Checked } from "./lib/available";
   import type { AppInfo } from "./lib/bindings/AppInfo";
   import type { HostKeyPrompt } from "./lib/bindings/HostKeyPrompt";
   import type { SshTarget } from "./lib/bindings/SshTarget";
@@ -91,6 +92,8 @@
     files?: boolean;
     tunnels?: boolean;
     layout: P.Node;
+    /** Panes opened with "Open in split": they connect to their own saved session, not the tab's. */
+    targets: Record<number, Saved>;
     focus: number;
     /** Port forwards running over this tab's connection, polled while the tab is open. */
     tunnelCount: number;
@@ -257,18 +260,18 @@
   }
   // ---- command history (F7) ----
   const deny = $derived(compileDeny(settings.value.history_deny_patterns));
-  const hostOf = (tab: Tab) => tab.saved?.label ?? (tab.ssh ? `${tab.ssh.user}@${tab.ssh.host}` : "local");
-  function recordCommand(tab: Tab, c: { command: string; exit: number | null; spaced: boolean; cwd: string | null }) {
+  const hostOf = (tab: Tab, pane: number) => paneSaved(tab, pane)?.label ?? (tab.ssh ? `${tab.ssh.user}@${tab.ssh.host}` : "local");
+  function recordCommand(tab: Tab, pane: number, c: { command: string; exit: number | null; spaced: boolean; cwd: string | null }) {
     if (!settings.value.record_history || c.spaced) return;
     const command = recordable(c.command, deny);
     if (!command) return;
-    historyAdd({ command, host: hostOf(tab), session_id: tab.saved?.id ?? null, cwd: c.cwd, exit: c.exit }).catch((e) =>
+    historyAdd({ command, host: hostOf(tab, pane), session_id: paneSaved(tab, pane)?.id ?? null, cwd: c.cwd, exit: c.exit }).catch((e) =>
       console.warn("history not saved", e),
     );
   }
 
   function commandDone(tab: Tab, pane: number, c: { command: string; exit: number | null; ms: number; spaced: boolean; cwd: string | null }) {
-    recordCommand(tab, c);
+    recordCommand(tab, pane, c);
     if (!isLong(c.ms, settings.value.notify_after_secs)) return;
     const body = commandBody({ ...c, session: tab.title, showCommand: settings.value.notify_show_command });
     notify(tab, pane, c.exit === null || c.exit === 0 ? "Command finished" : "Command failed", body);
@@ -279,7 +282,7 @@
     const title = saved ? saved.label : ssh ? `${ssh.user}@${ssh.host}` : `Shell ${key}`;
     // A saved session comes back with the split layout it was last closed with.
     const layout = (saved && loadShape(saved.id)) || { leaf: ++paneCounter };
-    tabs.push({ key, title, ssh, saved, layout, focus: P.leaves(layout)[0], zoom: null, dock: null, tunnelCount: 0, panes: {}, status: {}, activity: false });
+    tabs.push({ key, title, ssh, saved, layout, targets: {}, focus: P.leaves(layout)[0], zoom: null, dock: null, tunnelCount: 0, panes: {}, status: {}, activity: false });
     activeKey = key;
   }
 
@@ -294,7 +297,8 @@
   }
   function setLayout(tab: Tab, layout: P.Node) {
     tab.layout = layout;
-    if (!tab.saved) return;
+    // Only a layout of the tab's own session is remembered: one with another session in it could not be reopened as it was.
+    if (!tab.saved || Object.keys(tab.targets).length) return;
     try {
       if (P.isLeaf(layout)) localStorage.removeItem(shapeKey(tab.saved.id));
       else localStorage.setItem(shapeKey(tab.saved.id), JSON.stringify(P.shapeOf(layout)));
@@ -303,6 +307,9 @@
     }
   }
   const focusedPane = (tab: Tab | undefined) => tab?.panes[tab.focus];
+  /** What a pane connects to: the session it was opened with ("Open in split"), else the tab's own. */
+  const paneSaved = (tab: Tab, id: number) => tab.targets[id] ?? tab.saved;
+  const paneSsh = (tab: Tab, id: number) => (tab.targets[id] ? null : tab.ssh);
 
   function toggleZoom(tab: Tab) {
     if (tab.zoom !== null) tab.zoom = null;
@@ -311,7 +318,17 @@
   function splitPane(tab: Tab, axis: P.Axis) {
     tab.zoom = null;
     const id = ++paneCounter;
+    // A split of a pane that holds another session opens that session again, like any other split.
+    if (tab.targets[tab.focus]) tab.targets[id] = tab.targets[tab.focus];
     setLayout(tab, P.split(tab.layout, tab.focus, id, axis));
+    tab.focus = id;
+  }
+  /** "Open in split": a saved session as a new pane beside the focused one. */
+  function splitWith(tab: Tab, target: Saved) {
+    tab.zoom = null;
+    const id = ++paneCounter;
+    tab.targets[id] = target;
+    setLayout(tab, P.split(tab.layout, tab.focus, id, "row"));
     tab.focus = id;
   }
   function closePane(tab: Tab, id: number) {
@@ -319,6 +336,7 @@
     if (!next) return closeTab(tab.key);
     const order = P.leaves(tab.layout);
     if (tab.zoom === id) tab.zoom = null;
+    delete tab.targets[id];
     setLayout(tab, next);
     delete tab.panes[id];
     delete tab.status[id];
@@ -398,8 +416,10 @@
   /** Right-click menu on a tab. */
   let tabMenu = $state<{ x: number; y: number; key: number } | null>(null);
   let dialogError = $state<string | null>(null);
-  let passwordFor = $state<SavedSession | null>(null);
+  type Into = "tab" | "split";
+  let passwordFor = $state<{ session: SavedSession; into: Into } | null>(null);
   let jumpFor = $state<{
+    into: Into;
     session: SavedSession;
     secret: string | null;
     remember: boolean;
@@ -485,16 +505,19 @@
   $effect(() => {
     if (!stripEl) return;
     // Its own size, and anything that changes what is inside it (a tab added, closed or renamed).
-    const ro = new ResizeObserver(checkStrip);
-    const mo = new MutationObserver(checkStrip);
+    // A new width (the all-tabs button appeared, the window changed) can push the front tab out of view.
+    const ro = new ResizeObserver(() => (checkStrip(), revealActive()));
+    const mo = new MutationObserver(() => (checkStrip(), revealActive()));
     ro.observe(stripEl);
     mo.observe(stripEl, { childList: true, subtree: true, characterData: true });
     return () => (ro.disconnect(), mo.disconnect());
   });
+  const revealActive = () => stripEl?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   // The tab you switch to is scrolled into view, and stays in view when the strip changes width.
   $effect(() => {
     void [activeKey, tabs.length, navW];
-    tick().then(() => stripEl?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
+    // Once now, and once after the next frame: a tab that was just added has its final place only then.
+    tick().then(() => (revealActive(), requestAnimationFrame(revealActive)));
   });
   const toast = (text: string, kind: ToastKind = "info", opts: ToastOptions = {}) => toasts.show(text, kind, opts);
   /** An error: one plain sentence that stays until dismissed, the raw text behind "Details". */
@@ -521,18 +544,55 @@
     secret: string | null = null,
     remember = false,
     jumps: JumpSecret[] = [],
+    into: Into = "tab",
   ) {
     if (s.auth === "password" && !s.has_secret && secret === null) {
-      passwordFor = s;
+      passwordFor = { session: s, into };
       return;
     }
     const missing = await jumpSecretsMissing(s.id).catch(() => [] as MissingSecret[]);
     const hop = missing.find((m) => !jumps.some((j) => j.id === m.id));
     if (hop) {
-      jumpFor = { session: s, secret, remember, jumps, hop };
+      jumpFor = { into, session: s, secret, remember, jumps, hop };
       return;
     }
-    newTab(null, { id: s.id, label: s.name, secret, remember, jumps });
+    rememberSession(s.id);
+    const target: Saved = { id: s.id, label: s.name, secret, remember, jumps };
+    if (into === "split" && activeTab) splitWith(activeTab, target);
+    else newTab(null, target);
+  }
+
+  // ---- sessions connected to lately, offered in the new-tab menu ----
+  const RECENT_SESSIONS = "quay.sessions.recent";
+  function readRecentSessions(): number[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(RECENT_SESSIONS) ?? "[]");
+      return Array.isArray(v) ? v.filter((x) => Number.isInteger(x)).slice(0, 6) : [];
+    } catch {
+      return [];
+    }
+  }
+  let recentIds = $state<number[]>(readRecentSessions());
+  function rememberSession(id: number) {
+    recentIds = pushRecent(recentIds, id, 6);
+    try {
+      localStorage.setItem(RECENT_SESSIONS, JSON.stringify(recentIds));
+    } catch {
+      /* recents are optional */
+    }
+  }
+  /** The menu beside the new-tab button. */
+  let newMenu = $state<{ left: number; top: number } | null>(null);
+  let newMenuSessions = $state<SavedSession[]>([]);
+  function openNewMenu(e: MouseEvent) {
+    if (newMenu) return void (newMenu = null);
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    newMenu = { left: r.left, top: r.bottom + 4 };
+    const pick = (all: SavedSession[]) =>
+      recentIds.map((id) => all.find((x) => x.id === id)).filter((x): x is SavedSession => !!x && !goneSessions.includes(x.id));
+    newMenuSessions = pick(library.sessions);
+    // The sidebar search may have narrowed `library`; recents come from the whole list.
+    if (query.trim()) libraryLoad().then((l) => newMenu && (newMenuSessions = pick(l.sessions))).catch(() => {});
   }
 
   async function submitSession(r: SessionResult) {
@@ -597,6 +657,19 @@
       say(e);
     }
   }
+  /** A copy of a saved session, beside the original. Its saved password stays with the original: it cannot be read back. */
+  async function duplicateSession(s: SavedSession) {
+    const { id: _id, has_secret: _has, ...rest } = s;
+    try {
+      const made = await sessionSave(null, { ...rest, name: `${s.name} copy` }, { action: "unchanged" });
+      await refresh();
+      toast(`Duplicated as "${made.name}".${s.has_secret ? " Its saved password was not copied." : ""}`, "success", {
+        action: { label: "Edit", run: () => ((dialogError = null), (editing_session = { session: made, folderId: null })) },
+      });
+    } catch (e) {
+      say(e);
+    }
+  }
   const folderAction = (run: () => Promise<unknown>) => async () => {
     try {
       await run();
@@ -616,6 +689,8 @@
 
   // ---- session colour, environment and connection state ----
   const savedOf = (tab: Tab) => (tab.saved ? library.sessions.find((x) => x.id === tab.saved!.id) : undefined);
+  /** The saved session a pane is connected to (its own, for a pane opened in a split). */
+  const sessionOf = (tab: Tab, pane: number) => library.sessions.find((x) => x.id === paneSaved(tab, pane)?.id);
   const envOf = (tab: Tab) => savedOf(tab)?.env ?? null;
   const colorOf = (tab: Tab) => savedOf(tab)?.color ?? null;
   const stateOf = (tab: Tab): TabState =>
@@ -652,12 +727,17 @@
     // The sidebar search may have narrowed `library`; the palette searches everything.
     libraryLoad().then((l) => (paletteSessions = l.sessions)).catch(() => {});
   }
+  /** Why an action cannot run in the front tab (one sentence), or null when it can. */
+  const whyNot = (a: Checked) =>
+    unavailable(a, { remote: !!activeTab && canDock(activeTab), panes: activeTab ? P.leaves(activeTab.layout).length : 0, tabs: tabs.length });
   /** A binding as shown in tooltips and the palette. */
   const keyOf = (a: Action) => formatShortcut(settings.bindings[a]);
+  /** A tooltip with the action's shortcut after it, when it has one. */
+  const tip = (text: string, a: Action) => (settings.bindings[a] ? `${text} (${keyOf(a)})` : text);
   const paletteItems = $derived.by((): PaletteItem[] => {
     const acts = (Object.keys(actionLabels) as Action[])
       .filter((a) => a !== "palette")
-      .map((a): PaletteItem => ({ id: `action:${a}`, group: "Actions", title: actionLabels[a], hint: keyOf(a), run: () => runAction(a) }));
+      .map((a): PaletteItem => ({ id: `action:${a}`, group: "Actions", title: actionLabels[a], hint: keyOf(a), disabled: whyNot(a) ?? undefined, run: () => runAction(a) }));
     const extra: PaletteItem[] = [
       { id: "cmd:ssh", group: "Actions", title: "New SSH connection…", run: () => (connecting = true) },
       { id: "cmd:session", group: "Actions", title: "New saved session…", run: () => ((dialogError = null), (editing_session = { session: null, folderId: null })) },
@@ -665,7 +745,7 @@
         ? [{ id: "cmd:save-connection", group: "Actions" as const, title: "Save this connection…", run: () => saveConnection(activeTab) }]
         : []),
       { id: "cmd:import", group: "Actions", title: "Import hosts from ~/.ssh/config", run: doImport },
-      { id: "cmd:tunnels", group: "Actions", title: "Toggle tunnels panel", run: () => activeTab && toggleDock(activeTab, "tunnels") },
+      { id: "cmd:tunnels", group: "Actions", title: "Toggle tunnels panel", disabled: whyNot("toggle_tunnels") ?? undefined, run: () => activeTab && toggleDock(activeTab, "tunnels") },
     ];
     const sess = paletteSessions.filter((s) => !goneSessions.includes(s.id)).map((s): PaletteItem => ({
       id: `session:${s.id}`,
@@ -821,6 +901,27 @@
       : `This closes all ${live} connected panes in the tab.`;
     confirmClose({ title: `Close ${tab.title}?`, body, label: ids.length > 1 ? `Close ${ids.length} panes` : "Close tab", run: () => closeTab(key) });
   }
+  /** Close several tabs (the tab menu's "Close others"), asking once if any of them would ask on its own. */
+  function requestCloseTabs(keys: number[]) {
+    const list = tabs.filter((t) => keys.includes(t.key));
+    if (list.length < 2) return list[0] && requestCloseTab(list[0].key);
+    const risky = list.filter((t) => {
+      const ids = P.leaves(t.layout);
+      return busyIn(t, ids) > 0 || ids.filter((id) => t.status[id] === "connected").length > 1;
+    });
+    const run = () => list.forEach((t) => closeTab(t.key));
+    if (!risky.length) return run();
+    const who = risky.length === 1 ? `"${risky[0].title}" has` : `${risky.length} of them have`;
+    confirmClose({ title: `Close ${list.length} tabs?`, body: `${who} a running command or several connected panes. Closing stops them.`, label: `Close ${list.length} tabs`, run });
+  }
+  /** The same thing again in a new tab: the same session or host, or another local shell. */
+  const duplicateTab = (tab: Tab) => newTab(tab.ssh, tab.saved);
+  const canReconnect = (tab: Tab) => Object.values(tab.status).some((x) => x === "ended");
+  /** Start every ended pane of the tab again. */
+  function reconnectTab(tab: Tab) {
+    for (const p of Object.values(tab.panes)) p?.reconnect();
+    activeKey = tab.key;
+  }
   function requestClosePane(tab: Tab, id: number) {
     // The last pane takes the tab with it.
     if (P.leaves(tab.layout).length < 2) return requestCloseTab(tab.key);
@@ -829,6 +930,9 @@
   }
 
   function runAction(a: Action) {
+    // A shortcut that cannot apply here says why, instead of doing nothing.
+    const why = whyNot(a);
+    if (why) return toast(why);
     const i = tabs.findIndex((t) => t.key === activeKey);
     switch (a) {
       case "new_tab": return newTab();
@@ -859,6 +963,7 @@
       case "zoom_reset": return settings.update({ ...settings.value, font_size: 14 });
       case "palette": return showPalette ? (showPalette = false) : openPalette();
       case "history_search": return showPalette ? (showPalette = false) : openPalette("$ ");
+      case "find": return focusedPane(activeTab)?.openFind();
       case "prev_prompt": return paneAction((p) => p.prevPrompt() || toast("No earlier prompt."));
       case "next_prompt": return paneAction((p) => p.nextPrompt());
       case "copy_last_output":
@@ -1013,28 +1118,23 @@
   {/snippet}
 
 <main class:mac={isMac} class:rail={!sidebarOpen} class:resizing style:--sidebar-w="{sidebarW}px" bind:clientWidth={winW}>
-  <!-- One button for both states, next to the traffic lights, so it never moves when the sidebar does. -->
-  <button
-    class="sbtoggle"
-    aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-    aria-expanded={sidebarOpen}
-    title={`${sidebarOpen ? "Hide" : "Show"} sidebar (${keyOf("toggle_sidebar")})`}
-    onclick={toggleSidebar}
-  >
-    <Icon name="panel-left" size={17} />
-  </button>
   <Sidebar
     railOnly={!sidebarOpen}
     library={shown}
     bind:query
     oncollapse={toggleSidebar}
+    toggleTitle={tip(`${sidebarOpen ? "Hide" : "Show"} sidebar`, "toggle_sidebar")}
     onshell={() => newTab()}
     onssh={() => (connecting = true)}
     shellKey={keyOf("new_tab")}
-    openIds={tabs.flatMap((t) => (t.saved ? [t.saved.id] : []))}
+    paletteKey={keyOf("palette")}
+    onimport={doImport}
+    openIds={tabs.flatMap((t) => [...(t.saved ? [t.saved.id] : []), ...Object.values(t.targets).map((x) => x.id)])}
     activeId={activeTab?.saved?.id ?? null}
     version={info ? `Quay Term v${info.version}` : ""}
     onconnect={(s) => connectSaved(s)}
+    onsplit={(s) => connectSaved(s, null, false, [], "split")}
+    onduplicate={duplicateSession}
     onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
     onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
     ondelete={removeSession}
@@ -1075,10 +1175,21 @@
           tabList = tabList ? null : { right: Math.max(8, window.innerWidth - r.right), top: r.bottom + 4 };
         }}
       >
-        <Icon name="chevron-down" size={16} />
+        <Icon name="list" size={16} />
       </Button>
     {/if}
+    <div class="newtab" role="group" aria-label="New tab">
+      <Button variant="icon" title={tip("New local shell", "new_tab")} aria-label="New local shell" onclick={() => newTab()}><Icon name="plus" size={16} /></Button>
+      <Button variant="icon" class="more" title="New SSH connection, or a recent session" aria-label="More ways to open a tab" aria-haspopup="menu" aria-expanded={!!newMenu} onclick={openNewMenu}>
+        <Icon name="chevron-down" size={12} />
+      </Button>
+    </div>
+    <!-- The empty part of the strip moves the window, like a title bar. -->
+    <div class="fill" data-tauri-drag-region></div>
     <div class="right">
+      <Button variant="ghost" title={tip("Command palette: search actions, sessions, snippets and tabs", "palette")} aria-label="Command palette" onclick={() => openPalette()}>
+        <Icon name="command" size={16} />{#if keyOf("palette")}<span class="txt">{keyOf("palette")}</span>{/if}
+      </Button>
       {#if activeTab && canDock(activeTab)}
         <Button variant="ghost" active={activeTab.dock === "files"} aria-label="Files" aria-pressed={activeTab.dock === "files"} title="Browse files on this host (SFTP)" onclick={() => toggleDock(activeTab, "files")}>
           <Icon name="folder" size={16} /><span class="txt">Files</span>
@@ -1092,7 +1203,7 @@
           <Icon name="stop" size={14} /><span class="txt">Broadcast</span> {broadcast.length}
         </Button>
       {/if}
-      <Button variant="ghost" title={`Snippets (${keyOf("snippets")})`} aria-label="Snippets" onclick={() => (showSnippets = true)}>
+      <Button variant="ghost" title={tip("Snippets", "snippets")} aria-label="Snippets" onclick={() => (showSnippets = true)}>
         <Icon name="terminal" size={16} /><span class="txt">Snippets</span>
       </Button>
       <Button variant="icon" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></Button>
@@ -1112,6 +1223,7 @@
             <div
               class="leaf"
               class:focused={!solo && tab.focus === p.id}
+              class:dim={!solo && tab.focus !== p.id && settings.value.dim_unfocused_panes}
               class:dragging={drag?.id === p.id}
               class:hidden={v.hidden}
               style:left="{v.rect.x * 100}%"
@@ -1122,17 +1234,37 @@
                 if (settings.value.focus_follows_mouse && e.pointerType === "mouse" && !drag && !v.hidden && tab.focus !== p.id && tab.key === activeKey) tab.focus = p.id;
               }}
             >
-              {#if !solo && zoomed === null}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div class="grip" title="Drag onto another pane's edge to move this pane" onpointerdown={(e) => dragPane(e, tab, p.id)}><span></span></div>
+              {#if !solo}
+                <!-- A slim handle along the top edge. Under the pointer (or with keyboard focus) it opens
+                     into a header: the pane's name to drag it by, and its broadcast, zoom and close buttons. -->
+                <div class="phead" role="group" aria-label="Pane {paneSaved(tab, p.id)?.label ?? tab.title}">
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="pdrag" title={zoomed === null ? "Drag onto another pane's edge to move this pane" : undefined} onpointerdown={(e) => dragPane(e, tab, p.id)}>
+                    <span class="handle"></span>
+                    <span class="ptitle">{paneSaved(tab, p.id)?.label ?? tab.title}</span>
+                  </div>
+                  <button
+                    class:on={broadcast.includes(p.id)}
+                    aria-pressed={broadcast.includes(p.id)}
+                    aria-label="Broadcast: typing in a broadcast pane goes to this one too"
+                    title={tip(broadcast.includes(p.id) ? "Stop sending other panes' typing here" : "Broadcast: send typing to this pane too", "broadcast_pane")}
+                    onclick={() => toggleBroadcast([p.id])}><Icon name="radio" size={13} /></button>
+                  <button
+                    class:on={zoomed === p.id}
+                    aria-pressed={zoomed === p.id}
+                    aria-label="Zoom this pane to fill the tab"
+                    title={tip(zoomed === p.id ? "Restore the other panes" : "Zoom to fill the tab", "zoom_pane")}
+                    onclick={() => ((tab.focus = p.id), toggleZoom(tab), focusedPane(tab)?.focusTerminal())}><Icon name="maximize" size={13} /></button>
+                  <button aria-label="Close this pane" title={tip("Close pane", "close_tab")} onclick={() => requestClosePane(tab, p.id)}><Icon name="x" size={13} /></button>
+                </div>
               {/if}
               {#if zoomed === p.id || muted.includes(p.id)}
                 <div class="leafbadges">
                   {#if zoomed === p.id}
-                    <button class="zoombadge" title="Zoomed. Click or press {keyOf("zoom_pane")} to restore" onclick={() => (tab.zoom = null)}>Zoomed</button>
+                    <button class="zoombadge" title={tip("Zoomed. Click to restore", "zoom_pane")} onclick={() => (tab.zoom = null)}>Zoomed</button>
                   {/if}
                   {#if muted.includes(p.id)}
-                    <button class="zoombadge mutebadge" title="Alerts from this pane are off. Click or press {keyOf("mute_pane")} to turn them on" onclick={() => toggleMute(p.id)}>Muted</button>
+                    <button class="zoombadge mutebadge" title={tip("Alerts from this pane are off. Click to turn them on", "mute_pane")} onclick={() => toggleMute(p.id)}>Muted</button>
                   {/if}
                 </div>
               {/if}
@@ -1145,18 +1277,18 @@
                 onfocus={() => (tab.focus = p.id)}
                 oninput={(d) => mirror(p.id, d)}
                 broadcasting={broadcast.includes(p.id)}
-                ssh={tab.ssh}
-                saved={tab.saved}
-                env={envOf(tab)}
-                color={colorOf(tab)}
-                confirmPaste={/^prod/i.test(envOf(tab) ?? "")}
+                ssh={paneSsh(tab, p.id)}
+                saved={paneSaved(tab, p.id)}
+                env={sessionOf(tab, p.id)?.env ?? null}
+                color={sessionOf(tab, p.id)?.color ?? null}
+                confirmPaste={/^prod/i.test(sessionOf(tab, p.id)?.env ?? "")}
                 onstatus={(s) => (tab.status[p.id] = s)}
                 onactivity={() => (tab.activity = true)}
                 oncommand={(c) => commandDone(tab, p.id, c)}
                 onsnippet={addCommandSnippet}
                 onexpand={(short) => expandSnippet(tab, p.id, short)}
                 onfiles={canDock(tab) ? () => showDock(tab, "files") : undefined}
-                onconnected={tab.saved?.remember || tab.saved?.jumps?.some((j) => j.remember) ? refresh : undefined}
+                onconnected={paneSaved(tab, p.id)?.remember || paneSaved(tab, p.id)?.jumps?.some((j) => j.remember) ? refresh : undefined}
               />
             </div>
           {/each}
@@ -1217,10 +1349,36 @@
     {@const mt = tabs.find((t) => t.key === tabMenu!.key)}
     <Menu label="Tab" left={tabMenu.x} top={tabMenu.y} onclose={() => (tabMenu = null)}>
       {#if mt?.ssh && !mt.saved}
-        <button role="menuitem" onclick={() => ((tabMenu = null), saveConnection(mt))}>Save this connection…</button>
+        <button role="menuitem" onclick={() => (saveConnection(mt), (tabMenu = null))}>Save this connection…</button>
       {/if}
-      <button role="menuitem" onclick={() => (mt && startRename(mt), (tabMenu = null))}>Rename tab</button>
-      <button role="menuitem" onclick={() => (requestCloseTab(tabMenu!.key), (tabMenu = null))}>Close tab</button>
+      {#if mt}
+        {@const at = tabs.indexOf(mt)}
+        <button role="menuitem" onclick={() => (duplicateTab(mt), (tabMenu = null))}>Duplicate tab</button>
+        <button role="menuitem" disabled={!canReconnect(mt)} onclick={() => (reconnectTab(mt), (tabMenu = null))}>{canDock(mt) ? "Reconnect" : "Restart shell"}</button>
+        <button role="menuitem" onclick={() => (startRename(mt), (tabMenu = null))}><span class="mttl">Rename tab</span><kbd>F2</kbd></button>
+        <hr />
+        <button role="menuitem" onclick={() => ((activeKey = mt.key), splitPane(mt, "row"), (tabMenu = null))}><span class="mttl">Split right</span><kbd>{keyOf("split_right")}</kbd></button>
+        <button role="menuitem" onclick={() => ((activeKey = mt.key), splitPane(mt, "col"), (tabMenu = null))}><span class="mttl">Split down</span><kbd>{keyOf("split_down")}</kbd></button>
+        <hr />
+        <button role="menuitem" onclick={() => (requestCloseTab(mt.key), (tabMenu = null))}>Close tab</button>
+        <button role="menuitem" disabled={tabs.length < 2} onclick={() => (requestCloseTabs(tabs.filter((t) => t !== mt).map((t) => t.key)), (tabMenu = null))}>Close other tabs</button>
+        <button role="menuitem" disabled={at === tabs.length - 1} onclick={() => (requestCloseTabs(tabs.slice(at + 1).map((t) => t.key)), (tabMenu = null))}>Close tabs to the right</button>
+      {/if}
+    </Menu>
+  {/if}
+  {#if newMenu}
+    <Menu label="New tab" left={newMenu.left} top={newMenu.top} onclose={() => (newMenu = null)}>
+      <button role="menuitem" onclick={() => ((newMenu = null), newTab())}><Icon name="terminal" size={14} /><span class="mttl">Local shell</span><kbd>{keyOf("new_tab")}</kbd></button>
+      <button role="menuitem" onclick={() => ((newMenu = null), (connecting = true))}><Icon name="server" size={14} /><span class="mttl">SSH connection…</span></button>
+      {#if newMenuSessions.length}
+        <hr />
+        <div class="mhead">Recent sessions</div>
+        {#each newMenuSessions as s (s.id)}
+          <button role="menuitem" title={`${s.user}@${s.host}`} onclick={() => ((newMenu = null), connectSaved(s))}>
+            <span class="mdot" style:background={s.color ?? "var(--accent)"}></span><span class="mttl">{s.name}</span>
+          </button>
+        {/each}
+      {/if}
     </Menu>
   {/if}
   {#if tabList}
@@ -1253,14 +1411,14 @@
   {/if}
   {#if passwordFor}
     <PasswordPrompt
-      title={`${passwordFor.user}@${passwordFor.host}`}
+      title={`${passwordFor.session.user}@${passwordFor.session.host}`}
       {vault}
       onunlock={() => (showUnlock = true)}
       oncancel={() => (passwordFor = null)}
       onsubmit={(pw, remember) => {
-        const s = passwordFor!;
+        const p = passwordFor!;
         passwordFor = null;
-        connectSaved(s, pw, remember);
+        connectSaved(p.session, pw, remember, [], p.into);
       }}
     />
   {/if}
@@ -1273,7 +1431,7 @@
       onsubmit={(pw, remember) => {
         const j = jumpFor!;
         jumpFor = null;
-        connectSaved(j.session, j.secret, j.remember, [...j.jumps, { id: j.hop.id, secret: pw, remember }]);
+        connectSaved(j.session, j.secret, j.remember, [...j.jumps, { id: j.hop.id, secret: pw, remember }], j.into);
       }}
     />
   {/if}
@@ -1330,34 +1488,15 @@
 <style>
   /* No title bar: the sidebar runs the full height of the window and the tab strip
      starts after it. macOS draws the traffic lights over the top-left corner (overlay
-     title bar, positioned in tauri.conf.json), and the sidebar toggle sits right after them. */
+     title bar, positioned in tauri.conf.json); `--lights` is the room they take. */
   main {
-    --toggle: 28px;
-    --toggle-x: 12px;
+    --lights: 0px;
     position: relative;
     display: flex;
     height: 100%;
   }
   main.mac {
-    --toggle-x: 86px;
-  }
-  .sbtoggle {
-    position: absolute;
-    z-index: 5;
-    top: calc((var(--chrome-h) - var(--toggle)) / 2);
-    left: var(--toggle-x);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--toggle);
-    height: var(--toggle);
-    border-radius: var(--radius-m);
-    color: var(--dim);
-    cursor: pointer;
-  }
-  .sbtoggle:hover {
-    color: var(--fg);
-    background: var(--hover);
+    --lights: 78px;
   }
   .col {
     display: flex;
@@ -1401,10 +1540,9 @@
     font-size: var(--text-m);
     transition: padding-left 160ms ease-out;
   }
-  /* The collapsed rail is narrower than the traffic lights plus the toggle, so the tabs
-     start after the toggle instead of under it. */
+  /* The collapsed rail is narrower than the traffic lights, so the tabs start after them. */
   main.rail nav {
-    padding-left: max(var(--space-3), calc(var(--toggle-x) + var(--toggle) + var(--space-2) - var(--rail-w)));
+    padding-left: max(var(--space-3), calc(var(--lights) + var(--space-2) - var(--rail-w)));
   }
   @media (prefers-reduced-motion: reduce) {
     nav {
@@ -1416,7 +1554,8 @@
     display: flex;
     align-items: flex-end;
     gap: var(--space-1);
-    flex: 1;
+    /* As wide as its tabs, so the new-tab button sits right after the last one. */
+    flex: 0 1 auto;
     min-width: 0;
     height: calc(100% + 1px);
     margin-bottom: -1px;
@@ -1610,6 +1749,27 @@
   nav > :global(.btn) {
     align-self: center;
   }
+  .newtab {
+    display: flex;
+    align-self: center;
+    flex: none;
+  }
+  /* The small arrow beside the plus: a narrow second half of the same control. */
+  .newtab :global(.btn.more) {
+    min-width: 16px;
+    padding: var(--space-1) 0;
+  }
+  .mdot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .fill {
+    flex: 1;
+    align-self: stretch;
+    min-width: var(--space-2);
+  }
   /* A narrow strip keeps the icons and drops the words; each button still has its tooltip and label. */
   nav.compact .txt {
     display: none;
@@ -1735,7 +1895,7 @@
     inset: 0;
     z-index: 3;
     box-sizing: border-box;
-    border: 1px solid var(--accent);
+    border: 1px solid var(--focus);
     pointer-events: none;
   }
   /* Hidden by a zoom: same rectangle as before, so the terminal keeps its size and keeps receiving output. */
@@ -1746,21 +1906,49 @@
   .leaf.dragging {
     opacity: 0.6;
   }
-  .grip {
+  /* The pane's top edge. At rest it is a slim strip with a short handle (shown when the pointer is
+     over the pane). Under the pointer, or with keyboard focus inside, it opens into the header. */
+  .phead {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    height: 12px;
     z-index: 7;
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    box-sizing: border-box;
+    height: 12px;
+    padding: 0 var(--space-1);
+    overflow: hidden;
+    font-size: var(--text-s);
+    color: var(--dim);
+  }
+  .phead:hover,
+  .phead:focus-within,
+  .leaf.dragging .phead {
+    z-index: 10;
+    height: 26px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .pdrag {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    align-self: stretch;
+    min-width: 0;
     cursor: grab;
     touch-action: none;
-    transition: background 0.12s;
   }
-  /* A short handle shows where to grab once the pointer is over the pane. */
-  .grip span {
+  .leaf.dragging .pdrag {
+    cursor: grabbing;
+  }
+  .handle {
+    position: absolute;
+    top: 4px;
+    left: calc(50% - 18px);
     width: 36px;
     height: 4px;
     border-radius: var(--radius-s);
@@ -1768,18 +1956,63 @@
     opacity: 0;
     transition: opacity 0.12s;
   }
-  .leaf:hover .grip span,
-  .leaf.dragging .grip span {
+  .leaf:hover .handle {
     opacity: 1;
   }
-  .grip:hover {
-    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  .ptitle {
+    min-width: 0;
+    padding-left: var(--space-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .grip:hover span {
-    background: var(--fg);
+  .ptitle,
+  .phead button {
+    visibility: hidden;
   }
-  .leaf.dragging .grip {
-    cursor: grabbing;
+  .phead:hover .ptitle,
+  .phead:hover button,
+  .phead:focus-within .ptitle,
+  .phead:focus-within button,
+  .leaf.dragging .ptitle {
+    visibility: visible;
+  }
+  .phead:hover .handle,
+  .phead:focus-within .handle {
+    opacity: 0;
+  }
+  /* Kept focusable while hidden, so Tab can reach the header: focus then opens it. */
+  .phead:not(:hover):not(:focus-within) button {
+    visibility: visible;
+    opacity: 0;
+  }
+  .phead button {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: var(--radius-m);
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .phead button:hover {
+    background: var(--hover);
+    color: var(--fg);
+  }
+  .phead button.on {
+    color: var(--accent-text);
+  }
+  /* Panes without focus sit a little back, so the one that takes the keys stands out (a setting). */
+  .leaf.dim::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    background: var(--bg);
+    opacity: 0.32;
+    pointer-events: none;
   }
   .dropmark {
     position: absolute;

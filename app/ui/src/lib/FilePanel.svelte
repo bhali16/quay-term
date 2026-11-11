@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { JumpSecret } from "./bindings/JumpSecret";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open as pickFiles } from "@tauri-apps/plugin-dialog";
   import {
@@ -21,6 +22,8 @@
   import { focus } from "./focus";
   import Icon from "./Icon.svelte";
   import Button from "./Button.svelte";
+  import Menu from "./Menu.svelte";
+  import { crumbs, DEFAULT_SORT, isHidden, nextRate, nextSort, progressText, sizeText, sortEntries, type Rate, type Sort, type SortKey } from "./files";
   import type { Entry } from "./bindings/Entry";
   import type { SftpTransfer } from "./bindings/SftpTransfer";
   import type { SshTarget } from "./bindings/SshTarget";
@@ -53,8 +56,55 @@
   let dropping = $state(false);
   let selected = $state<string | null>(null);
 
-  const sizeText = (n: number) =>
-    n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`;
+  // ---- how the listing is shown: sort order and hidden files, remembered between visits ----
+  function readPref<T>(key: string, fallback: T): T {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? fallback : (JSON.parse(raw) as T);
+    } catch {
+      return fallback;
+    }
+  }
+  function writePref(key: string, value: unknown) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* the preference is optional */
+    }
+  }
+  const savedSort = readPref<Partial<Sort>>("quay.files.sort", DEFAULT_SORT);
+  let sort = $state<Sort>(savedSort.key === "name" || savedSort.key === "size" || savedSort.key === "date" ? { key: savedSort.key, asc: savedSort.asc !== false } : DEFAULT_SORT);
+  let showHidden = $state(readPref<unknown>("quay.files.hidden", false) === true);
+  const sortBy = (key: SortKey) => writePref("quay.files.sort", (sort = nextSort(sort, key)));
+  const hiddenCount = $derived(entries.filter((x) => isHidden(x.name)).length);
+  const shown = $derived(sortEntries(showHidden ? entries : entries.filter((x) => !isHidden(x.name)), sort));
+  const columns: [SortKey, string][] = [
+    ["name", "Name"],
+    ["size", "Size"],
+    ["date", "Modified"],
+  ];
+
+  // ---- the path: a breadcrumb to click, or a field to type in ----
+  let typing = $state(false);
+  let crumbsEl = $state<HTMLElement>();
+  // A deep path keeps its end (where you are) in view.
+  $effect(() => {
+    void path;
+    if (!typing) tick().then(() => crumbsEl && (crumbsEl.scrollLeft = crumbsEl.scrollWidth));
+  });
+  function typePath() {
+    pathInput = path;
+    typing = true;
+  }
+
+  /** The "more" menu of a row (also its right-click menu). */
+  let rowMenu = $state<{ x: number; y: number; entry: Entry } | null>(null);
+  function openRowMenu(e: MouseEvent, entry: Entry) {
+    e.preventDefault();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const byButton = e.type === "click" || (e.clientX === 0 && e.clientY === 0);
+    rowMenu = { x: byButton ? r.left : e.clientX, y: byButton ? r.bottom + 2 : e.clientY, entry };
+  }
   const dateText = (s: number | null) => {
     if (s == null) return "";
     const d = new Date(s * 1000);
@@ -140,11 +190,23 @@
     await reload();
   }
 
-  async function download(entry: Entry) {
+  /** Where each download is written on this computer, by transfer id, for "Show in folder". */
+  let locals = $state<Record<number, string>>({});
+  /** The folder last chosen with "Download to…", offered again next time. */
+  let lastDir: string | undefined;
+  async function download(entry: Entry, dir: string | null = null) {
     await attempt(async () => {
-      await sftpDownload(conn!, entry.path);
+      const queued = await sftpDownload(conn!, entry.path, dir);
+      locals[queued.id] = queued.path;
     });
   }
+  async function downloadTo(entry: Entry) {
+    const picked = await pickFiles({ multiple: false, directory: true, title: `Download ${entry.name} to`, defaultPath: lastDir }).catch(() => null);
+    if (typeof picked !== "string") return;
+    lastDir = picked;
+    await download(entry, picked);
+  }
+  const reveal = (id: number) => attempt(() => revealItemInDir(locals[id]));
 
   async function upload(locals: string[]) {
     if (conn === null || locals.length === 0) return;
@@ -160,8 +222,12 @@
     if (typeof picked === "string") await upload([picked]);
   }
 
+  /** Speed of each running transfer, worked out from its progress reports. */
+  let rates = $state<Record<number, Rate>>({});
   function track(t: SftpTransfer) {
     if (t.conn !== conn) return;
+    if (t.state === "running") rates[t.id] = nextRate(rates[t.id], performance.now(), t.done);
+    else delete rates[t.id];
     const i = transfers.findIndex((x) => x.id === t.id);
     if (i >= 0) transfers[i] = t;
     else transfers.push(t);
@@ -170,6 +236,7 @@
   }
   const finished = (t: SftpTransfer) => t.state === "done" || t.state === "cancelled" || t.state === "failed";
   const clearFinished = () => (transfers = transfers.filter((t) => !finished(t)));
+  const percent = (t: SftpTransfer) => (t.state === "done" ? 100 : t.total ? Math.min(100, Math.floor((t.done / t.total) * 100)) : 0);
 
   onMount(() => {
     connect();
@@ -200,24 +267,46 @@
 
 <aside bind:this={panel} class:dropping>
   <div class="pathbar">
-    <span class="plabel">Path</span>
-    {#if status === "ready"}
+    {#if status !== "ready"}
+      <span class="path dim">{status === "connecting" ? "Connecting…" : "Not connected"}</span>
+    {:else if typing}
       <input
         class="path"
         aria-label="Remote path"
+        use:focus
         bind:value={pathInput}
-        onkeydown={(e) => e.key === "Enter" && go(pathInput)}
+        onfocus={(e) => e.currentTarget.select()}
+        onkeydown={(e) => {
+          if (e.key === "Enter") ((typing = false), go(pathInput));
+          else if (e.key === "Escape") (e.stopPropagation(), (typing = false));
+        }}
+        onblur={() => (typing = false)}
         spellcheck="false"
+        autocapitalize="off"
       />
+    {:else}
+      <!-- Each folder on the way here is a button; the empty space after them opens the field to type a path. -->
+      <nav class="crumbs" aria-label="Remote path" bind:this={crumbsEl}>
+        {#each crumbs(path) as c, i (c.path)}
+          {#if i > 1}<span class="sep" aria-hidden="true">/</span>{/if}
+          <button class="crumb" class:here={c.path === path} aria-current={c.path === path ? "location" : undefined} title={c.path} onclick={() => (c.path === path ? typePath() : go(c.path))}>{c.name}</button>
+        {/each}
+        <button class="crumbfill" title="Type a path" aria-label="Type a path" onclick={typePath}></button>
+      </nav>
+      <Button variant="icon" title="Type a path" aria-label="Type a path" onclick={typePath}><Icon name="pencil" size={14} /></Button>
       <Button variant="icon" title="Parent folder" aria-label="Parent folder" disabled={path === "/"} onclick={() => go(parent(path))}><Icon name="arrow-up" size={15} /></Button>
       <Button variant="icon" title="Refresh" aria-label="Refresh" onclick={reload}><Icon name="refresh" size={15} /></Button>
-    {:else}
-      <span class="path dim">{status === "connecting" ? "Connecting…" : "Not connected"}</span>
     {/if}
   </div>
+  <!-- A thin moving line while a folder is being read; the old listing stays readable under it. -->
+  <div class="busy" class:on={loading || status === "connecting"} role="progressbar" aria-label="Loading" aria-hidden={!(loading || status === "connecting")}></div>
 
   {#if status === "connecting"}
-    <div class="grow"></div>
+    <ul class="list skeleton" aria-hidden="true">
+      {#each [62, 40, 74, 48, 56, 34, 66] as w (w)}
+        <li class="row"><span class="bone ic"></span><span class="bone" style:width="{w}%"></span></li>
+      {/each}
+    </ul>
   {:else if status === "failed"}
     <p class="msg err">{error}</p>
     <p class="msg"><Button size="sm" onclick={connect}>Try again</Button></p>
@@ -227,10 +316,25 @@
       <Button size="sm" onclick={() => (edit = { kind: "mkdir", value: "" })}>New folder</Button>
       <Button size="sm" onclick={chooseFiles}>Upload files</Button>
       <Button size="sm" onclick={chooseFolder}>Upload folder</Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        active={showHidden}
+        aria-pressed={showHidden}
+        title={showHidden ? "Hide files whose name starts with a dot" : `Show files whose name starts with a dot${hiddenCount ? ` (${hiddenCount} here)` : ""}`}
+        onclick={() => writePref("quay.files.hidden", (showHidden = !showHidden))}>Hidden files</Button>
     </div>
     {#if error}<p class="msg err">{error}</p>{/if}
 
-    <ul class="list" class:loading>
+    <div class="cols" role="row">
+      {#each columns as [key, label] (key)}
+        <button class="col {key}" role="columnheader" aria-sort={sort.key === key ? (sort.asc ? "ascending" : "descending") : "none"} title="Sort by {label.toLowerCase()}" onclick={() => sortBy(key)}>
+          {label}{#if sort.key === key}<Icon name={sort.asc ? "arrow-up" : "arrow-down"} size={11} />{/if}
+        </button>
+      {/each}
+      <span class="col acts-space"></span>
+    </div>
+    <ul class="list" aria-busy={loading}>
       {#if edit?.kind === "mkdir"}
         <li class="row">
           <span class="icon folder"><Icon name="folder" size={16} /></span>
@@ -239,13 +343,13 @@
             use:focus
             bind:value={edit.value}
             placeholder="Folder name"
-            onkeydown={(e) => (e.key === "Enter" ? commitEdit() : e.key === "Escape" && (edit = null))}
+            onkeydown={(e) => (e.key === "Enter" ? commitEdit() : e.key === "Escape" && (e.stopPropagation(), (edit = null)))}
             onblur={() => (edit = null)}
           />
         </li>
       {/if}
-      {#each entries as entry (entry.path)}
-        <li class="row" class:selected={selected === entry.path}>
+      {#each shown as entry (entry.path)}
+        <li class="row" class:selected={selected === entry.path} class:hid={isHidden(entry.name)} oncontextmenu={(e) => openRowMenu(e, entry)}>
           <span class="icon" class:folder={entry.kind === "dir"} title={entry.kind === "symlink" ? "Symbolic link" : undefined}>
             <Icon name={entry.kind === "dir" ? "folder" : "file"} size={16} />
           </span>
@@ -254,7 +358,7 @@
               class="name-input"
               use:focus
               bind:value={edit.value}
-              onkeydown={(e) => (e.key === "Enter" ? commitEdit() : e.key === "Escape" && (edit = null))}
+              onkeydown={(e) => (e.key === "Enter" ? commitEdit() : e.key === "Escape" && (e.stopPropagation(), (edit = null)))}
               onblur={() => (edit = null)}
             />
           {:else}
@@ -267,25 +371,42 @@
               {entry.name}
             </button>
           {/if}
-          <span class="meta size">{entry.kind === "dir" ? "—" : sizeText(entry.size)}</span>
-          <span class="meta date">{dateText(entry.modified)}</span>
           {#if confirmDelete === entry.path}
-            <span class="acts">
+            <span class="confirm">
               <button class="danger" onclick={() => remove(entry.path)}>Delete</button>
               <button onclick={() => (confirmDelete = null)}>Keep</button>
             </span>
           {:else}
+            <span class="meta size">{entry.kind === "dir" ? "—" : sizeText(entry.size)}</span>
+            <span class="meta date">{dateText(entry.modified)}</span>
+            <!-- Their own column, so the size and date stay where they are when the pointer comes in. -->
             <span class="acts">
               <button title="Download to your Downloads folder" aria-label="Download {entry.name}" onclick={() => download(entry)}><Icon name="arrow-down" size={14} /></button>
-              <button title="Rename" aria-label="Rename {entry.name}" onclick={() => (edit = { kind: "rename", path: entry.path, value: entry.name })}><Icon name="pencil" size={13} /></button>
-              <button title="Delete" aria-label="Delete {entry.name}" onclick={() => (confirmDelete = entry.path)}><Icon name="trash" size={14} /></button>
+              <button title="More" aria-label="More actions for {entry.name}" aria-haspopup="menu" onclick={(e) => openRowMenu(e, entry)}><Icon name="more" size={14} /></button>
             </span>
           {/if}
         </li>
       {:else}
-        {#if !loading}<li class="empty">This folder is empty. Drop files here to upload.</li>{/if}
+        {#if loading && entries.length === 0}
+          {#each [58, 42, 70] as w (w)}<li class="row skeleton" aria-hidden="true"><span class="bone ic"></span><span class="bone" style:width="{w}%"></span></li>{/each}
+        {:else if entries.length > 0}
+          <li class="empty">Only hidden files here. <button class="link" onclick={() => writePref("quay.files.hidden", (showHidden = true))}>Show {hiddenCount} hidden</button></li>
+        {:else if !loading}
+          <li class="empty">This folder is empty. Drop files here to upload.</li>
+        {/if}
       {/each}
     </ul>
+    {#if rowMenu}
+      {@const m = rowMenu.entry}
+      <Menu label={m.name} left={rowMenu.x} top={rowMenu.y} onclose={() => (rowMenu = null)}>
+        {#if m.kind === "dir"}<button role="menuitem" onclick={() => (go(m.path), (rowMenu = null))}>Open</button>{/if}
+        <button role="menuitem" onclick={() => (download(m), (rowMenu = null))}>Download</button>
+        <button role="menuitem" onclick={() => (downloadTo(m), (rowMenu = null))}>Download to…</button>
+        <hr />
+        <button role="menuitem" onclick={() => ((edit = { kind: "rename", path: m.path, value: m.name }), (rowMenu = null))}>Rename</button>
+        <button role="menuitem" onclick={() => ((confirmDelete = m.path), (rowMenu = null))}>Delete…</button>
+      </Menu>
+    {/if}
 
     {#if transfers.length}
       <div class="transfers">
@@ -305,16 +426,21 @@
                 <span class="small err" title={t.message}>{t.message}</span>
               {:else if t.state === "cancelled"}
                 <span class="small">Cancelled</span>
+              {:else if running}
+                <span class="small">{progressText(t.done, t.total, rates[t.id]?.bps ?? 0) || "Waiting"}</span>
               {:else if t.total > 0}
                 <span class="small">{sizeText(t.total)}</span>
+              {/if}
+              {#if t.state === "done" && t.direction === "download" && locals[t.id]}
+                <Button variant="icon" title="Show in folder: {locals[t.id]}" aria-label="Show {t.name} in its folder" onclick={() => reveal(t.id)}><Icon name="folder-open" size={13} /></Button>
               {/if}
               {#if running}
                 <Button variant="icon" title="Cancel" aria-label="Cancel transfer" onclick={() => sftpCancel(conn!, t.id)}><Icon name="stop" size={13} /></Button>
               {/if}
             </div>
             {#if t.state !== "failed" && t.state !== "cancelled"}
-              <div class="bar" role="progressbar" aria-label={t.name} aria-valuemin="0" aria-valuemax="100" aria-valuenow={t.state === "done" ? 100 : t.total ? Math.round((t.done / t.total) * 100) : 0}>
-                <div class="fill" style:width={`${t.state === "done" ? 100 : t.total ? Math.min(100, (t.done / t.total) * 100) : 0}%`}></div>
+              <div class="bar" role="progressbar" aria-label={t.name} aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent(t)}>
+                <div class="fill" style:width="{percent(t)}%"></div>
               </div>
             {/if}
           </div>
@@ -333,6 +459,8 @@
     display: flex;
     flex-direction: column;
     font-size: var(--text-m);
+    /* The date column gives way when the panel is dragged narrow (see the container rule below). */
+    container-type: inline-size;
   }
   aside.dropping {
     outline: 2px dashed var(--accent);
@@ -365,11 +493,158 @@
     padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
   }
-  .plabel {
-    flex: none;
-    color: var(--dim);
+  /* The way here, one button per folder. It scrolls sideways without a scrollbar when it is long. */
+  .crumbs {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
     font-family: var(--font-mono);
     font-size: var(--text-s);
+  }
+  .crumbs::-webkit-scrollbar {
+    display: none;
+  }
+  .crumb {
+    flex: none;
+    max-width: 160px;
+    padding: 2px var(--space-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--dim);
+  }
+  .crumb:hover:not(:disabled),
+  .crumb.here {
+    color: var(--fg);
+  }
+  .crumb.here {
+    font-weight: 600;
+  }
+  .sep {
+    flex: none;
+    color: var(--dim);
+  }
+  .crumbfill {
+    flex: 1;
+    align-self: stretch;
+    min-width: var(--space-4);
+    min-height: 22px;
+    padding: 0;
+    cursor: text;
+  }
+  .crumbfill:hover:not(:disabled) {
+    background: none;
+  }
+  .busy {
+    flex: none;
+    height: 2px;
+    margin-top: -1px;
+    overflow: hidden;
+  }
+  .busy.on::before {
+    content: "";
+    display: block;
+    width: 35%;
+    height: 100%;
+    background: var(--accent);
+    animation: busy 1.1s ease-in-out infinite;
+  }
+  @keyframes busy {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(300%);
+    }
+  }
+  /* Column names; click one to sort by it. The widths match the rows below. */
+  .cols {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: none;
+    margin-top: var(--space-1);
+    padding: 0 var(--space-4) 2px;
+    border-bottom: 1px solid var(--border);
+    color: var(--dim);
+    font-size: var(--text-xs);
+  }
+  .col {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 0;
+    white-space: nowrap;
+  }
+  .col.name {
+    flex: 1;
+    min-width: 0;
+    /* Lines up with the names: past the row's icon. */
+    padding-left: var(--space-6);
+  }
+  .col.size,
+  .col.date {
+    justify-content: flex-end;
+  }
+  .col[aria-sort="ascending"],
+  .col[aria-sort="descending"] {
+    color: var(--fg);
+  }
+  .size {
+    flex: none;
+    width: 60px;
+  }
+  .date {
+    flex: none;
+    width: 62px;
+  }
+  .acts,
+  .acts-space {
+    flex: none;
+    width: 48px;
+  }
+  @container (max-width: 330px) {
+    .date {
+      display: none;
+    }
+  }
+  /* Placeholder rows while the first listing is on its way. */
+  .bone {
+    height: 10px;
+    border-radius: var(--radius-s);
+    background: var(--hover);
+    animation: bone 1.2s ease-in-out infinite;
+  }
+  .bone.ic {
+    flex: none;
+    width: 16px;
+    height: 14px;
+  }
+  .skeleton .row,
+  .row.skeleton {
+    min-height: 24px;
+  }
+  .skeleton .row:hover,
+  .row.skeleton:hover {
+    background: none;
+  }
+  @keyframes bone {
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bone,
+    .busy.on::before {
+      animation: none;
+    }
+    .busy.on::before {
+      width: 100%;
+      opacity: 0.6;
+    }
   }
   .path,
   .name-input {
@@ -429,13 +704,10 @@
     margin: var(--space-1) 0 0;
     padding: 0 var(--space-2) var(--space-2);
   }
-  .list.loading {
-    opacity: 0.5;
-  }
   .row {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-m);
   }
@@ -469,24 +741,28 @@
     white-space: nowrap;
     text-align: right;
   }
-  .size {
-    min-width: 56px;
-  }
-  .date {
-    min-width: 52px;
+  /* A dot file, when they are shown: a little quieter than the rest. */
+  .row.hid .name,
+  .row.hid .icon {
+    opacity: 0.65;
   }
   .acts {
-    display: none;
-    flex: none;
+    display: flex;
+    justify-content: flex-end;
+    visibility: hidden;
   }
   .row:hover .acts,
   .row:focus-within .acts {
-    display: flex;
+    visibility: visible;
   }
-  /* Hover actions take the place of the size and date. */
-  .row:hover .meta,
-  .row:focus-within .meta {
-    display: none;
+  .confirm {
+    display: flex;
+    flex: none;
+  }
+  .link {
+    padding: 0;
+    color: var(--accent-text);
+    text-decoration: underline;
   }
   .acts button {
     display: flex;
@@ -494,6 +770,7 @@
     justify-content: center;
     min-width: 24px;
     min-height: 24px;
+    padding: 0;
     color: var(--dim);
   }
   .acts button:hover {
