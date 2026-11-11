@@ -297,7 +297,7 @@
           <div class="t" class:ok={t.state === "done"} class:bad={t.state === "failed"}>
             <div class="trow">
               <span class="ticon">
-                <Icon name={t.state === "done" ? "check" : t.state === "failed" || t.state === "cancelled" ? "x" : t.direction === "upload" ? "arrow-up" : "arrow-down"} size={14} />
+                <Icon name={t.state === "done" ? "check" : t.state === "failed" ? "alert" : t.state === "cancelled" ? "stop" : t.direction === "upload" ? "arrow-up" : "arrow-down"} size={14} />
               </span>
               <span class="tname" title={t.name}>{t.name}</span>
               {#if t.state === "failed"}
@@ -308,7 +308,7 @@
                 <span class="small">{sizeText(t.total)}</span>
               {/if}
               {#if running}
-                <button class="ibtn" title="Cancel" aria-label="Cancel transfer" onclick={() => sftpCancel(conn!, t.id)}><Icon name="x" size={13} /></button>
+                <button class="ibtn" title="Cancel" aria-label="Cancel transfer" onclick={() => sftpCancel(conn!, t.id)}><Icon name="stop" size={13} /></button>
               {/if}
             </div>
             {#if t.state !== "failed" && t.state !== "cancelled"}

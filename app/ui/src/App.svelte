@@ -51,6 +51,9 @@
   import type { AuthPrompt } from "./lib/bindings/AuthPrompt";
   import Icon from "./lib/Icon.svelte";
   import SettingsDialog from "./lib/SettingsDialog.svelte";
+  import Toasts from "./lib/Toasts.svelte";
+  import { toasts, type ToastOptions } from "./lib/toastStore.svelte";
+  import type { ToastKind } from "./lib/toasts";
   import SnippetDialog from "./lib/SnippetDialog.svelte";
   import UnlockDialog from "./lib/UnlockDialog.svelte";
   import ConfirmDialog from "./lib/ConfirmDialog.svelte";
@@ -59,7 +62,7 @@
   import type { Snippet } from "./lib/bindings/Snippet";
   import { byShortName, fill, variables } from "./lib/snippets";
   import { settings } from "./lib/settings.svelte";
-  import { actionFor, actionLabels, isMac, type Action } from "./lib/keys";
+  import { actionFor, actionLabels, formatShortcut, isMac, type Action } from "./lib/keys";
   import * as P from "./lib/panes";
   import { inkOn } from "./lib/themes";
   import { menu, setFocusFallback } from "./lib/modal";
@@ -123,7 +126,11 @@
   let authPrompt = $state<AuthPrompt | null>(null);
   let showSettings = $state(false);
   /** Settings page to open on; cleared when the dialog closes. */
-  let settingsTab = $state<"history" | undefined>(undefined);
+  let settingsTab = $state<"terminal" | "history" | "about" | undefined>(undefined);
+  function openSettings(tab?: typeof settingsTab) {
+    settingsTab = tab;
+    showSettings = true;
+  }
 
   // ---- multi-exec and snippets ----
   // Panes whose typing is mirrored to each other. Pane ids are unique across tabs, so a tab needs no part in the key.
@@ -193,7 +200,7 @@
     try {
       await snippetDelete(s.id);
       snippets = await snippetsLoad();
-      toast(`Deleted snippet "${s.name}".`, "info", { label: "Undo", run: () => restoreSnippet(s) });
+      toast(`Deleted snippet "${s.name}".`, "info", { action: { label: "Undo", run: () => restoreSnippet(s) } });
     } catch (e) {
       say(e);
     }
@@ -384,9 +391,6 @@
   // ---- saved sessions ----
   let library = $state<LibraryView>({ folders: [], sessions: [] });
   let query = $state("");
-  type Toast = { id: number; kind: "info" | "success" | "error"; text: string; action?: { label: string; run: () => void } };
-  let toasts = $state<Toast[]>([]);
-  let toastId = 0;
   let sidebarOpen = $state(readSidebarPref());
   let editing_session = $state<{ session: SavedSession | null; folderId: number | null; draft?: SshTarget | null } | null>(null);
   /** Right-click menu on a tab. */
@@ -490,14 +494,9 @@
     void [activeKey, tabs.length, navW];
     tick().then(() => stripEl?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
   });
-  /** A toast with an action (Undo) stays as long as an error, so there is time to use it. */
-  function toast(text: string, kind: Toast["kind"] = "info", action?: Toast["action"]) {
-    const id = ++toastId;
-    toasts.push({ id, kind, text, action });
-    setTimeout(() => dismiss(id), kind === "error" || action ? 8000 : 4500);
-  }
-  const dismiss = (id: number) => (toasts = toasts.filter((t) => t.id !== id));
-  const say = (e: unknown) => toast(`${e}`, "error");
+  const toast = (text: string, kind: ToastKind = "info", opts: ToastOptions = {}) => toasts.show(text, kind, opts);
+  /** An error: one plain sentence that stays until dismissed, the raw text behind "Details". */
+  const say = (e: unknown) => toasts.error(e);
   async function refresh() {
     try {
       library = await libraryLoad(query.trim() || undefined);
@@ -546,13 +545,44 @@
       await refresh();
     }
   }
-  async function removeSession(s: SavedSession) {
-    try {
-      await sessionDelete(s.id);
-      await refresh();
-    } catch (e) {
-      say(e);
-    }
+  // Deleting a session or folder hides it at once and shows Undo. The delete itself runs when
+  // the toast goes away, because a deleted session's saved password cannot be read back.
+  let goneSessions = $state<number[]>([]);
+  let goneFolders = $state<number[]>([]);
+  /** The library without what is waiting to be deleted; a deleted folder's contents move up, as they will. */
+  const shown = $derived.by((): LibraryView => {
+    if (!goneSessions.length && !goneFolders.length) return library;
+    const lift = (id: number | null): number | null => {
+      while (id !== null && goneFolders.includes(id)) id = library.folders.find((f) => f.id === id)?.parent_id ?? null;
+      return id;
+    };
+    return {
+      folders: library.folders.filter((f) => !goneFolders.includes(f.id)).map((f) => ({ ...f, parent_id: lift(f.parent_id) })),
+      sessions: library.sessions.filter((x) => !goneSessions.includes(x.id)).map((x) => ({ ...x, folder_id: lift(x.folder_id) })),
+    };
+  });
+  function removeSession(s: SavedSession) {
+    if (goneSessions.includes(s.id)) return;
+    goneSessions.push(s.id);
+    toast(`Deleted "${s.name}"${s.has_secret ? " and its saved password" : ""}.`, "info", {
+      action: { label: "Undo", run: () => {} },
+      onclose: async (undone) => {
+        if (!undone) await sessionDelete(s.id).then(refresh).catch(say);
+        goneSessions = goneSessions.filter((id) => id !== s.id);
+      },
+    });
+  }
+  function removeFolder(id: number) {
+    const f = library.folders.find((x) => x.id === id);
+    if (!f || goneFolders.includes(id)) return;
+    goneFolders.push(id);
+    toast(`Deleted folder "${f.name}". Its sessions and subfolders are kept.`, "info", {
+      action: { label: "Undo", run: () => {} },
+      onclose: async (undone) => {
+        if (!undone) await folderDelete(id).then(refresh).catch(say);
+        goneFolders = goneFolders.filter((x) => x !== id);
+      },
+    });
   }
   async function doImport() {
     try {
@@ -620,10 +650,12 @@
     // The sidebar search may have narrowed `library`; the palette searches everything.
     libraryLoad().then((l) => (paletteSessions = l.sessions)).catch(() => {});
   }
+  /** A binding as shown in tooltips and the palette. */
+  const keyOf = (a: Action) => formatShortcut(settings.bindings[a]);
   const paletteItems = $derived.by((): PaletteItem[] => {
     const acts = (Object.keys(actionLabels) as Action[])
       .filter((a) => a !== "palette")
-      .map((a): PaletteItem => ({ id: `action:${a}`, group: "Actions", title: actionLabels[a], hint: settings.bindings[a], run: () => runAction(a) }));
+      .map((a): PaletteItem => ({ id: `action:${a}`, group: "Actions", title: actionLabels[a], hint: keyOf(a), run: () => runAction(a) }));
     const extra: PaletteItem[] = [
       { id: "cmd:ssh", group: "Actions", title: "New SSH connection…", run: () => (connecting = true) },
       { id: "cmd:session", group: "Actions", title: "New saved session…", run: () => ((dialogError = null), (editing_session = { session: null, folderId: null })) },
@@ -633,7 +665,7 @@
       { id: "cmd:import", group: "Actions", title: "Import hosts from ~/.ssh/config", run: doImport },
       { id: "cmd:tunnels", group: "Actions", title: "Toggle tunnels panel", run: () => activeTab && toggleDock(activeTab, "tunnels") },
     ];
-    const sess = paletteSessions.map((s): PaletteItem => ({
+    const sess = paletteSessions.filter((s) => !goneSessions.includes(s.id)).map((s): PaletteItem => ({
       id: `session:${s.id}`,
       group: "Sessions",
       title: s.name,
@@ -673,8 +705,7 @@
     remove: historyDelete,
     onsettings() {
       showPalette = false;
-      settingsTab = "history";
-      showSettings = true;
+      openSettings("history");
     },
   };
   function runPalette(item: PaletteItem) {
@@ -688,12 +719,17 @@
   }
 
   // ---- command marks ----
-  const NO_MARKS =
-    "No command marks in this pane yet. Local zsh and bash get them automatically (Settings > Terminal); for a remote shell, run \"Enable command marks in this remote shell\" from the palette.";
+  /** Says there are no marks, with the next step as a button: turn them on here (remote) or in Settings (local). */
+  function noMarks() {
+    const remote = !!(activeTab?.ssh || activeTab?.saved);
+    toast("No command marks in this pane yet.", "info", {
+      action: remote ? { label: "Enable here", run: () => runAction("enable_integration") } : { label: "Open Settings", run: () => openSettings("terminal") },
+    });
+  }
   function paneAction(fn: (p: TerminalPane) => unknown) {
     const p = focusedPane(activeTab);
     if (!p) return;
-    if (!p.hasMarks()) return toast(NO_MARKS);
+    if (!p.hasMarks()) return noMarks();
     return fn(p);
   }
 
@@ -839,9 +875,9 @@
       case "enable_integration": {
         const p = focusedPane(activeTab);
         if (!p || p.isEnded() || p.sessionId() === null) return toast("This pane is not connected.");
-        if (!(activeTab?.ssh || activeTab?.saved)) return toast("Local shells get command marks automatically when the setting is on.");
+        if (!(activeTab?.ssh || activeTab?.saved)) return toast("Local shells get command marks from a setting.", "info", { action: { label: "Open Settings", run: () => openSettings("terminal") } });
         p.enableIntegration();
-        return toast("Typed a one-line hook into this shell (bash or zsh). It defines functions for this session only and writes no files.");
+        return toast("Typed a one-line hook into this shell. It lasts for this session and writes no files.");
       }
     }
   }
@@ -865,7 +901,7 @@
       // Let the first tab connect before touching the network.
       setTimeout(async () => {
         await updates.check(true);
-        if (updates.state.kind === "available") toast(`quay-term ${updates.state.version} is available. Install it from Settings > About.`, "info");
+        if (updates.state.kind === "available") toast(`Quay Term ${updates.state.version} is available.`, "info", { sticky: true, action: { label: "Open Settings", run: () => openSettings("about") } });
       }, 5000);
     });
     getAppInfo().then((i) => (info = i));
@@ -912,6 +948,7 @@
 </script>
 
 <svelte:window
+  onpagehide={() => toasts.flush()}
   onkeydowncapture={(e) => e.key === "Escape" && (tabMenu || tabList) && ((tabMenu = null), (tabList = null), e.stopPropagation())}
   {onkeydown}
 />
@@ -980,22 +1017,22 @@
     class="sbtoggle"
     aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
     aria-expanded={sidebarOpen}
-    title={`${sidebarOpen ? "Hide" : "Show"} sidebar (${settings.bindings.toggle_sidebar})`}
+    title={`${sidebarOpen ? "Hide" : "Show"} sidebar (${keyOf("toggle_sidebar")})`}
     onclick={toggleSidebar}
   >
     <Icon name="panel-left" size={17} />
   </button>
   <Sidebar
     railOnly={!sidebarOpen}
-    {library}
+    library={shown}
     bind:query
     oncollapse={toggleSidebar}
     onshell={() => newTab()}
     onssh={() => (connecting = true)}
-    shellKey={settings.bindings.new_tab}
+    shellKey={keyOf("new_tab")}
     openIds={tabs.flatMap((t) => (t.saved ? [t.saved.id] : []))}
     activeId={activeTab?.saved?.id ?? null}
-    version={info ? `${info.name} v${info.version}` : ""}
+    version={info ? `Quay Term v${info.version}` : ""}
     onconnect={(s) => connectSaved(s)}
     onedit={(s) => ((dialogError = null), (editing_session = { session: s, folderId: null }))}
     onnew={(folderId) => ((dialogError = null), (editing_session = { session: null, folderId }))}
@@ -1003,7 +1040,7 @@
     onimport={doImport}
     onnewfolder={(name, parentId) => folderAction(() => folderCreate(name, parentId))()}
     onrenamefolder={(id, name) => folderAction(() => folderRename(id, name))()}
-    ondeletefolder={(id) => folderAction(() => folderDelete(id))()}
+    ondeletefolder={removeFolder}
     onmovesession={(id, folderId) => folderAction(() => sessionMove(id, folderId))()}
     onmovefolder={(id, parentId) => folderAction(() => folderMove(id, parentId))()}
     tabs={vertical ? sideTabs : undefined}
@@ -1052,10 +1089,10 @@
       {/if}
       {#if broadcast.length}
         <button class="filesbtn on warn" title="Stop broadcasting to {broadcast.length} panes" aria-label="Stop broadcasting to {broadcast.length} panes" onclick={() => (broadcast = [])}>
-          <Icon name="x" size={14} /><span class="txt">Broadcast</span> {broadcast.length}
+          <Icon name="stop" size={14} /><span class="txt">Broadcast</span> {broadcast.length}
         </button>
       {/if}
-      <button class="filesbtn" title={`Snippets (${settings.bindings.snippets})`} aria-label="Snippets" onclick={() => (showSnippets = true)}>
+      <button class="filesbtn" title={`Snippets (${keyOf("snippets")})`} aria-label="Snippets" onclick={() => (showSnippets = true)}>
         <Icon name="terminal" size={16} /><span class="txt">Snippets</span>
       </button>
       <button class="settings" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="settings" size={18} /></button>
@@ -1092,10 +1129,10 @@
               {#if zoomed === p.id || muted.includes(p.id)}
                 <div class="leafbadges">
                   {#if zoomed === p.id}
-                    <button class="zoombadge" title="Zoomed. Click or press {settings.bindings.zoom_pane} to restore" onclick={() => (tab.zoom = null)}>Zoomed</button>
+                    <button class="zoombadge" title="Zoomed. Click or press {keyOf("zoom_pane")} to restore" onclick={() => (tab.zoom = null)}>Zoomed</button>
                   {/if}
                   {#if muted.includes(p.id)}
-                    <button class="zoombadge mutebadge" title="Alerts from this pane are off. Click or press {settings.bindings.mute_pane} to turn them on" onclick={() => toggleMute(p.id)}>Muted</button>
+                    <button class="zoombadge mutebadge" title="Alerts from this pane are off. Click or press {keyOf("mute_pane")} to turn them on" onclick={() => toggleMute(p.id)}>Muted</button>
                   {/if}
                 </div>
               {/if}
@@ -1206,8 +1243,8 @@
         session={editing_session.session}
         defaultFolderId={editing_session.folderId}
         draft={editing_session.draft ?? null}
-        folders={library.folders}
-        sessions={library.sessions}
+        folders={shown.folders}
+        sessions={shown.sessions}
         error={dialogError}
         {vault}
         onunlock={() => (showUnlock = true)}
@@ -1245,16 +1282,7 @@
   {#if connecting}
     <ConnectDialog {vault} onunlock={() => (showUnlock = true)} onconnect={connectSsh} oncancel={() => (connecting = false)} />
   {/if}
-  <div class="toasts" data-modal-keep>
-    {#each toasts as t (t.id)}
-      <div class="toast {t.kind}" role={t.kind === "error" ? "alert" : "status"}>
-        <span class="ticon"><Icon name={t.kind === "error" ? "x" : t.kind === "success" ? "check" : "info"} size={16} /></span>
-        <span class="msg">{t.text}</span>
-        {#if t.action}<button class="tact" onclick={() => (t.action!.run(), dismiss(t.id))}>{t.action.label}</button>{/if}
-        <button aria-label="Dismiss" onclick={() => dismiss(t.id)}><Icon name="x" size={14} /></button>
-      </div>
-    {/each}
-  </div>
+  <Toasts />
   {#if showSnippets}
     <SnippetDialog
       {snippets}
@@ -1740,90 +1768,6 @@
   }
   .filesbtn.warn {
     color: var(--red-text);
-  }
-  .toasts {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    z-index: 40;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    pointer-events: none;
-  }
-  .toast {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    max-width: 360px;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    border-radius: 8px;
-    background: var(--surface);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    font-size: 13px;
-    pointer-events: auto;
-    animation: toast-in 0.15s ease-out;
-  }
-  .toast.success {
-    border-left-color: var(--green);
-  }
-  .toast.error {
-    border-left-color: var(--red);
-  }
-  .ticon {
-    display: flex;
-    flex: none;
-    margin-top: 1px;
-    color: var(--accent-text);
-  }
-  .toast.success .ticon {
-    color: var(--green-text);
-  }
-  .toast.error .ticon {
-    color: var(--red-text);
-  }
-  .toast .msg {
-    flex: 1;
-    overflow-wrap: anywhere;
-  }
-  .toast button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    min-width: 24px;
-    min-height: 24px;
-    padding: 2px;
-    border-radius: 5px;
-    cursor: pointer;
-    color: var(--dim);
-  }
-  .toast button:hover {
-    color: var(--fg);
-  }
-  .toast .tact {
-    flex: none;
-    padding: 1px 8px;
-    border: 1px solid var(--border-strong);
-    border-radius: 5px;
-    font-weight: 500;
-    color: var(--fg);
-  }
-  .toast .tact:hover {
-    background: var(--hover);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .toast {
-      animation: none;
-    }
-  }
-  @keyframes toast-in {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
   }
   .settings {
     display: flex;

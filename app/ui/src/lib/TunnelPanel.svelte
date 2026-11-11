@@ -119,7 +119,7 @@
         <div class="top">
           <span class="badge">{kindName(t.spec.kind)}</span>
           <span class="mono grow">{line(t)}</span>
-          <button class="ibtn" aria-label="Stop tunnel" title="Stop" onclick={() => stop(t)}><Icon name="x" size={14} /></button>
+          <button class="ibtn" aria-label="Stop tunnel" title="Stop" onclick={() => stop(t)}><Icon name="stop" size={13} /></button>
         </div>
         {#if t.error}
           <p class="err">{t.error}</p>

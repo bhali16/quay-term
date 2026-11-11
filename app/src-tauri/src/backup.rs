@@ -95,7 +95,7 @@ impl Library {
     fn absorb(&self, b: Bundle) -> Result<Absorbed, String> {
         if b.version > VERSION {
             return Err(
-                "This vault file was made by a newer quay-term. Update the app to read it.".into(),
+                "This vault file was made by a newer Quay Term. Update the app to read it.".into(),
             );
         }
         let mut store = self.store.lock().unwrap();

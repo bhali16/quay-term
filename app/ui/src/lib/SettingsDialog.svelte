@@ -7,7 +7,7 @@
   import { settings } from "./settings.svelte";
   import { updates } from "./updates.svelte";
   import { themes } from "./themes";
-  import { actionLabels, defaultBindings, describe, type Action } from "./keys";
+  import { actionLabels, defaultBindings, describe, formatShortcut, type Action } from "./keys";
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { sendNotification } from "@tauri-apps/plugin-notification";
   import { ensurePermission, type Permission } from "./notify";
@@ -34,7 +34,7 @@
   }
   async function testNotification() {
     permission = await ensurePermission();
-    if (permission === "granted") sendNotification({ title: "quay-term", body: "Notifications are working." });
+    if (permission === "granted") sendNotification({ title: "Quay Term", body: "Notifications are working." });
   }
   let recording = $state<Action | null>(null);
   let diag = $state<Diagnostics | null>(null);
@@ -93,7 +93,7 @@
     const d = describe(e);
     if (d) {
       const clash = actions.find((a) => a !== recording && settings.bindings[a] === d);
-      if (clash) error = `${d} is already used by "${actionLabels[clash]}".`;
+      if (clash) error = `${formatShortcut(d)} is already used by "${actionLabels[clash]}".`;
       else setBinding(recording, d);
       recording = null;
     }
@@ -162,7 +162,7 @@
 
   async function copyDiag() {
     if (!diag) return;
-    const text = [`quay-term ${diag.version}`, `${diag.os} ${diag.arch}`, `settings: ${diag.settings_file}`, `logs: ${diag.log_dir}`].join("\n");
+    const text = [`Quay Term ${diag.version}`, `${diag.os} ${diag.arch}`, `settings: ${diag.settings_file}`, `logs: ${diag.log_dir}`].join("\n");
     try {
       await navigator.clipboard.writeText(text);
       copied = true;
@@ -231,7 +231,7 @@
           </label>
           <label class="check">
             <input type="checkbox" checked={settings.value.check_for_updates} onchange={(e) => patch({ check_for_updates: e.currentTarget.checked })} />
-            Check for updates when quay-term starts
+            Check for updates when Quay Term starts
           </label>
           <label class="check">
             <input type="checkbox" checked={settings.value.focus_follows_mouse} onchange={(e) => patch({ focus_follows_mouse: e.currentTarget.checked })} />
@@ -265,7 +265,7 @@
           <h3>Notifications</h3>
           <label class="check">
             <input type="checkbox" checked={settings.value.notifications} onchange={(e) => setNotifications(e.currentTarget.checked)} />
-            Notify me when a long command finishes or a session drops while quay-term or that tab is in the background
+            Notify me when a long command finishes or a session drops while Quay Term or that tab is in the background
           </label>
           {#if settings.value.notifications}
             <label class="check">
@@ -284,13 +284,13 @@
               Show the first words of the command in the notification (output is never included)
             </label>
             <p class="hint">
-              Mute one pane with "{actionLabels.mute_pane}" ({settings.bindings.mute_pane}). Clicking a notification brings that tab forward.
+              Mute one pane with "{actionLabels.mute_pane}" ({formatShortcut(settings.bindings.mute_pane)}). Clicking a notification brings that tab forward.
               Command alerts need command marks (Mark prompts and commands, above).
             </p>
             <button class="action" onclick={testNotification}>Send a test notification</button>
             {#if permission === "denied"}
               <p class="hint warn" role="status">
-                The system has notifications blocked for quay-term, so none will appear. Allow them in your system notification settings, then send a test.
+                The system has notifications blocked for Quay Term, so none will appear. Allow them in your system notification settings, then send a test.
               </p>
             {:else if permission === "unknown"}
               <p class="hint warn" role="status">Could not check notification permission on this system.</p>
@@ -301,7 +301,7 @@
             {#each actions as a (a)}
               <span>{actionLabels[a]}</span>
               <button class="chip" class:rec={recording === a} onclick={() => ((error = null), (recording = recording === a ? null : a))}>
-                {recording === a ? "Press keys…" : settings.bindings[a]}
+                {recording === a ? "Press keys…" : formatShortcut(settings.bindings[a])}
               </button>
               <button class="reset" title="Reset to default" disabled={!settings.value.keybindings[a]} onclick={() => setBinding(a, null)}>↺</button>
             {/each}
@@ -314,7 +314,7 @@
           </label>
           <p class="blurb">
             Commands are saved when they finish in a shell with command marks (Settings &gt; Terminal), with the host, folder and exit code. Search them
-            with "{actionLabels.history_search}" ({settings.bindings.history_search}) or type <code>$</code> in the command palette. Output is never saved.
+            with "{actionLabels.history_search}" ({formatShortcut(settings.bindings.history_search)}) or type <code>$</code> in the command palette. Output is never saved.
           </p>
           <p class="blurb">
             Stored on this computer only, in <code>history.db</code> next to your settings, readable only by your user account.
@@ -393,7 +393,7 @@
           {#if busy}<p class="blurb">Working… this takes a moment on purpose.</p>{/if}
           {#if result}<p class="ok" role="status">{result}</p>{/if}
         {:else if diag}
-          <h3>quay-term</h3>
+          <h3>Quay Term</h3>
           <div class="about">
             <span>Version {diag.version} · {diag.os} {diag.arch}</span>
             <span class="path" title={diag.log_dir}>Logs: {diag.log_dir}</span>
@@ -541,10 +541,12 @@
     padding: 3px 10px;
     cursor: pointer;
   }
+  /* The UI font: the modifier symbols (⌥⇧⌘) are too small to read in the mono one. */
   .chip {
     min-width: 110px;
-    font-family: var(--font-mono);
-    font-size: 12px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    letter-spacing: 0.06em;
   }
   .chip.rec {
     border-color: var(--focus);

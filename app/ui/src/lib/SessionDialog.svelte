@@ -212,11 +212,11 @@
     <datalist id="env-presets"><option value="prod"></option><option value="staging"></option><option value="dev"></option></datalist>
     <label>Tags <input bind:value={tags} placeholder="prod, eu (comma separated)" /></label>
     <div class="colour">
-      <span id="colour-label">Colour</span>
+      <span id="colour-label">Color</span>
       <div class="swatches" role="group" aria-labelledby="colour-label">
-        <button type="button" class="none" class:sel={color === null} aria-label="No colour" onclick={() => (color = null)}>∅</button>
+        <button type="button" class="none" class:sel={color === null} aria-label="No color" onclick={() => (color = null)}>∅</button>
         {#each swatches as c (c)}
-          <button type="button" class:sel={color === c} style:background={c} aria-label={`Colour ${c}`} onclick={() => (color = c)}></button>
+          <button type="button" class:sel={color === c} style:background={c} aria-label={`Color ${c}`} onclick={() => (color = c)}></button>
         {/each}
       </div>
     </div>

@@ -17,6 +17,7 @@
   import { modal } from "./modal";
   import Icon from "./Icon.svelte";
   import { parseQuery, rank } from "./fuzzy";
+  import { formatShortcut } from "./keys";
   import { ago, applyFilter, collapse, hostsOf, noFilter, type HistoryFilter, type HistoryRow, type Range } from "./history";
   import type { HistoryEntry } from "./bindings/HistoryEntry";
 
@@ -260,7 +261,7 @@
     </div>
     <div class="foot">
       {#if histMode}
-        <span><kbd>⇧⌦</kbd> forget</span>
+        <span><kbd>{formatShortcut("Shift+Delete")}</kbd> forget</span>
         <span class="sp"><kbd>↑↓</kbd> move <kbd>↵</kbd> type at prompt <kbd>esc</kbd> close</span>
       {:else}
         {#each modeHelp as [k, label] (k)}<span><kbd>{k}</kbd> {label}</span>{/each}
@@ -370,7 +371,8 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
   }
   .row.sel kbd {
     border-color: currentColor;

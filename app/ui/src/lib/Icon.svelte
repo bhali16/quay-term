@@ -1,5 +1,5 @@
 <script lang="ts">
-  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left" | "palette" | "keyboard" | "info" | "search" | "check" | "lock" | "file" | "arrow-up" | "arrow-down" | "trash" | "refresh" | "swap";
+  export type Name = "folder" | "folder-open" | "folder-plus" | "plus" | "import" | "settings" | "pencil" | "x" | "play" | "chevron-right" | "chevron-down" | "server" | "terminal" | "panel-left" | "palette" | "keyboard" | "info" | "search" | "check" | "lock" | "file" | "arrow-up" | "arrow-down" | "trash" | "refresh" | "swap" | "alert" | "stop";
   let { name, size = 16, tint = false }: { name: Name; size?: number; tint?: boolean } = $props();
 
   const folder = "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z";
@@ -32,6 +32,8 @@
     "arrow-up": ["m5 12 7-7 7 7", "M12 19V5"],
     "arrow-down": ["M12 5v14", "m19 12-7 7-7-7"],
     terminal: ["m4 17 6-6-6-6", "M12 19h8"],
+    alert: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z", "M12 8v5", "M12 16h.01"],
+    stop: ["M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"],
     swap: ["M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4"],
   };
 </script>

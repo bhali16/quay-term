@@ -1,5 +1,5 @@
 import { describe as suite, expect, it } from "vitest";
-import { actionFor, defaultBindings, describe, normalize, resolve } from "./keys";
+import { actionFor, defaultBindings, describe, formatShortcut, normalize, resolve } from "./keys";
 
 const ev = (init: Partial<KeyboardEvent>) => init as KeyboardEvent;
 
@@ -46,5 +46,24 @@ suite("default bindings", () => {
   it("are unique", () => {
     const all = Object.values(defaultBindings);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+suite("formatShortcut", () => {
+  it("uses symbols on macOS, modifiers first", () => {
+    expect(formatShortcut("Alt+Shift+Cmd+M", true)).toBe("⌥⇧⌘M");
+    expect(formatShortcut("Ctrl+Cmd+ArrowLeft", true)).toBe("⌃⌘←");
+    expect(formatShortcut("Shift+Cmd+Enter", true)).toBe("⇧⌘↩");
+    expect(formatShortcut("Cmd+,", true)).toBe("⌘,");
+  });
+  it("uses words elsewhere", () => {
+    expect(formatShortcut("Ctrl+Alt+Shift+ArrowLeft", false)).toBe("Ctrl+Alt+Shift+Left");
+    expect(formatShortcut("Ctrl+Shift+P", false)).toBe("Ctrl+Shift+P");
+    expect(formatShortcut("Shift+Delete", false)).toBe("Shift+Del");
+  });
+  it("keeps a plus key and an empty binding", () => {
+    expect(formatShortcut("Ctrl++", false)).toBe("Ctrl++");
+    expect(formatShortcut("Cmd++", true)).toBe("⌘+");
+    expect(formatShortcut("", true)).toBe("");
   });
 });

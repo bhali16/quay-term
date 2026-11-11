@@ -99,9 +99,6 @@
     creating = null;
     renaming = null;
   }
-  function confirmDelete(s: SavedSession) {
-    if (confirm(`Delete "${s.name}"? Its saved password, if any, is removed too.`)) ondelete(s);
-  }
 
   // ---- drag and drop (pointer events: works in every webview and does not
   // interfere with the OS file drop used for SFTP later) ----
@@ -234,7 +231,7 @@
     <span class="acts">
       <button title="Connect" aria-label={`Connect to ${s.name}`} onclick={() => onconnect(s)}><Icon name="play" size={13} /></button>
       <button title="Edit" aria-label={`Edit ${s.name}`} onclick={() => onedit(s)}><Icon name="pencil" size={13} /></button>
-      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => confirmDelete(s)}><Icon name="x" size={14} /></button>
+      <button title="Delete" aria-label={`Delete ${s.name}`} onclick={() => ondelete(s)}><Icon name="trash" size={13} /></button>
     </span>
   </div>
 {/snippet}
@@ -272,7 +269,7 @@
           <button
             title="Delete folder"
             aria-label={`Delete folder ${f.name}`}
-            onclick={() => confirm(`Delete folder "${f.name}"? Its sessions and subfolders are kept.`) && ondeletefolder(f.id)}><Icon name="x" size={14} /></button>
+            onclick={() => ondeletefolder(f.id)}><Icon name="trash" size={13} /></button>
         </span>
       {/if}
     </div>

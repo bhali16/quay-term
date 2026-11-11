@@ -53,7 +53,7 @@ impl SessionStore {
         let mut version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if version > SCHEMA_VERSION {
             return Err(Error::Invalid(format!(
-                "the session database was written by a newer quay-term (schema {version})"
+                "the session database was written by a newer Quay Term (schema {version})"
             )));
         }
         if version < 1 {

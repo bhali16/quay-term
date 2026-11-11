@@ -158,3 +158,32 @@ export function actionFor(e: KeyboardEvent, bindings: Record<Action, string>): A
   if (!d) return null;
   return (Object.keys(bindings) as Action[]).find((a) => bindings[a] === d) ?? null;
 }
+
+const MAC_MODS: Record<string, string> = { Ctrl: "⌃", Alt: "⌥", Shift: "⇧", Cmd: "⌘" };
+const MAC_KEYS: Record<string, string> = {
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  Enter: "↩",
+  Tab: "⇥",
+  Backspace: "⌫",
+  Delete: "⌦",
+  Escape: "⎋",
+};
+const WORD_KEYS: Record<string, string> = { ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down", Escape: "Esc", Delete: "Del" };
+
+/**
+ * A binding as it is shown to the user: symbols on macOS ("⌥⇧⌘M"), words elsewhere
+ * ("Ctrl+Alt+Left"). Display only; bindings are stored and matched in the canonical form.
+ */
+export function formatShortcut(binding: string, mac = isMac): string {
+  if (!binding) return "";
+  // The key itself may be "+", so only the modifiers are split off.
+  const parts = binding.split("+");
+  const mods: string[] = [];
+  while (parts.length > 1 && parts[0] in MAC_MODS) mods.push(parts.shift()!);
+  const key = parts.join("+");
+  if (mac) return mods.map((m) => MAC_MODS[m]).join("") + (MAC_KEYS[key] ?? key);
+  return [...mods, WORD_KEYS[key] ?? key].join("+");
+}
