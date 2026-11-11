@@ -273,7 +273,7 @@
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
     overflow: hidden;
@@ -281,8 +281,8 @@
   .box {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
     color: var(--dim);
   }
@@ -290,7 +290,7 @@
     flex: 1;
     min-width: 0;
     font: inherit;
-    font-size: 15px;
+    font-size: var(--text-l);
     color: var(--fg);
     background: none;
     border: 0;
@@ -300,11 +300,11 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 6px;
+    padding: var(--space-2);
   }
   .grp {
-    padding: 8px 8px 4px;
-    font-size: 11px;
+    padding: var(--space-2) var(--space-2) var(--space-1);
+    font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -313,10 +313,10 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 7px 8px;
-    border-radius: 7px;
-    font-size: 14px;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-2);
+    border-radius: var(--radius-m);
+    font-size: var(--text-m);
     cursor: pointer;
   }
   .row.sel {
@@ -347,22 +347,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: var(--text-s);
     color: var(--dim);
   }
   .g {
     margin-left: auto;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--dim);
   }
   kbd {
     flex: none;
     margin-left: auto;
-    padding: 1px 6px;
+    padding: 1px var(--space-2);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--text-s);
     letter-spacing: 0.04em;
   }
   .row.sel kbd {
@@ -372,10 +372,10 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .filters select,
   .filters button {
@@ -383,8 +383,8 @@
     color: var(--fg);
     background: none;
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 3px 8px;
+    border-radius: var(--radius-m);
+    padding: 2px var(--space-2);
     cursor: pointer;
   }
   .filters select {
@@ -399,11 +399,11 @@
     margin-left: -1px;
   }
   .seg button:first-child {
-    border-radius: 6px 0 0 6px;
+    border-radius: var(--radius-m) 0 0 var(--radius-m);
     margin-left: 0;
   }
   .seg button:last-child {
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--radius-m) var(--radius-m) 0;
   }
   .filters .on {
     background: var(--accent);
@@ -417,7 +417,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .ic.bad {
     color: var(--red-text);
@@ -435,7 +435,7 @@
     margin-left: auto;
     padding: 2px;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     background: none;
     color: inherit;
     opacity: 0;
@@ -459,18 +459,18 @@
     cursor: pointer;
   }
   .none {
-    padding: 18px;
+    padding: var(--space-5);
     text-align: center;
     color: var(--dim);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .foot {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px;
-    padding: 8px 14px;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-4);
     border-top: 1px solid var(--border);
-    font-size: 12px;
+    font-size: var(--text-s);
     color: var(--dim);
   }
   .foot kbd {

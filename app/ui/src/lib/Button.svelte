@@ -38,20 +38,20 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: var(--space-2);
     flex: none;
     /* Not stretched by a column layout. */
     width: fit-content;
     box-sizing: border-box;
     min-height: 24px;
     margin: 0;
-    padding: 6px 14px;
+    padding: var(--space-1) var(--space-4);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     background: none;
     color: var(--fg);
     font: inherit;
-    font-size: 13px;
+    font-size: var(--text-m);
     white-space: nowrap;
     cursor: pointer;
   }
@@ -63,8 +63,8 @@
     cursor: default;
   }
   .sm {
-    padding: 3px 10px;
-    font-size: 12px;
+    padding: 2px var(--space-3);
+    font-size: var(--text-s);
   }
   .primary {
     background: var(--accent);
@@ -85,14 +85,14 @@
     color: var(--dim);
   }
   .ghost {
-    padding: 5px 8px;
+    padding: var(--space-1) var(--space-2);
   }
   .ghost.sm {
-    padding: 3px 6px;
+    padding: 2px var(--space-2);
   }
   .icon {
     min-width: 24px;
-    padding: 4px;
+    padding: var(--space-1);
   }
   .ghost:hover:not(:disabled),
   .icon:hover:not(:disabled) {

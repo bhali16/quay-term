@@ -403,7 +403,7 @@
     justify-content: flex-end;
     flex: none;
     height: var(--chrome-h);
-    padding: 0 12px;
+    padding: 0 var(--space-3);
   }
   /* New tab: a local shell or an SSH connection. Recessed pair, the hovered half rises. */
   .dual {
@@ -411,7 +411,7 @@
     gap: 2px;
     padding: 2px;
     border: 1px solid var(--border-strong);
-    border-radius: 9px;
+    border-radius: var(--radius-l);
     background: var(--bg-deep);
   }
   .dual button {
@@ -420,7 +420,7 @@
     justify-content: center;
     width: 30px;
     height: 24px;
-    border-radius: 7px;
+    border-radius: var(--radius-m);
     color: var(--dim);
   }
   .dual button:hover {
@@ -439,18 +439,18 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    gap: 10px;
+    gap: var(--space-3);
     width: calc(var(--sidebar-w) - 1px);
     box-sizing: border-box;
-    padding: 4px 12px 12px;
-    font-size: 13px;
+    padding: var(--space-1) var(--space-3) var(--space-3);
+    font-size: var(--text-m);
     min-height: 0;
   }
   /* Vertical tabs live here, so the window has one left column, not two. */
   .seclabel {
     flex: none;
-    margin: 2px 4px -4px;
-    font-size: 11px;
+    margin: 2px var(--space-1) calc(var(--space-1) * -1);
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -460,19 +460,19 @@
     flex: 0 1 auto;
     min-height: 38px;
     max-height: 40%;
-    margin: 0 -4px;
-    padding: 0 4px;
+    margin: 0 calc(var(--space-1) * -1);
+    padding: 0 var(--space-1);
     overflow-y: auto;
   }
   .searchbox {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     flex: none;
     height: 34px;
-    padding: 0 11px;
+    padding: 0 var(--space-3);
     border: 1px solid var(--border-strong);
-    border-radius: 9px;
+    border-radius: var(--radius-l);
     background: var(--input);
     color: var(--dim);
   }
@@ -484,7 +484,7 @@
     min-width: 0;
     padding: 0;
     font: inherit;
-    font-size: 13.5px;
+    font-size: var(--text-m);
     color: var(--fg);
     border: 0;
     outline: 0;
@@ -504,13 +504,13 @@
   .tools {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-2);
     flex: none;
   }
   .tools :global(.btn) {
     flex: 1 0 auto;
-    gap: 4px;
-    padding: 5px 4px;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-1);
     background: var(--surface);
   }
   .tools :global(.btn:hover) {
@@ -532,15 +532,15 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
-    margin: 0 -4px;
-    padding: 0 4px;
+    margin: 0 calc(var(--space-1) * -1);
+    padding: 0 var(--space-1);
   }
   .item {
     display: flex;
     align-items: center;
     margin: 1px 0;
-    padding-right: 4px;
-    border-radius: 6px;
+    padding-right: var(--space-1);
+    border-radius: var(--radius-m);
   }
   .item:hover,
   .item.current {
@@ -559,7 +559,7 @@
   }
   .sep {
     height: 1px;
-    margin: 6px 8px;
+    margin: var(--space-1) var(--space-2);
     background: var(--border);
   }
   .main {
@@ -567,8 +567,8 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
     text-align: left;
   }
   .name {
@@ -581,14 +581,14 @@
   .meta {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     flex: 0 1000 auto;
     min-width: 0;
     margin-left: auto;
   }
   .tags {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
     min-width: 0;
     overflow: hidden;
   }
@@ -599,12 +599,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 2px 8px;
+    padding: 2px var(--space-2);
     border: 1px solid var(--border);
-    border-radius: 9px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     color: var(--dim);
-    font-size: 11px;
+    font-size: var(--text-xs);
     line-height: 1.2;
   }
   .tag.more {
@@ -635,7 +635,7 @@
     min-width: 24px;
     min-height: 24px;
     padding: 0;
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     color: var(--dim);
   }
   .acts button:hover {
@@ -645,12 +645,12 @@
   .item input {
     flex: 1;
     min-width: 0;
-    margin: 3px 4px;
-    padding: 2px 4px;
+    margin: 2px var(--space-1);
+    padding: 2px var(--space-1);
     font: inherit;
     color: inherit;
     border: 1px solid var(--border-strong);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     background: var(--input);
   }
   aside.dragging {
@@ -658,7 +658,7 @@
     cursor: grabbing;
   }
   .children {
-    margin-left: 16px;
+    margin-left: var(--space-4);
   }
   .item.drop,
   .children.drop {
@@ -671,34 +671,34 @@
   .ghost {
     position: fixed;
     z-index: 30;
-    padding: 3px 8px;
-    border-radius: 5px;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-m);
     background: var(--accent);
     color: var(--on-accent);
-    font-size: 12px;
+    font-size: var(--text-s);
     pointer-events: none;
     opacity: 0.9;
   }
   .footer {
     flex: none;
-    padding: 10px 4px 0;
+    padding: var(--space-2) var(--space-1) 0;
     border-top: 1px solid var(--border);
   }
   .version {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--dim);
   }
   .empty {
-    margin: 12px 4px;
+    margin: var(--space-3) var(--space-1);
     color: var(--dim);
   }
 
   /* ---- collapsed rail ---- */
   aside.rail {
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     width: calc(var(--rail-w) - 1px);
-    padding: 4px 0 10px;
+    padding: var(--space-1) 0 var(--space-2);
   }
   .railtools {
     display: flex;
@@ -712,7 +712,7 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     color: var(--dim);
   }
   .railtools button:hover {
@@ -734,8 +734,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 4px 0;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -744,10 +744,10 @@
     flex: none;
     width: 30px;
     height: 30px;
-    border-radius: 8px;
+    border-radius: var(--radius-l);
     background: var(--c);
     color: var(--on);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.3px;
   }
@@ -762,7 +762,7 @@
     top: 7px;
     bottom: 7px;
     width: 3px;
-    border-radius: 2px;
+    border-radius: var(--radius-s);
     background: var(--c);
   }
   .host .live {

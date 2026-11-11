@@ -1351,7 +1351,7 @@
     justify-content: center;
     width: var(--toggle);
     height: var(--toggle);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     color: var(--dim);
     cursor: pointer;
   }
@@ -1391,20 +1391,20 @@
   nav {
     display: flex;
     align-items: flex-end;
-    gap: 4px;
+    gap: var(--space-1);
     flex: none;
     box-sizing: border-box;
     height: var(--chrome-h);
-    padding: 0 10px;
+    padding: 0 var(--space-3);
     background: var(--bg-alt);
     border-bottom: 1px solid var(--border);
-    font-size: 14px;
+    font-size: var(--text-m);
     transition: padding-left 160ms ease-out;
   }
   /* The collapsed rail is narrower than the traffic lights plus the toggle, so the tabs
      start after the toggle instead of under it. */
   main.rail nav {
-    padding-left: max(10px, calc(var(--toggle-x) + var(--toggle) + 8px - var(--rail-w)));
+    padding-left: max(var(--space-3), calc(var(--toggle-x) + var(--toggle) + var(--space-2) - var(--rail-w)));
   }
   @media (prefers-reduced-motion: reduce) {
     nav {
@@ -1415,7 +1415,7 @@
   .strip {
     display: flex;
     align-items: flex-end;
-    gap: 4px;
+    gap: var(--space-1);
     flex: 1;
     min-width: 0;
     height: calc(100% + 1px);
@@ -1436,7 +1436,7 @@
     max-width: 220px;
     height: 34px;
     margin-bottom: 1px;
-    border-radius: 8px 8px 0 0;
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
     color: var(--dim);
   }
   .tab:hover {
@@ -1477,11 +1477,11 @@
   }
   .envpill {
     flex: none;
-    padding: 0 5px;
-    border-radius: 4px;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-s);
     background: var(--c);
     color: var(--on);
-    font-size: 10px;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1500,7 +1500,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--dim);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .body {
     display: flex;
@@ -1512,7 +1512,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .vtabs .tab,
   .vtabs .tab.active {
@@ -1522,12 +1522,12 @@
     max-width: none;
     height: 32px;
     margin: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     box-shadow: inset 2px 0 0 var(--tc, transparent);
   }
   .vtabs .label {
     flex: 1;
-    padding-left: 10px;
+    padding-left: var(--space-3);
   }
   .vtabs .close {
     flex: none;
@@ -1559,10 +1559,10 @@
   .label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     height: 100%;
     min-width: 0;
-    padding: 0 4px 0 16px;
+    padding: 0 var(--space-1) 0 var(--space-4);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1575,9 +1575,9 @@
   }
   input {
     width: 90px;
-    margin: 0 4px 0 12px;
-    padding: 2px 4px;
-    border-radius: 4px;
+    margin: 0 var(--space-1) 0 var(--space-3);
+    padding: 2px var(--space-1);
+    border-radius: var(--radius-s);
     background: var(--input);
     color: var(--fg);
   }
@@ -1587,9 +1587,9 @@
     flex: none;
     width: 24px;
     height: 24px;
-    margin-right: 6px;
+    margin-right: var(--space-2);
     padding: 0;
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     color: var(--dim);
     cursor: pointer;
   }
@@ -1603,8 +1603,8 @@
     align-items: center;
     align-self: center;
     flex: none;
-    gap: 6px;
-    margin-left: 4px;
+    gap: var(--space-2);
+    margin-left: var(--space-1);
     padding-right: 2px;
   }
   nav > :global(.btn) {
@@ -1661,9 +1661,9 @@
     align-items: center;
     justify-content: space-between;
     flex: none;
-    padding: 4px 6px 0 8px;
+    padding: var(--space-1) var(--space-2) 0 var(--space-2);
     border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .docktabs {
     display: flex;
@@ -1672,8 +1672,8 @@
   .docktabs button {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 10px 8px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) var(--space-2);
     margin-bottom: -1px;
     border-bottom: 2px solid transparent;
     color: var(--dim);
@@ -1688,10 +1688,10 @@
     font-weight: 600;
   }
   .docktabs .count {
-    padding: 0 5px;
-    border-radius: 8px;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-l);
     background: var(--hover);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
   .dockbody {
@@ -1763,7 +1763,7 @@
   .grip span {
     width: 36px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--radius-s);
     background: var(--border-strong);
     opacity: 0;
     transition: opacity 0.12s;
@@ -1795,18 +1795,18 @@
     left: 10px;
     z-index: 8;
     display: flex;
-    gap: 6px;
+    gap: var(--space-2);
   }
   .mutebadge {
     background: var(--dim);
   }
   .zoombadge {
     all: unset;
-    padding: 1px 7px;
-    border-radius: 4px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
     background: var(--accent);
     color: var(--on-accent);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;

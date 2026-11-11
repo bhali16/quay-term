@@ -705,7 +705,7 @@
     inset: 0;
     /* content-box on purpose: FitAddon reads this element's computed width and
        does not subtract its padding, so border-box would overflow the window. */
-    padding: 20px 24px;
+    padding: var(--space-5) var(--space-6);
     background: var(--bg);
   }
   .badges {
@@ -715,7 +715,7 @@
     /* Above xterm's decorations (the block copy buttons sit at z-index 6). */
     z-index: 8;
     display: flex;
-    gap: 6px;
+    gap: var(--space-2);
     pointer-events: none;
   }
   .strip {
@@ -728,11 +728,11 @@
     pointer-events: none;
   }
   .env {
-    padding: 1px 7px;
-    border-radius: 4px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
     background: var(--c);
     color: var(--on);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -749,13 +749,13 @@
     z-index: 3;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .bar.confirm {
     border-color: var(--red);
@@ -777,20 +777,20 @@
     overflow-wrap: anywhere;
   }
   .bar kbd {
-    margin-left: 4px;
-    padding: 0 4px;
-    border-radius: 3px;
+    margin-left: var(--space-1);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-s);
     background: var(--bg);
     font: inherit;
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--dim);
   }
   .copied {
-    padding: 1px 8px;
-    border-radius: 4px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
     background: var(--green);
     color: var(--bg);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     animation: copied-in 0.12s ease-out;
   }
@@ -806,20 +806,20 @@
     }
   }
   .bcast {
-    padding: 1px 7px;
-    border-radius: 4px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
     background: var(--red);
     color: var(--on-red);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
   }
   .term.compact {
-    padding: 8px 10px;
+    padding: var(--space-2) var(--space-3);
   }
   /* Room for the badge row. The padding shrinks so the text does not move further than it has to. */
   .term.header {
     top: 22px;
-    padding-top: 6px;
+    padding-top: var(--space-1);
   }
   .term.barred {
     padding-bottom: 0;

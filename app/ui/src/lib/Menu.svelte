@@ -52,14 +52,14 @@
     display: flex;
     flex-direction: column;
     min-width: 180px;
-    padding: 4px;
+    padding: var(--space-1);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     color: var(--fg);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .scroll {
     max-width: min(320px, calc(100vw - 16px));
@@ -71,10 +71,10 @@
     box-sizing: border-box;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     flex: none;
-    padding: 6px 10px;
-    border-radius: 5px;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-m);
     cursor: pointer;
   }
   .menu :global(button:hover:not(:disabled)),
@@ -92,7 +92,7 @@
   .menu :global(hr) {
     width: 100%;
     box-sizing: border-box;
-    margin: 4px 0;
+    margin: var(--space-1) 0;
     border: 0;
     border-top: 1px solid var(--border);
   }

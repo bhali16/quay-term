@@ -270,7 +270,7 @@
 <style>
   .swatches {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .swatches button {
     width: 22px;
@@ -280,7 +280,7 @@
     border-radius: 50%;
     cursor: pointer;
     color: inherit;
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .swatches .none {
     background: none;
@@ -294,15 +294,15 @@
   .sec {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
   }
   .sec + .sec {
-    padding-top: 12px;
+    padding-top: var(--space-3);
     border-top: 1px solid var(--border);
   }
   .sec h3 {
     margin: 0;
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -322,8 +322,8 @@
   .colour {
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    font-size: 12px;
+    gap: var(--space-1);
+    font-size: var(--text-s);
     color: var(--dim);
   }
   .thead {
@@ -335,10 +335,10 @@
   .tun {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 10px;
+    gap: var(--space-2);
+    padding: var(--space-3);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
   }
   .tun .row {
     align-items: flex-end;

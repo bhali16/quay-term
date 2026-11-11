@@ -187,20 +187,20 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    font-size: 13px;
+    font-size: var(--text-m);
     min-height: 0;
   }
   .body {
     flex: 1;
     overflow: auto;
-    padding: 10px;
+    padding: var(--space-3);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
   h3 {
-    margin: 8px 0 0;
-    font-size: 11px;
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--dim);
@@ -213,8 +213,8 @@
   }
   .item {
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px;
+    border-radius: var(--radius-m);
+    padding: var(--space-2);
     background: var(--bg);
   }
   .item.failed {
@@ -223,19 +223,19 @@
   .top {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .badge {
     flex: none;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 11px;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-s);
+    font-size: var(--text-xs);
     background: var(--hover);
     color: var(--dim);
   }
   .mono {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-s);
     overflow-wrap: anywhere;
   }
   .grow {
@@ -243,17 +243,17 @@
     min-width: 0;
   }
   .stats {
-    margin: 6px 0 0;
+    margin: var(--space-1) 0 0;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .warn,
   .err {
-    margin: 6px 0 0;
-    font-size: 12px;
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-s);
     line-height: 1.4;
   }
   .warn {
@@ -265,22 +265,22 @@
   form {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
   }
   label {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     color: var(--dim);
   }
   label.check {
     flex-direction: row;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
   }
   .row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .narrow {
     width: 84px;
@@ -291,8 +291,8 @@
     color: var(--fg);
     background: var(--input, var(--bg));
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 5px 8px;
+    border-radius: var(--radius-m);
+    padding: var(--space-1) var(--space-2);
   }
   input[type="checkbox"] {
     padding: 0;

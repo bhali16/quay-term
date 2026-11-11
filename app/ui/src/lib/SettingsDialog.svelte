@@ -430,7 +430,7 @@
   }
   .layout {
     display: flex;
-    gap: 16px;
+    gap: var(--space-4);
     height: min(540px, 68vh);
   }
   .tabs {
@@ -439,7 +439,7 @@
     gap: 2px;
     width: 130px;
     flex: none;
-    padding-right: 12px;
+    padding-right: var(--space-3);
     border-right: 1px solid var(--border);
   }
   .tabs button {
@@ -447,11 +447,11 @@
     color: inherit;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     text-align: left;
-    padding: 7px 10px;
+    padding: var(--space-2) var(--space-3);
     border: 0;
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     background: none;
     cursor: pointer;
     color: var(--dim);
@@ -469,7 +469,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-3);
     overflow: auto;
     padding-right: 2px;
   }
@@ -479,9 +479,9 @@
   }
   .pane > .action {
     align-self: flex-start;
-    padding: 6px 14px;
+    padding: var(--space-1) var(--space-4);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     background: var(--input);
     color: var(--fg);
     font: inherit;
@@ -494,16 +494,16 @@
   .swatches {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 8px;
+    gap: var(--space-2);
   }
   .sw {
     position: relative;
     min-width: 0;
     height: 52px;
     border: 2px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-l);
     cursor: pointer;
-    font: 600 15px var(--font-mono);
+    font: 600 var(--text-l) var(--font-mono);
   }
   .sw.on {
     border-color: var(--focus);
@@ -517,8 +517,8 @@
     border-radius: 50%;
   }
   h3 {
-    margin: 4px 0 0;
-    font-size: 12px;
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-s);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--dim);
@@ -526,56 +526,56 @@
   .keys {
     display: grid;
     grid-template-columns: 1fr auto auto;
-    gap: 6px 8px;
+    gap: var(--space-2) var(--space-2);
     align-items: center;
   }
   .chip {
     font: inherit;
     color: inherit;
     border: 1px solid var(--border-strong);
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     background: var(--bg-alt);
-    padding: 3px 10px;
+    padding: 2px var(--space-3);
     cursor: pointer;
   }
   /* The UI font: the modifier symbols (⌥⇧⌘) are too small to read in the mono one. */
   .chip {
     min-width: 110px;
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: var(--text-m);
     letter-spacing: 0.06em;
   }
   .chip.rec {
     border-color: var(--focus);
   }
   .deny {
-    font: 12.5px var(--font-mono);
+    font: var(--text-s) var(--font-mono);
     color: var(--fg);
     background: var(--input);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 6px 8px;
+    border-radius: var(--radius-m);
+    padding: var(--space-1) var(--space-2);
     resize: vertical;
   }
   .blurb {
     margin: 0;
-    font-size: 12.5px;
+    font-size: var(--text-s);
     color: var(--dim);
   }
   .brow {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .ok {
     margin: 0;
     color: var(--green-text);
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   .about {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    font-size: 12px;
+    gap: var(--space-1);
+    font-size: var(--text-s);
   }
   .path {
     overflow: hidden;

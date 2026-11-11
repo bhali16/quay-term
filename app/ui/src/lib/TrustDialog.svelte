@@ -33,11 +33,11 @@
   dl {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 6px 14px;
+    gap: var(--space-2) var(--space-4);
     margin: 0;
-    padding: 10px 12px;
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     background: var(--bg-deep);
   }
   dt {
@@ -48,7 +48,7 @@
   }
   .fp {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-s);
     word-break: break-all;
   }
 </style>

@@ -332,7 +332,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    font-size: 13px;
+    font-size: var(--text-m);
   }
   aside.dropping {
     outline: 2px dashed var(--accent);
@@ -347,8 +347,8 @@
     background: none;
     border: 0;
     cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-s);
   }
   button:hover:not(:disabled) {
     background: var(--hover);
@@ -360,27 +360,27 @@
   .pathbar {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     flex: none;
-    padding: 12px 10px 12px 16px;
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
   }
   .plabel {
     flex: none;
     color: var(--dim);
     font-family: var(--font-mono);
-    font-size: 12.5px;
+    font-size: var(--text-s);
   }
   .path,
   .name-input {
     flex: 1;
     min-width: 0;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     background: none;
-    padding: 2px 4px;
+    padding: 2px var(--space-1);
     font-family: var(--font-mono);
-    font-size: 12.5px;
+    font-size: var(--text-s);
     font-weight: 600;
   }
   .path:hover {
@@ -407,12 +407,12 @@
   .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-2);
     flex: none;
-    padding: 8px 12px 4px;
+    padding: var(--space-2) var(--space-3) var(--space-1);
   }
   .msg {
-    margin: 8px 12px;
+    margin: var(--space-2) var(--space-3);
   }
   .err {
     color: var(--red-text);
@@ -426,8 +426,8 @@
     min-height: 0;
     overflow-y: auto;
     list-style: none;
-    margin: 4px 0 0;
-    padding: 0 8px 8px;
+    margin: var(--space-1) 0 0;
+    padding: 0 var(--space-2) var(--space-2);
   }
   .list.loading {
     opacity: 0.5;
@@ -435,9 +435,9 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 8px;
-    border-radius: 6px;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-m);
   }
   .row:hover,
   .row.selected {
@@ -465,7 +465,7 @@
   }
   .meta {
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
     white-space: nowrap;
     text-align: right;
   }
@@ -503,14 +503,14 @@
     color: var(--red-text);
   }
   .empty {
-    padding: 14px 10px;
+    padding: var(--space-3) var(--space-3);
     color: var(--dim);
   }
   .transfers {
     flex: none;
     max-height: 190px;
     overflow-y: auto;
-    padding: 12px 16px 14px;
+    padding: var(--space-3) var(--space-4) var(--space-3);
     background: var(--bg-alt);
     border-top: 1px solid var(--border);
   }
@@ -518,20 +518,20 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-2);
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
     letter-spacing: 0.8px;
     text-transform: uppercase;
   }
   .thead button {
     color: inherit;
-    font-size: 11px;
+    font-size: var(--text-xs);
     letter-spacing: 0;
     text-transform: none;
   }
   .t {
-    margin-bottom: 10px;
+    margin-bottom: var(--space-2);
   }
   .t:last-child {
     margin-bottom: 0;
@@ -539,8 +539,8 @@
   .trow {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 5px;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
   }
   .ticon {
     display: flex;
@@ -567,7 +567,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .small.err {
     color: var(--red-text);
@@ -575,12 +575,12 @@
   .bar {
     height: 5px;
     overflow: hidden;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     background: var(--hover);
   }
   .fill {
     height: 100%;
-    border-radius: 3px;
+    border-radius: var(--radius-s);
     background: var(--accent);
     transition: width 120ms linear;
   }

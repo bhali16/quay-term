@@ -43,24 +43,24 @@
     z-index: 40;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
     pointer-events: none;
   }
   .toast {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: var(--space-3);
     width: max-content;
     max-width: min(360px, calc(100vw - 32px));
     margin-left: auto;
     box-sizing: border-box;
-    padding: 10px 12px;
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
     border-left: 3px solid var(--accent);
-    border-radius: 8px;
+    border-radius: var(--radius-l);
     background: var(--surface);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    font-size: 13px;
+    font-size: var(--text-m);
     pointer-events: auto;
     animation: toast-in 0.15s ease-out;
   }
@@ -73,7 +73,7 @@
   .ticon {
     display: flex;
     flex: none;
-    margin-top: 3px;
+    margin-top: 2px;
     color: var(--accent-text);
   }
   .toast.success .ticon {
@@ -88,8 +88,8 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
-    padding-top: 3px;
+    gap: var(--space-1);
+    padding-top: 2px;
   }
   .msg {
     overflow-wrap: anywhere;
@@ -97,9 +97,9 @@
   }
   .more {
     all: unset;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--text-s);
     color: var(--dim);
     text-decoration: underline;
   }
@@ -111,13 +111,13 @@
     max-width: 100%;
     max-height: 120px;
     overflow: auto;
-    padding: 6px 8px;
+    padding: var(--space-1) var(--space-2);
     box-sizing: border-box;
-    border-radius: 5px;
+    border-radius: var(--radius-m);
     background: var(--bg-deep);
     color: var(--dim);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-xs);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     user-select: text;

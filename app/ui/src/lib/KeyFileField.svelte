@@ -27,7 +27,7 @@
 <style>
   .field {
     display: flex;
-    gap: 6px;
+    gap: var(--space-2);
   }
   .field input {
     flex: 1;

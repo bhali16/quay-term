@@ -190,7 +190,7 @@
   .search {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     color: var(--dim);
   }
   .search input {
@@ -199,20 +199,20 @@
   .list {
     max-height: 340px;
     overflow-y: auto;
-    margin: 10px 0;
+    margin: var(--space-2) 0;
   }
   .folder {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin: 10px 0 4px;
+    gap: var(--space-2);
+    margin: var(--space-2) 0 var(--space-1);
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
   }
   .item {
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-m);
   }
   .item:hover {
     background: var(--hover);
@@ -223,7 +223,7 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
-    padding: 6px 8px;
+    padding: var(--space-1) var(--space-2);
     text-align: left;
     cursor: pointer;
     background: none;
@@ -232,24 +232,24 @@
     font: inherit;
   }
   .nm {
-    font-size: 13.5px;
+    font-size: var(--text-m);
   }
   .short {
-    margin-left: 8px;
+    margin-left: var(--space-2);
     color: var(--dim);
     font-family: var(--font-mono);
-    font-size: 11.5px;
+    font-size: var(--text-xs);
   }
   .pv {
     overflow: hidden;
     color: var(--dim);
-    font-size: 12px;
+    font-size: var(--text-s);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .ic {
     display: flex;
-    padding: 6px;
+    padding: var(--space-2);
     color: var(--dim);
     cursor: pointer;
     background: none;
@@ -261,11 +261,11 @@
   .body {
     max-height: 140px;
     overflow: auto;
-    margin: 0 0 8px;
-    padding: 8px 10px;
-    border-radius: 6px;
+    margin: 0 0 var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-m);
     background: var(--input);
-    font-size: 12.5px;
+    font-size: var(--text-s);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -273,12 +273,12 @@
     width: 100%;
     box-sizing: border-box;
     resize: vertical;
-    padding: 6px 8px;
+    padding: var(--space-1) var(--space-2);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-m);
     background: var(--input);
     color: var(--fg);
     font: inherit;
-    font-size: 12.5px;
+    font-size: var(--text-s);
   }
 </style>
