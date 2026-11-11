@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-11
+
 ### Added
 - Find in scrollback (Cmd+F, or Ctrl+Shift+F on Windows and Linux): a bar in the pane with the match count, match case, and previous and next.
 - "Open in split" on a saved session's right-click menu connects it in a new pane of the tab in front. Such a tab's layout is not saved with a session.

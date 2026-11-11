@@ -2,7 +2,7 @@
 
 Cross-platform SSH client, terminal and SFTP manager for macOS, Linux and Windows. Built with Rust and Tauri.
 
-> **Status:** early (0.4.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, signed in-app updates, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
+> **Status:** early (0.5.x). Local terminals, SSH with jump hosts and port forwards, saved sessions, split panes, snippets, SFTP, encrypted export and import, signed in-app updates, themes and shortcuts work. Installers are on the [releases page](https://github.com/bhali16/quay-term/releases); macOS builds are available for Apple silicon and Intel.
 
 ## Installing
 
@@ -20,7 +20,7 @@ From 0.2.1 on, quay-term can update itself. Open Settings > About and choose Che
 
 One app to manage terminals, SSH sessions and remote files on any desktop OS.
 
-What it does today (v0.4):
+What it does today (v0.5):
 
 - **Terminals:** local shell tabs, split panes inside a tab (the layout comes back with a saved session) that you can zoom to fill the tab or drag onto another pane's edge to rearrange, optional focus follows mouse, find in scrollback (Cmd+F / Ctrl+Shift+F), and typing broadcast to selected panes
 - **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification; a quick-connect dialog can save the connection as you open it, and any open quick-connect tab can be saved from its right-click menu or the palette
