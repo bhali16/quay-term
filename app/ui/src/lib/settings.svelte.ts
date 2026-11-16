@@ -33,6 +33,7 @@ const fallback: Settings = {
   screen_reader: false,
   record_history: false,
   history_deny_patterns: DEFAULT_DENY,
+  log_level: "error",
 };
 
 /** The theme id in use: the chosen one, or the light or dark choice when following the system. */

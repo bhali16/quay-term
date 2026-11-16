@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- Settings > About > Logs chooses what goes into the log file: Errors only (the default), Standard, Debug (each sign-in step and why a connection ended) or Extended (also the SSH library's protocol messages). It takes effect without a restart. "Open logs folder" opens the folder in the file manager.
+
+### Changed
+- When the server hangs up during sign-in, the error now says why (for example "Too many authentication failures") instead of "Unable to receive more messages from the channel".
+- The log file holds only errors unless you choose more. Failed connections and tunnels are logged as errors.
+
 ## [0.5.0] - 2026-11-11
 
 ### Added
