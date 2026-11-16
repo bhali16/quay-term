@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-16
+
 ### Added
 - Settings > About > Logs chooses what goes into the log file: Errors only (the default), Standard, Debug (each sign-in step and why a connection ended) or Extended (also the SSH library's protocol messages). It takes effect without a restart. "Open logs folder" opens the folder in the file manager.
 - A quick-connect SSH tab that is not saved shows a Save button in its toolbar, beside Files and Tunnels.
