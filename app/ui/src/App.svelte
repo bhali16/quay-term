@@ -90,6 +90,11 @@
     home?: boolean;
     ssh: SshTarget | null;
     saved: Saved | null;
+    /**
+     * A quick-connect tab saved to sessions while open: the saved session it now stands for.
+     * Its panes keep their live connection (and `ssh` to reconnect); this only links the tab to it.
+     */
+    savedAs?: number;
     /** Which panel the dock on the right shows; null when it is closed. */
     dock: Dock | null;
     /** Panels opened since the dock was shown. They stay mounted while the other one is in front. */
@@ -430,7 +435,8 @@
   let library = $state<LibraryView>({ folders: [], sessions: [] });
   let query = $state("");
   let sidebarOpen = $state(readSidebarPref());
-  let editing_session = $state<{ session: SavedSession | null; folderId: number | null; draft?: SshTarget | null } | null>(null);
+  /** `fromTab`: the open quick-connect tab being saved, linked to the new session once it is. */
+  let editing_session = $state<{ session: SavedSession | null; folderId: number | null; draft?: SshTarget | null; fromTab?: number } | null>(null);
   /** Right-click menu on a tab. */
   let tabMenu = $state<{ x: number; y: number; key: number } | null>(null);
   let dialogError = $state<string | null>(null);
@@ -605,11 +611,14 @@
   }
   async function submitSession(r: SessionResult) {
     dialogError = null;
+    const fromTab = editing_session?.fromTab;
     try {
       const saved = await sessionSave(editing_session?.session?.id ?? null, r.input, r.secret);
       editing_session = null;
       await refresh();
-      if (r.connect) connectSaved(saved, r.transient);
+      const tab = fromTab === undefined ? undefined : tabs.find((t) => t.key === fromTab);
+      if (tab) linkTab(tab, saved);
+      else if (r.connect) connectSaved(saved, r.transient);
     } catch (e) {
       dialogError = `${e}`;
       await refresh();
@@ -711,9 +720,17 @@
   });
 
   // ---- session colour, environment and connection state ----
-  const savedOf = (tab: Tab) => (tab.saved ? library.sessions.find((x) => x.id === tab.saved!.id) : undefined);
+  const savedOf = (tab: Tab) => {
+    const id = tab.saved?.id ?? tab.savedAs;
+    return id === undefined ? undefined : library.sessions.find((x) => x.id === id);
+  };
   /** The saved session a pane is connected to (its own, for a pane opened in a split). */
-  const sessionOf = (tab: Tab, pane: number) => library.sessions.find((x) => x.id === paneSaved(tab, pane)?.id);
+  const sessionOf = (tab: Tab, pane: number) => {
+    const id = paneSaved(tab, pane)?.id ?? (tab.targets[pane] ? undefined : tab.savedAs);
+    return id === undefined ? undefined : library.sessions.find((x) => x.id === id);
+  };
+  /** A quick-connect SSH tab that is not in the sessions list (yet, or any more: its session was deleted). */
+  const unsaved = (tab: Tab | undefined) => !!tab?.ssh && !tab.saved && !savedOf(tab);
   const envOf = (tab: Tab) => savedOf(tab)?.env ?? null;
   const colorOf = (tab: Tab) => savedOf(tab)?.color ?? null;
   const stateOf = (tab: Tab): TabState =>
@@ -764,7 +781,7 @@
     const extra: PaletteItem[] = [
       { id: "cmd:ssh", group: "Actions", title: "New SSH connection…", run: () => (connecting = true) },
       { id: "cmd:session", group: "Actions", title: "New saved session…", run: () => ((dialogError = null), (editing_session = { session: null, folderId: null })) },
-      ...(activeTab?.ssh && !activeTab.saved
+      ...(unsaved(activeTab)
         ? [{ id: "cmd:save-connection", group: "Actions" as const, title: "Save this connection…", run: () => saveConnection(activeTab) }]
         : []),
       { id: "cmd:import", group: "Actions", title: "Import hosts from ~/.ssh/config", run: doImport },
@@ -874,7 +891,14 @@
   function saveConnection(tab: Tab | undefined) {
     if (!tab?.ssh) return;
     dialogError = null;
-    editing_session = { session: null, folderId: null, draft: tab.ssh };
+    editing_session = { session: null, folderId: null, draft: tab.ssh, fromTab: tab.key };
+  }
+  /** The tab stays connected as it is; it now shows, and counts as, the session it was saved as. */
+  function linkTab(tab: Tab, s: SavedSession) {
+    tab.savedAs = s.id;
+    if (tab.ssh && tab.title === `${tab.ssh.user}@${tab.ssh.host}`) tab.title = s.name;
+    rememberSession(s.id);
+    toast(`Saved ${s.name} to sessions.`, "success");
   }
 
   function answerTrust(trust: boolean) {
@@ -1154,8 +1178,8 @@
     shellKey={keyOf("new_tab")}
     paletteKey={keyOf("palette")}
     onimport={doImport}
-    openIds={tabs.flatMap((t) => [...(t.saved ? [t.saved.id] : []), ...Object.values(t.targets).map((x) => x.id)])}
-    activeId={activeTab?.saved?.id ?? null}
+    openIds={tabs.flatMap((t) => [...(t.saved ? [t.saved.id] : t.savedAs !== undefined ? [t.savedAs] : []), ...Object.values(t.targets).map((x) => x.id)])}
+    activeId={activeTab?.saved?.id ?? activeTab?.savedAs ?? null}
     version={info ? `Quay Term v${info.version}` : ""}
     onconnect={(s) => connectSaved(s)}
     onsplit={(s) => connectSaved(s, null, false, [], "split")}
@@ -1217,6 +1241,11 @@
       <Button variant="ghost" title={tip("Command palette: search actions, sessions, snippets and tabs", "palette")} aria-label="Command palette" onclick={() => openPalette()}>
         <Icon name="command" size={16} />{#if keyOf("palette")}<span class="txt">{keyOf("palette")}</span>{/if}
       </Button>
+      {#if unsaved(activeTab)}
+        <Button variant="ghost" aria-label="Save this connection" title="Save this connection to your sessions" onclick={() => saveConnection(activeTab)}>
+          <Icon name="bookmark-plus" size={16} /><span class="txt">Save</span>
+        </Button>
+      {/if}
       {#if activeTab && canDock(activeTab)}
         <Button variant="ghost" active={activeTab.dock === "files"} aria-label="Files" aria-pressed={activeTab.dock === "files"} title="Browse files on this host (SFTP)" onclick={() => toggleDock(activeTab, "files")}>
           <Icon name="folder" size={16} /><span class="txt">Files</span>
@@ -1393,7 +1422,7 @@
   {#if tabMenu}
     {@const mt = tabs.find((t) => t.key === tabMenu!.key)}
     <Menu label="Tab" left={tabMenu.x} top={tabMenu.y} onclose={() => (tabMenu = null)}>
-      {#if mt?.ssh && !mt.saved}
+      {#if unsaved(mt)}
         <button role="menuitem" onclick={() => (saveConnection(mt), (tabMenu = null))}>Save this connection…</button>
       {/if}
       {#if mt}

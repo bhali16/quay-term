@@ -135,7 +135,7 @@
 
 </script>
 
-<Dialog title={session ? "Edit session" : draft ? "Save this connection" : "New session"} onclose={oncancel} onsubmit={(e) => (e.preventDefault(), submit(!session))}>
+<Dialog title={session ? "Edit session" : draft ? "Save this connection" : "New session"} onclose={oncancel} onsubmit={(e) => (e.preventDefault(), submit(!session && !draft))}>
     <section class="sec" aria-labelledby="sec-conn">
     <h3 id="sec-conn">Connection</h3>
     <label>Name <input bind:value={name} placeholder="Optional, defaults to user@host" /></label>
@@ -257,8 +257,9 @@
   {#snippet actions()}
     <Button onclick={oncancel}>Cancel</Button>
     <!-- Enter saves an existing session; it connects only when the session is new. -->
-    {#if session}
-      <Button disabled={!valid} onclick={() => submit(true)}>Save &amp; connect</Button>
+    <!-- An open connection being saved is already connected: saving links its tab instead. -->
+    {#if session || draft}
+      {#if session}<Button disabled={!valid} onclick={() => submit(true)}>Save &amp; connect</Button>{/if}
       <Button type="submit" variant="primary" disabled={!valid}>Save</Button>
     {:else}
       <Button disabled={!valid} onclick={() => submit(false)}>Save</Button>
