@@ -63,6 +63,9 @@ pub enum SshError {
         port: u16,
         source: Box<SshError>,
     },
+    /// The connection ended while signing in; `reason` is what the server said, or what broke.
+    #[error("The connection ended during sign-in: {reason}")]
+    ClosedDuringSignIn { reason: String },
     #[error("Could not open a shell on the server: {0}")]
     Channel(String),
     /// A tunnel could not be started; the message says why.

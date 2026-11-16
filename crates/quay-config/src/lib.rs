@@ -36,6 +36,25 @@ pub enum TabLayout {
     Horizontal,
 }
 
+/// How much goes into the log file. Changes take effect at once, without a restart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
+pub enum LogLevel {
+    /// Also what Quay Term does: connects, disconnects, tunnels, warnings.
+    Info,
+    /// Also each sign-in step and why a connection ended. For troubleshooting.
+    Debug,
+    /// Also the SSH library's protocol messages (key exchange, channels). Large; turn off after.
+    Trace,
+    /// Failures only: connections that could not be made, tunnels that did not start.
+    /// Also what any unknown value in a hand-edited or newer file reads as (`other` must be
+    /// the last variant).
+    #[default]
+    #[serde(other)]
+    Error,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(default)]
 #[ts(export, export_to = "../../../app/ui/src/lib/bindings/")]
@@ -94,6 +113,8 @@ pub struct Settings {
     pub record_history: bool,
     /// Regular expressions (case-insensitive); a command matching any of them is never saved.
     pub history_deny_patterns: Vec<String>,
+    /// How much is written to the log file. Errors only unless the user asks for more.
+    pub log_level: LogLevel,
 }
 
 /// Commands that look like they carry a secret. Users can edit the list in Settings.
@@ -145,6 +166,7 @@ impl Default for Settings {
             screen_reader: false,
             record_history: false,
             history_deny_patterns: default_history_deny_patterns(),
+            log_level: LogLevel::Error,
         }
     }
 }
@@ -318,6 +340,20 @@ mod tests {
         let s = Settings::load(&p);
         assert!(s.theme_match_system && !s.dim_unfocused_panes);
         assert_eq!(s.theme_dark, "dracula");
+    }
+
+    #[test]
+    fn logging_is_errors_only_by_default_and_tolerates_unknown_levels() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"font_size": 18}"#).unwrap();
+        assert_eq!(Settings::load(&p).log_level, LogLevel::Error);
+        std::fs::write(&p, r#"{"log_level": "trace"}"#).unwrap();
+        assert_eq!(Settings::load(&p).log_level, LogLevel::Trace);
+        std::fs::write(&p, r#"{"log_level": "verbose", "font_size": 18}"#).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.log_level, LogLevel::Error);
+        assert_eq!(s.font_size, 18);
     }
 
     #[test]

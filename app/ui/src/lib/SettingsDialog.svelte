@@ -11,7 +11,8 @@
   import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { sendNotification } from "@tauri-apps/plugin-notification";
   import { ensurePermission, type Permission } from "./notify";
-  import { getDiagnostics, historyClear, historyCount, vaultExport, vaultImport } from "./ipc";
+  import { getDiagnostics, historyClear, historyCount, openLogDir, vaultExport, vaultImport } from "./ipc";
+  import type { LogLevel } from "./bindings/LogLevel";
   import { compileDeny, DEFAULT_DENY } from "./history";
   import type { BackupReport } from "./bindings/BackupReport";
   import type { VaultStatus } from "./bindings/VaultStatus";
@@ -212,6 +213,21 @@
       importPw = "";
       return bits.join(", ") + ".";
     });
+
+  // ---- logs ----
+  const logLevels: { id: LogLevel; label: string; hint: string }[] = [
+    { id: "error", label: "Errors only", hint: "Only failures: connections that could not be made, tunnels that did not start." },
+    { id: "info", label: "Standard", hint: "Also connects, disconnects, tunnels and warnings." },
+    { id: "debug", label: "Debug", hint: "Also each sign-in step (methods offered, keys tried) and why a connection ended. Use it when a connection fails." },
+    { id: "trace", label: "Extended", hint: "Also the SSH library's protocol messages. The log grows fast, so switch back when you are done." },
+  ];
+  async function showLogs() {
+    try {
+      await openLogDir();
+    } catch (e) {
+      error = `Could not open the logs folder: ${e}`;
+    }
+  }
 
   async function copyDiag() {
     if (!diag) return;
@@ -506,9 +522,24 @@
           <h3>Quay Term</h3>
           <div class="about">
             <span>Version {diag.version} · {diag.os} {diag.arch}</span>
-            <span class="path" title={diag.log_dir}>Logs: {diag.log_dir}</span>
             <span class="path" title={diag.settings_file}>Settings: {diag.settings_file}</span>
             <Button size="sm" onclick={copyDiag}>{copied ? "Copied" : "Copy diagnostics"}</Button>
+          </div>
+          <h3>Logs</h3>
+          <label>
+            What to write to the log file
+            <select value={settings.value.log_level} onchange={(e) => patch({ log_level: e.currentTarget.value as LogLevel })}>
+              {#each logLevels as l (l.id)}
+                <option value={l.id}>{l.label}</option>
+              {/each}
+            </select>
+          </label>
+          <p class="blurb">
+            {logLevels.find((l) => l.id === settings.value.log_level)?.hint} Takes effect at once. Passwords and terminal output are never written.
+          </p>
+          <div class="about">
+            <span class="path" title={diag.log_dir}>{diag.log_dir}</span>
+            <Button size="sm" onclick={showLogs}><Icon name="folder" size={13} />Open logs folder</Button>
           </div>
           <h3>Updates</h3>
           <div class="about" aria-live="polite">

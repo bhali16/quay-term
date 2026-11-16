@@ -103,6 +103,27 @@ pub(crate) struct Handler {
     /// Why the key was refused, so the caller gets a real error and not "unknown key".
     refusal: Arc<Mutex<Option<SshError>>>,
     remote: Arc<RemoteForwards>,
+    /// Why the connection ended, once it has. russh only hands this to the handler; calls
+    /// still waiting on the connection just fail with "Unable to receive more messages".
+    closed: Arc<Mutex<Option<String>>>,
+}
+
+/// The reason in words: the server's own message, or the error that ended the connection.
+fn describe_disconnect(reason: &client::DisconnectReason<russh::Error>) -> String {
+    match reason {
+        client::DisconnectReason::ReceivedDisconnect(info) => {
+            let msg = info.message.trim();
+            if msg.is_empty() {
+                format!("the server closed the connection ({:?})", info.reason_code)
+            } else {
+                format!(
+                    "the server closed the connection: \"{msg}\" ({:?})",
+                    info.reason_code
+                )
+            }
+        }
+        client::DisconnectReason::Error(e) => format!("the connection failed: {e}"),
+    }
 }
 
 impl Handler {
@@ -114,6 +135,20 @@ impl Handler {
 
 impl client::Handler for Handler {
     type Error = russh::Error;
+
+    async fn disconnected(
+        &mut self,
+        reason: client::DisconnectReason<Self::Error>,
+    ) -> Result<(), Self::Error> {
+        let text = describe_disconnect(&reason);
+        log::info!("{}:{} disconnected: {text}", self.host, self.port);
+        *self.closed.lock().unwrap() = Some(text);
+        // What russh's default does: a disconnect the server sent is a normal end.
+        match reason {
+            client::DisconnectReason::ReceivedDisconnect(_) => Ok(()),
+            client::DisconnectReason::Error(e) => Err(e),
+        }
+    }
 
     async fn server_channel_open_forwarded_tcpip(
         &mut self,
@@ -243,6 +278,7 @@ async fn connect_async(
     for (i, hop) in hops.iter().enumerate() {
         remote = Arc::new(RemoteForwards::default());
         let is_target = i == hops.len() - 1;
+        let closed = Arc::new(Mutex::new(None));
         let step = async {
             let config = client::Config {
                 preferred: preferred_for(&known_hosts, &hop.host, hop.port)?,
@@ -258,14 +294,17 @@ async fn connect_async(
                 events: events.clone(),
                 refusal: refusal.clone(),
                 remote: remote.clone(),
+                closed: closed.clone(),
             };
             let handshake_err = |e: russh::Error| {
+                log::debug!("{}:{} handshake failed: {e:?}", hop.host, hop.port);
                 refusal
                     .lock()
                     .unwrap()
                     .take()
                     .unwrap_or_else(|| SshError::Handshake(e.to_string()))
             };
+            log::debug!("{}:{} handshake", hop.host, hop.port);
             let mut handle = match sessions.last() {
                 None => {
                     let tcp = open_tcp(&hop.host, hop.port, opts.timeout).await?;
@@ -293,7 +332,16 @@ async fn connect_async(
                         .map_err(handshake_err)?
                 }
             };
-            authenticate(&mut handle, hop, &events).await?;
+            if let Err(e) = authenticate(&mut handle, hop, &events).await {
+                // A russh error here usually means the server hung up; say why it did.
+                if matches!(e, SshError::Other(_)) {
+                    if let Some(reason) = closed_reason(&closed).await {
+                        return Err(SshError::ClosedDuringSignIn { reason });
+                    }
+                }
+                return Err(e);
+            }
+            log::debug!("{}:{} signed in as {}", hop.host, hop.port, hop.user);
             Ok::<_, SshError>(handle)
         };
         match step.await {
@@ -316,6 +364,19 @@ async fn connect_async(
         _jumps: sessions,
         remote,
     })
+}
+
+/// Why the connection ended, if it has. The failed call can return a moment before russh
+/// tells the handler, so this waits up to half a second for the reason. Only called on a
+/// sign-in that already failed, so the wait costs nothing on a good connection.
+async fn closed_reason(closed: &Mutex<Option<String>>) -> Option<String> {
+    for _ in 0..20 {
+        if let Some(r) = closed.lock().unwrap().clone() {
+            return Some(r);
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    None
 }
 
 /// Like OpenSSH: ask for the host-key types already recorded for this host
@@ -433,6 +494,12 @@ async fn authenticate(
         Ok(o) => o,
         Err(()) => return Ok(()),
     };
+    log::debug!(
+        "{}:{} offers sign-in by: {}",
+        hop.host,
+        hop.port,
+        offered.iter().map(method_name).collect::<Vec<_>>().join(", ")
+    );
     let missing = |wanted: &'static str, offered: &Offered| SshError::MethodNotOffered {
         wanted,
         offered: offered.iter().map(method_name).collect(),
@@ -443,6 +510,7 @@ async fn authenticate(
     match auth {
         SshAuth::Password { password } => {
             if offered.contains(&MethodKind::Password) {
+                log::debug!("{}:{} trying password", hop.host, hop.port);
                 let r = h
                     .authenticate_password(user, password)
                     .await
@@ -491,6 +559,13 @@ async fn authenticate(
                 }
             })?;
             let hash = h.best_supported_rsa_hash().await.map_err(other)?.flatten();
+            log::debug!(
+                "{}:{} trying key {} ({})",
+                hop.host,
+                hop.port,
+                path.display(),
+                key.algorithm()
+            );
             let r = h
                 .authenticate_publickey(user, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
                 .await
@@ -513,7 +588,19 @@ async fn authenticate(
                 .await
                 .map_err(|e| SshError::AgentUnavailable(e.to_string()))?;
             let hash: Option<HashAlg> = h.best_supported_rsa_hash().await.map_err(other)?.flatten();
+            log::debug!(
+                "{}:{} ssh-agent holds {} key(s)",
+                hop.host,
+                hop.port,
+                identities.len()
+            );
             for id in identities {
+                log::debug!(
+                    "{}:{} trying agent key {}",
+                    hop.host,
+                    hop.port,
+                    id.public_key().fingerprint(HashAlg::Sha256)
+                );
                 let r = match h
                     .authenticate_publickey_with(
                         user,
@@ -590,6 +677,7 @@ async fn keyboard_interactive(
     let user = hop.user.as_str();
     let other = |e: russh::Error| SshError::Other(e.to_string());
     let mut password = password;
+    log::debug!("{}:{} trying keyboard-interactive", hop.host, hop.port);
     let mut response = h
         .authenticate_keyboard_interactive_start(user, None)
         .await

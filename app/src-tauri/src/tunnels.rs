@@ -102,7 +102,7 @@ pub(crate) fn start_auto(
                 tunnels.add(session, spec, Slot::Running(t));
             }
             Err(e) => {
-                log::warn!("tunnel {} failed: {e}", spec.describe());
+                log::error!("tunnel {} failed: {e}", spec.describe());
                 tunnels.add(session, spec, Slot::Failed(e.to_string()));
             }
         }

@@ -16,6 +16,7 @@ quay-core.workspace = true
 thiserror.workspace = true
 russh.workspace = true
 tokio.workspace = true
+log = "0.4"
 socket2 = { version = "0.5", features = ["all"] }
 
 [dev-dependencies]

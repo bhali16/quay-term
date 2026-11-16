@@ -1,6 +1,7 @@
 mod backup;
 mod history;
 mod library;
+mod logging;
 mod sftp;
 mod snippets;
 mod tunnels;
@@ -283,7 +284,7 @@ async fn start_ssh(
     forget_prompt(prompts, prompt_id);
 
     let (session, conn) = result.map_err(|e| {
-        log::warn!("ssh connect {dest} failed: {e}");
+        log::error!("ssh connect {dest} failed: {e}");
         err(e)
     })?;
     log::info!("ssh connected {dest} (session {id})");
@@ -427,7 +428,19 @@ fn settings_save(
 ) -> Result<quay_config::Settings, String> {
     let settings = settings.sanitized();
     settings.save(&path.0).map_err(err)?;
+    logging::set(settings.log_level);
     Ok(settings)
+}
+
+/// Open the folder that holds the log files in the system file manager.
+#[tauri::command]
+fn open_log_dir(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = app.path().app_log_dir().map_err(err)?;
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(err)
 }
 
 /// Facts worth pasting into a bug report. Never includes secrets or host names.
@@ -459,8 +472,9 @@ fn get_diagnostics(app: AppHandle, path: State<'_, SettingsPath>) -> Diagnostics
 pub fn run() {
     tauri::Builder::default()
         .plugin(
+            // Everything reaches the logger; `logging::allows` keeps what Settings > Logs asks for.
             tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Info)
+                .filter(logging::allows)
                 .target(tauri_plugin_log::Target::new(
                     tauri_plugin_log::TargetKind::LogDir {
                         file_name: Some("quay-term".into()),
@@ -494,7 +508,9 @@ pub fn run() {
             let library = Library::open(&dir.join("sessions.db"), Box::new(secrets))?;
             app.manage(library);
             app.manage(snippets::Snippets::open(dir.join("snippets.json")));
-            app.manage(SettingsPath(dir.join("settings.json")));
+            let settings_file = dir.join("settings.json");
+            logging::set(quay_config::Settings::load(&settings_file).log_level);
+            app.manage(SettingsPath(settings_file));
             app.manage(history::History::new(
                 dir.join("history.db"),
                 Box::new(move || keys.history_key()),
@@ -511,6 +527,7 @@ pub fn run() {
             settings_load,
             settings_save,
             get_diagnostics,
+            open_log_dir,
             open_local_session,
             open_ssh_session,
             ssh_trust_response,

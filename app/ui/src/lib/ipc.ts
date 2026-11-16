@@ -141,6 +141,7 @@ export const tunnelList = (session: number) => invoke<TunnelInfo[]>("tunnel_list
 export const settingsLoad = () => invoke<Settings>("settings_load");
 export const settingsSave = (settings: Settings) => invoke<Settings>("settings_save", { settings });
 export const getDiagnostics = () => invoke<Diagnostics>("get_diagnostics");
+export const openLogDir = () => invoke<void>("open_log_dir");
 
 export const snippetsLoad = () => invoke<Snippet[]>("snippets_load");
 export const snippetSave = (id: number | null, name: string, folder: string, body: string) =>
