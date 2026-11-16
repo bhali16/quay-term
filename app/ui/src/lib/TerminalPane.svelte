@@ -628,7 +628,7 @@
     term.loadAddon(
       new WebLinksAddon((e, uri) => {
         if (!(isMac ? e.metaKey : e.ctrlKey)) return;
-        if (/^https?:\/\//i.test(uri)) openUrl(uri).catch(() => {});
+        if (/^https?:\/\//i.test(uri)) openUrl(uri).catch((err) => console.warn("open link failed:", err));
       }),
     );
     search = new SearchAddon();
