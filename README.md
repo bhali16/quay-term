@@ -23,7 +23,7 @@ One app to manage terminals, SSH sessions and remote files on any desktop OS.
 What it does today (v0.5):
 
 - **Terminals:** local shell tabs, split panes inside a tab (the layout comes back with a saved session) that you can zoom to fill the tab or drag onto another pane's edge to rearrange, optional focus follows mouse, find in scrollback (Cmd+F / Ctrl+Shift+F), and typing broadcast to selected panes
-- **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification; a quick-connect dialog can save the connection as you open it, and any open quick-connect tab can be saved from its right-click menu or the palette
+- **SSH:** password, key, agent and keyboard-interactive (one-time codes, second factors) sign-in, with known-hosts verification; a quick-connect dialog can save the connection as you open it, and any open quick-connect tab can be saved with the Save button in its toolbar, its right-click menu or the palette, without opening a second connection; a sign-in the server ends says why
 - **Jump hosts:** chain `ProxyJump` hosts per saved session or from `~/.ssh/config`, with a host-key check at every hop
 - **Port forwards:** local, remote and dynamic (SOCKS5) tunnels over a tab's connection, saved with the session and optionally started automatically
 - **Sessions:** saved sessions with folders, tags and search, a right-click menu to duplicate one, move it or open it in a split pane, and `~/.ssh/config` import (hosts, `ProxyJump` and forwards)
@@ -32,12 +32,13 @@ What it does today (v0.5):
 - **Secrets:** stored in the OS keychain, or in a master-password file on machines without one
 - **Backup:** encrypted export and import of sessions, secrets and snippets in one file (Argon2id and ChaCha20-Poly1305)
 - **Updates:** signed in-app updates (Settings > About)
+- **Logs:** a log level in Settings > About, from Errors only (the default) to Extended (SSH protocol messages), that applies without a restart, and a button to open the logs folder
 - **Command palette:** Cmd/Ctrl+K searches actions, sessions, snippets and tabs
 - **Environments:** colour and prod/staging badges on saved sessions, tab connection state, and a reconnect bar
 - **Command marks:** command blocks with exit-code bars, a copy button on each finished command, prompt jumping and copy last output. They work automatically in local zsh and bash on macOS and Linux, and in a remote bash or zsh on request (palette: "Enable command marks in this remote shell"). Local Windows shells (PowerShell, cmd) do not have them yet
 - **Command history:** opt-in search across every session and host (`$` in the palette, or Shift+Cmd+H / Ctrl+Alt+H), filtered by host, failures and date; commands typed with a leading space or matching a secrets deny-list are never saved, and history stays on this computer
 - **Notifications:** opt-in desktop notifications when a long command finishes or a session drops while the window or tab is in the background; mute single panes, hide the command text, click to jump to the tab
-- **Clipboard:** copy on select, Ctrl+C copies a selection, right-click pastes (Windows/Linux), Ctrl+click opens links
+- **Clipboard:** copy on select, Ctrl+C copies a selection, right-click pastes (Windows/Linux), Cmd+click / Ctrl+click opens a web link in the browser
 - Five built-in themes that can follow the system's light or dark appearance, bundled fonts, configurable shortcuts, tab status dots, and a horizontal or vertical tab bar
 - Installers for macOS (Apple silicon and Intel), Linux and Windows, with a themed setup app on Windows
 

@@ -7,10 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 - Settings > About > Logs chooses what goes into the log file: Errors only (the default), Standard, Debug (each sign-in step and why a connection ended) or Extended (also the SSH library's protocol messages). It takes effect without a restart. "Open logs folder" opens the folder in the file manager.
+- A quick-connect SSH tab that is not saved shows a Save button in its toolbar, beside Files and Tunnels.
 
 ### Changed
 - When the server hangs up during sign-in, the error now says why (for example "Too many authentication failures") instead of "Unable to receive more messages from the channel".
 - The log file holds only errors unless you choose more. Failed connections and tunnels are logged as errors.
+- Saving an open connection ("Save this connection…") no longer opens a second one. The tab is linked to the new session and takes its name, colour and environment badge. It also shows as open in the sidebar and joins recents. Deleting the session brings the Save button back.
+
+### Fixed
+- Cmd+click (macOS) or Ctrl+click (Windows and Linux) on a web link in the terminal opens it in the browser again. Before, the link was silently refused.
 
 ## [0.5.0] - 2026-11-11
 
