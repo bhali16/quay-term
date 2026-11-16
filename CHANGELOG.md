@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- The Windows setup window no longer pushes the Location row and the Install or Update button past its right edge when the install folder path is long. The path is shortened from the start instead.
+
 ## [0.5.1] - 2026-11-16
 
 ### Added

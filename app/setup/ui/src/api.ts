@@ -12,7 +12,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const api = {
   info: (): Promise<Info> =>
-    inShell ? invoke("info") : Promise.resolve({ version: "0.3.0", defaultDir: "C:\\Users\\you\\AppData\\Local\\Quay Term", existing: false, hasPayload: true }),
+    inShell ? invoke("info") : Promise.resolve({ version: "dev preview", defaultDir: "C:\\Users\\you\\AppData\\Local\\Quay Term", existing: false, hasPayload: true }),
   isInstalled: (dir: string): Promise<boolean> => (inShell ? invoke("is_installed", { dir }) : Promise.resolve(false)),
   pickFolder: (current: string): Promise<string | null> => (inShell ? invoke("pick_folder", { current }) : Promise.resolve(null)),
   install: async (dir: string): Promise<string> => (inShell ? invoke("install", { dir }) : (await sleep(6000), dir + "\\Quay Term.exe")),

@@ -332,6 +332,9 @@
   }
   .page {
     flex: 1;
+    /* Without this the page grows to fit the unwrapped install path and pushes the
+       card and the Install button past the window's right edge. */
+    min-width: 0;
     display: flex;
     flex-direction: column;
     padding: 40px 40px 26px;
