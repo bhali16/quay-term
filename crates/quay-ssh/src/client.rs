@@ -498,7 +498,11 @@ async fn authenticate(
         "{}:{} offers sign-in by: {}",
         hop.host,
         hop.port,
-        offered.iter().map(method_name).collect::<Vec<_>>().join(", ")
+        offered
+            .iter()
+            .map(method_name)
+            .collect::<Vec<_>>()
+            .join(", ")
     );
     let missing = |wanted: &'static str, offered: &Offered| SshError::MethodNotOffered {
         wanted,

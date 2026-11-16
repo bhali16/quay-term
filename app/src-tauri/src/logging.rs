@@ -49,7 +49,10 @@ pub fn set(level: LogLevel) {
     let i = LEVELS.iter().position(|l| *l == level).unwrap_or(0);
     LEVEL.store(i as u8, Ordering::Relaxed);
     // Lets the `log!` macros skip records nobody will write, before formatting them.
-    let max = limits(level).into_iter().max().unwrap_or(LevelFilter::Error);
+    let max = limits(level)
+        .into_iter()
+        .max()
+        .unwrap_or(LevelFilter::Error);
     log::set_max_level(max);
 }
 
@@ -65,10 +68,22 @@ mod tests {
     #[test]
     fn libraries_stay_quieter_than_the_app() {
         assert_eq!(limit_for("quay_app", LogLevel::Error), LevelFilter::Error);
-        assert_eq!(limit_for("russh::client", LogLevel::Error), LevelFilter::Error);
-        assert_eq!(limit_for("quay_ssh::client", LogLevel::Debug), LevelFilter::Debug);
-        assert_eq!(limit_for("russh::client", LogLevel::Debug), LevelFilter::Info);
+        assert_eq!(
+            limit_for("russh::client", LogLevel::Error),
+            LevelFilter::Error
+        );
+        assert_eq!(
+            limit_for("quay_ssh::client", LogLevel::Debug),
+            LevelFilter::Debug
+        );
+        assert_eq!(
+            limit_for("russh::client", LogLevel::Debug),
+            LevelFilter::Info
+        );
         assert_eq!(limit_for("tao::window", LogLevel::Debug), LevelFilter::Warn);
-        assert_eq!(limit_for("russh::client", LogLevel::Trace), LevelFilter::Debug);
+        assert_eq!(
+            limit_for("russh::client", LogLevel::Trace),
+            LevelFilter::Debug
+        );
     }
 }
