@@ -82,6 +82,12 @@ dim_unfocused_panes: boolean,
  */
 snippet_expand: boolean, 
 /**
+ * Experimental: after `ssh`, `scp` or `sftp` at a marked prompt, suggest hosts from saved
+ * sessions and `~/.ssh/config`; in an SSH tab, a shortcut completes remote paths over the
+ * tab's own connection. Needs shell integration marks. Off by default.
+ */
+input_assist: boolean, 
+/**
  * Mirror the terminal's text into the accessibility tree so a screen reader can read it.
  * Off by default: it costs some speed on fast output.
  */

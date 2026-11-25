@@ -26,6 +26,7 @@ import type { NewHistoryEntry } from "./bindings/NewHistoryEntry";
 import type { SftpOpened } from "./bindings/SftpOpened";
 import type { QueuedDownload } from "./bindings/QueuedDownload";
 import type { SftpTransfer } from "./bindings/SftpTransfer";
+import type { ConfigHost } from "./bindings/ConfigHost";
 
 /** Typed wrappers around Tauri commands. Types are generated from Rust by ts-rs. */
 export const getAppInfo = () => invoke<AppInfo>("get_app_info");
@@ -87,6 +88,8 @@ export const folderMove = (id: number, parentId: number | null) =>
   invoke<void>("folder_move", { id, parentId });
 export const folderDelete = (id: number) => invoke<void>("folder_delete", { id });
 export const importSshConfig = () => invoke<ImportResult>("import_ssh_config");
+/** Host aliases in ~/.ssh/config, read without importing them (for input assist). */
+export const sshConfigHosts = () => invoke<ConfigHost[]>("ssh_config_hosts");
 
 export const sshTrustResponse = (promptId: number, trust: boolean) =>
   invoke<void>("ssh_trust_response", { promptId, trust });

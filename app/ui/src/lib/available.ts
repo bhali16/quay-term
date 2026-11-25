@@ -32,6 +32,7 @@ export function unavailable(action: Checked, c: TabContext): string | null {
   switch (action) {
     case "toggle_files":
     case "toggle_tunnels":
+    case "complete_path":
       return c.remote ? null : NEEDS_SSH;
     case "zoom_pane":
     case "focus_left":

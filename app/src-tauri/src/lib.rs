@@ -362,13 +362,46 @@ fn folder_delete(library: State<'_, Library>, id: i64) -> Result<(), String> {
     library.delete_folder(id)
 }
 
-/// Import hosts from `~/.ssh/config`.
-#[tauri::command]
-fn import_ssh_config(library: State<'_, Library>) -> Result<ImportResult, String> {
+fn ssh_config_path() -> Result<std::path::PathBuf, String> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or("Could not find your home directory.")?;
-    library.import_ssh_config(&std::path::Path::new(&home).join(".ssh").join("config"))
+    Ok(std::path::Path::new(&home).join(".ssh").join("config"))
+}
+
+/// Import hosts from `~/.ssh/config`.
+#[tauri::command]
+fn import_ssh_config(library: State<'_, Library>) -> Result<ImportResult, String> {
+    library.import_ssh_config(&ssh_config_path()?)
+}
+
+/// A host alias from `~/.ssh/config`, offered after `ssh ` at a prompt (input assist).
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../ui/src/lib/bindings/")]
+pub struct ConfigHost {
+    pub alias: String,
+    pub host_name: String,
+    pub user: Option<String>,
+    pub port: u16,
+}
+
+/// The concrete host aliases in `~/.ssh/config`, without importing them. A missing or
+/// unreadable file gives an empty list: suggestions are a convenience, not worth an error.
+#[tauri::command]
+fn ssh_config_hosts() -> Vec<ConfigHost> {
+    let Ok(path) = ssh_config_path() else {
+        return vec![];
+    };
+    quay_sessions::read_ssh_config(&path)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|h| ConfigHost {
+            alias: h.alias,
+            host_name: h.host_name,
+            user: h.user,
+            port: h.port,
+        })
+        .collect()
 }
 
 /// The user's answer to an `ssh-host-key-prompt` event.
@@ -543,6 +576,7 @@ pub fn run() {
             session_move,
             folder_move,
             import_ssh_config,
+            ssh_config_hosts,
             session_write,
             session_resize,
             session_close,

@@ -379,6 +379,10 @@
             <input type="checkbox" checked={settings.value.snippet_expand} onchange={(e) => patch({ snippet_expand: e.currentTarget.checked })} />
             Experimental: type <code>;name</code> then Tab at a marked prompt to open that snippet
           </label>
+          <label class="check">
+            <input type="checkbox" checked={settings.value.input_assist} onchange={(e) => patch({ input_assist: e.currentTarget.checked })} />
+            <span>Experimental: suggest hosts after <code>ssh</code>, <code>scp</code> or <code>sftp</code> at a marked prompt, and complete remote paths with {formatShortcut(settings.bindings.complete_path) || "the Complete a remote path shortcut"}</span>
+          </label>
           <h3>Accessibility</h3>
           <label class="check">
             <input type="checkbox" checked={settings.value.screen_reader} onchange={(e) => patch({ screen_reader: e.currentTarget.checked })} />

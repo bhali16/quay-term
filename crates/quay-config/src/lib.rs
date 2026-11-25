@@ -105,6 +105,10 @@ pub struct Settings {
     /// Experimental: typing `;name` and Tab at a prompt opens the snippet with that short name.
     /// Needs shell integration marks, so it does nothing in a shell without them.
     pub snippet_expand: bool,
+    /// Experimental: after `ssh`, `scp` or `sftp` at a marked prompt, suggest hosts from saved
+    /// sessions and `~/.ssh/config`; in an SSH tab, a shortcut completes remote paths over the
+    /// tab's own connection. Needs shell integration marks. Off by default.
+    pub input_assist: bool,
     /// Mirror the terminal's text into the accessibility tree so a screen reader can read it.
     /// Off by default: it costs some speed on fast output.
     pub screen_reader: bool,
@@ -163,6 +167,7 @@ impl Default for Settings {
             tab_layout: TabLayout::Horizontal,
             dim_unfocused_panes: true,
             snippet_expand: false,
+            input_assist: false,
             screen_reader: false,
             record_history: false,
             history_deny_patterns: default_history_deny_patterns(),
@@ -301,6 +306,17 @@ mod tests {
         .unwrap();
         let s = Settings::load(&p);
         assert!(s.notifications && !s.notify_show_command);
+    }
+
+    #[test]
+    fn input_assist_is_off_for_old_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.json");
+        std::fs::write(&p, r#"{"snippet_expand": true}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(!s.input_assist && s.snippet_expand);
+        std::fs::write(&p, r#"{"input_assist": true}"#).unwrap();
+        assert!(Settings::load(&p).input_assist);
     }
 
     #[test]

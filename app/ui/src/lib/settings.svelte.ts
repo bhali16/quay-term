@@ -30,6 +30,7 @@ const fallback: Settings = {
   tab_layout: "horizontal",
   dim_unfocused_panes: true,
   snippet_expand: false,
+  input_assist: false,
   screen_reader: false,
   record_history: false,
   history_deny_patterns: DEFAULT_DENY,
