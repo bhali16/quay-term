@@ -67,6 +67,7 @@
   import { byShortName, fill, variables } from "./lib/snippets";
   import { settings } from "./lib/settings.svelte";
   import { actionFor, actionLabels, formatShortcut, isMac, type Action } from "./lib/keys";
+  import { staleHosts } from "./lib/hostSource";
   import * as P from "./lib/panes";
   import { inkOn } from "./lib/themes";
   import { setFocusFallback } from "./lib/modal";
@@ -549,6 +550,8 @@
   /** An error: one plain sentence that stays until dismissed, the raw text behind "Details". */
   const say = (e: unknown) => toasts.error(e);
   async function refresh() {
+    // Sessions may have changed: input assist reads them again next time it needs them.
+    staleHosts();
     try {
       const q = query.trim();
       library = await libraryLoad(q || undefined);
@@ -769,7 +772,9 @@
   }
   /** Why an action cannot run in the front tab (one sentence), or null when it can. */
   const whyNot = (a: Checked) =>
-    unavailable(a, { home: !!activeTab?.home, remote: !!activeTab && canDock(activeTab), panes: activeTab ? P.leaves(activeTab.layout).length : 0, tabs: tabs.length });
+    a === "complete_path" && !settings.value.input_assist
+      ? "Input assist is off. Turn it on in Settings > Terminal > Command marks."
+      : unavailable(a, { home: !!activeTab?.home, remote: !!activeTab && canDock(activeTab), panes: activeTab ? P.leaves(activeTab.layout).length : 0, tabs: tabs.length });
   /** A binding as shown in tooltips and the palette. */
   const keyOf = (a: Action) => formatShortcut(settings.bindings[a]);
   /** A tooltip with the action's shortcut after it, when it has one. */
@@ -1012,6 +1017,7 @@
       case "palette": return showPalette ? (showPalette = false) : openPalette();
       case "history_search": return showPalette ? (showPalette = false) : openPalette("$ ");
       case "find": return focusedPane(activeTab)?.openFind();
+      case "complete_path": return paneAction((p) => p.completePath().then((why) => why && toast(why)));
       case "prev_prompt": return paneAction((p) => p.prevPrompt() || toast("No earlier prompt."));
       case "next_prompt": return paneAction((p) => p.nextPrompt());
       case "copy_last_output":

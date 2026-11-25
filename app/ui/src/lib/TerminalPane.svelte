@@ -14,6 +14,9 @@
     sessionWrite,
     sessionResize,
     sessionClose,
+    sftpOpenShared,
+    sftpList,
+    sftpClose,
   } from "./ipc";
   import type { SshTarget } from "./bindings/SshTarget";
   import { settings } from "./settings.svelte";
@@ -27,6 +30,9 @@
   import { expansionAt, toInput } from "./snippets";
   import { parseCwd } from "./history";
   import type { IMarker } from "@xterm/xterm";
+  import { hostContext, hostEdit, matchHosts, matchPaths, pathContext, pathEdit, sharedStart, shellEscape, type Edit, type PathEntry } from "./assist";
+  import { hosts as knownHosts } from "./hostSource";
+  import AssistPopup from "./AssistPopup.svelte";
 
   export type PaneStatus = "connecting" | "connected" | "ended";
 
@@ -120,6 +126,8 @@
     ended = true;
     hintDismissed = false;
     pendingPaste = null;
+    assist = null;
+    closeFiles();
     id = null;
     lastExit = reason;
     onstatus?.("ended");
@@ -285,6 +293,179 @@
     send("\x7f".repeat(short.length + 1));
     return true;
   }
+  // ---- input assist (F9): hosts after ssh/scp/sftp, remote paths on a shortcut ----
+  type AssistItem = { label: string; detail: string; edit: Edit };
+  let assist = $state<{ kind: "host" | "path"; items: AssistItem[]; index: number; line: string; x: number; y: number; above: boolean } | null>(null);
+  /** The line up to the host word where Escape was pressed: no host list again until that changes. */
+  let assistDismissed: string | null = null;
+  let assistFrame = 0;
+  /** Typing here goes only to this pane and the pane is live; never in a full-screen app (typedAtPrompt checks). */
+  const assistAllowed = () => settings.value.input_assist && active && focused && !broadcasting && id !== null && !ended;
+  function scheduleAssist() {
+    if (assistFrame || (!assist && !settings.value.input_assist)) return;
+    assistFrame = requestAnimationFrame(() => {
+      assistFrame = 0;
+      updateAssist();
+    });
+  }
+  /** Where to draw the list: under the start of the word being typed, or above it in the lower half. */
+  function assistPlace(wordLen: number) {
+    const r = host.querySelector(".xterm-screen")?.getBoundingClientRect();
+    const b = term.buffer.active;
+    if (!r || !term.cols || !term.rows) return { x: 0, y: 0, above: false };
+    const cw = r.width / term.cols;
+    const ch = r.height / term.rows;
+    const top = r.top + b.cursorY * ch;
+    const above = b.cursorY >= term.rows / 2;
+    return { x: r.left + Math.max(0, b.cursorX - wordLen) * cw, y: above ? top : top + ch, above };
+  }
+  function updateAssist() {
+    const line = assistAllowed() ? typedAtPrompt() : null;
+    // A path list belongs to the line it was asked on; any typing closes it.
+    if (assist?.kind === "path") {
+      if (line !== assist.line) assist = null;
+      return;
+    }
+    const ctx = line === null ? null : hostContext(line);
+    if (!line || !ctx) {
+      assist = null;
+      return;
+    }
+    const start = line.slice(0, line.length - ctx.word.length);
+    if (assistDismissed !== null && assistDismissed === start) {
+      assist = null;
+      return;
+    }
+    assistDismissed = null;
+    const items = matchHosts(ctx, knownHosts(scheduleAssist)).map((h) => ({ label: h.label, detail: h.detail, edit: hostEdit(ctx, h) }));
+    if (!items.length) {
+      assist = null;
+      return;
+    }
+    const index = assist?.line === line ? Math.min(assist.index, items.length - 1) : 0;
+    assist = { kind: "host", items, index, line, ...assistPlace(ctx.word.length) };
+  }
+  function typeEdit(e: Edit) {
+    send("\x7f".repeat(e.erase) + e.text);
+  }
+  function takeAssist(i: number) {
+    const item = assist?.items[i];
+    if (!item) return;
+    assist = null;
+    typeEdit(item.edit);
+    term.focus();
+  }
+  function closeAssist() {
+    if (assist?.kind === "host") {
+      const ctx = hostContext(assist.line);
+      if (ctx) assistDismissed = assist.line.slice(0, assist.line.length - ctx.word.length);
+    }
+    assist = null;
+  }
+  /** Keys for an open list. True when the key was used here and must not reach the shell. */
+  function assistKey(e: KeyboardEvent): boolean {
+    if (!assist || e.ctrlKey || e.metaKey || e.altKey) return false;
+    const n = assist.items.length;
+    if (e.key === "Tab" && !e.shiftKey) takeAssist(assist.index);
+    else if (e.key === "ArrowDown") assist.index = (assist.index + 1) % n;
+    else if (e.key === "ArrowUp") assist.index = (assist.index - 1 + n) % n;
+    else if (e.key === "Escape") closeAssist();
+    else {
+      // Enter runs the line as typed; the list goes with it.
+      if (e.key === "Enter") assist = null;
+      return false;
+    }
+    return true;
+  }
+  $effect(() => {
+    if (!active || !focused || broadcasting || !settings.value.input_assist) assist = null;
+  });
+
+  /** SFTP on this pane's own connection, opened the first time a path is completed. No new login. */
+  let files: { id: number; home: string } | null = null;
+  let filesOpening: Promise<{ id: number; home: string }> | null = null;
+  const listings = new Map<string, { at: number; entries: PathEntry[] }>();
+  const listing = new Map<string, Promise<PathEntry[]>>();
+  const LISTING_FRESH_MS = 10_000;
+  /** Resolves to `null` if `p` takes longer than `ms`; `p` carries on (a slow folder fills the cache for next time). */
+  const within = <T,>(p: Promise<T>, ms: number) =>
+    Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+  function remoteFiles(session: number) {
+    if (files) return Promise.resolve(files);
+    filesOpening ??= sftpOpenShared(session)
+      .then((o) => (files = o))
+      .finally(() => (filesOpening = null));
+    return filesOpening;
+  }
+  function closeFiles() {
+    if (files) sftpClose(files.id).catch(() => {});
+    files = null;
+    listings.clear();
+  }
+  function listDir(sftp: number, dir: string): Promise<PathEntry[]> {
+    const hit = listings.get(dir);
+    if (hit && Date.now() - hit.at < LISTING_FRESH_MS) return Promise.resolve(hit.entries);
+    let p = listing.get(dir);
+    if (!p) {
+      p = sftpList(sftp, dir)
+        .then((es) => {
+          const entries = es.map((x) => ({ name: x.name, dir: x.kind === "dir" }));
+          listings.set(dir, { at: Date.now(), entries });
+          return entries;
+        })
+        .finally(() => listing.delete(dir));
+      listing.set(dir, p);
+    }
+    return p;
+  }
+  /**
+   * Complete the path at the cursor from this SSH pane's host. One match is typed straight in;
+   * several that share a longer start get that start typed (as a shell would); otherwise the
+   * names are listed. Returns a sentence to show when nothing could be offered.
+   */
+  export async function completePath(): Promise<string | null> {
+    if (!settings.value.input_assist) return "Input assist is off. Turn it on in Settings > Terminal > Command marks.";
+    if (!remote) return "Paths are completed in SSH panes only. In a local shell, use the shell's own Tab.";
+    if (broadcasting) return "Not while typing goes to several panes.";
+    const session = id;
+    if (session === null || ended) return "This pane is not connected.";
+    const line = typedAtPrompt();
+    if (line === null) return "Paths are completed at the prompt, not while a command or full-screen app runs.";
+    let fs: { id: number; home: string } | null;
+    try {
+      fs = await within(remoteFiles(session), 5000);
+    } catch (e) {
+      return `Could not open files on this connection: ${e}`;
+    }
+    if (!fs) return "The connection is slow to open files. Try again in a moment.";
+    const res = pathContext(line, cwd, fs.home);
+    if (!res.ok) return res.reason;
+    const { dir, prefix } = res.ctx;
+    let entries: PathEntry[] | null;
+    try {
+      entries = await within(listDir(fs.id, dir), 300);
+    } catch (e) {
+      return `Could not list ${dir}: ${e}`;
+    }
+    if (!entries) return `${dir} is slow to list. Try again in a moment.`;
+    // The user typed on while the folder was read: what was found no longer fits.
+    if (typedAtPrompt() !== line || id !== session) return null;
+    const found = matchPaths(prefix, entries);
+    if (!found.length) return prefix ? `Nothing in ${dir} starts with "${prefix}".` : `${dir} has nothing to offer.`;
+    if (found.length === 1) {
+      typeEdit(pathEdit(res.ctx, found[0]));
+      return null;
+    }
+    const shared = sharedStart(found.map((f) => f.name));
+    if (shared.length > prefix.length) {
+      typeEdit({ erase: 0, text: res.ctx.lead + shellEscape(shared.slice(prefix.length)) });
+      return null;
+    }
+    const items = found.map((f) => ({ label: f.name + (f.dir ? "/" : ""), detail: f.dir ? "folder" : "", edit: pathEdit(res.ctx, f) }));
+    assist = { kind: "path", items, index: 0, line, ...assistPlace(prefix.length) };
+    return null;
+  }
+
   /** The typed command as on screen, untrimmed at the start so a leading space can be seen. */
   function rawCommand(b: Block<IMarker>): string {
     if (!b.input || !b.out || b.input.isDisposed || b.out.isDisposed) return "";
@@ -515,6 +696,8 @@
   function start() {
     ended = false;
     cwd = null;
+    closeFiles();
+    assist = null;
     onstatus?.("connecting");
     const out = (bytes: Uint8Array) => {
       term.write(bytes);
@@ -600,6 +783,10 @@
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
       if (actionFor(e, settings.bindings)) return false;
+      if (assistKey(e)) {
+        e.preventDefault();
+        return false;
+      }
       if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && tryExpand()) {
         e.preventDefault();
         return false;
@@ -637,6 +824,9 @@
     term.open(host);
     fit.fit();
     term.parser.registerOscHandler(133, onMark);
+    // Input assist looks at the line again once what was typed has been echoed.
+    term.onWriteParsed(scheduleAssist);
+    term.onCursorMove(scheduleAssist);
     // OSC 7 (file://host/dir): where the next command runs. Untrusted, only stored as text.
     term.parser.registerOscHandler(7, (data) => {
       if (term.buffer.active.type !== "alternate") cwd = parseCwd(data.slice(0, 4096));
@@ -712,6 +902,8 @@
       window.removeEventListener("mouseup", onWindowMouseUp);
       host.removeEventListener("contextmenu", onContext);
       host.removeEventListener("paste", onPaste, true);
+      cancelAnimationFrame(assistFrame);
+      closeFiles();
       if (id !== null) sessionClose(id);
       term.dispose();
     };
@@ -753,6 +945,17 @@
       <Button variant="icon" title={`Next match (${formatShortcut("Enter")})`} aria-label="Next match" disabled={found.count === 0} onclick={() => findStep(true)}><Icon name="arrow-down" size={14} /></Button>
       <Button variant="icon" title={`Close (${formatShortcut("Escape")})`} aria-label="Close find" onclick={closeFind}><Icon name="x" size={14} /></Button>
     </div>
+  {/if}
+  {#if assist}
+    <AssistPopup
+      label={assist.kind === "host" ? "Hosts" : "Remote paths"}
+      rows={assist.items}
+      index={assist.index}
+      x={assist.x}
+      y={assist.y}
+      above={assist.above}
+      onpick={takeAssist}
+    />
   {/if}
   {#if menu}
     <Menu label="Command block" left={menu.x} top={menu.y} onclose={() => ((menu = null), term.focus())}>

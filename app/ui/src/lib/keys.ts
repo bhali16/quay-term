@@ -35,7 +35,8 @@ export type Action =
   | "select_block"
   | "enable_integration"
   | "history_search"
-  | "find";
+  | "find"
+  | "complete_path";
 
 export const actionLabels: Record<Action, string> = {
   new_tab: "New tab",
@@ -74,6 +75,7 @@ export const actionLabels: Record<Action, string> = {
   enable_integration: "Enable command marks in this remote shell",
   history_search: "Search command history",
   find: "Find in scrollback",
+  complete_path: "Complete a remote path (input assist)",
 };
 
 /** The sections of Settings > Shortcuts, in the order they are shown. */
@@ -85,7 +87,7 @@ export const actionGroups: { name: string; actions: Action[] }[] = [
   },
   {
     name: "Commands",
-    actions: ["find", "prev_prompt", "next_prompt", "copy_last_output", "select_last_output", "copy_last_command", "rerun_last", "select_block", "enable_integration", "history_search", "snippets"],
+    actions: ["find", "prev_prompt", "next_prompt", "copy_last_output", "select_last_output", "copy_last_command", "rerun_last", "select_block", "enable_integration", "history_search", "complete_path", "snippets"],
   },
   { name: "App", actions: ["palette", "toggle_sidebar", "toggle_files", "settings", "zoom_in", "zoom_out", "zoom_reset"] },
 ];
@@ -131,6 +133,7 @@ export const defaultBindings: Record<Action, string> = {
   enable_integration: isMac ? "Alt+Shift+Cmd+I" : "Ctrl+Alt+Shift+I",
   history_search: isMac ? "Shift+Cmd+H" : "Ctrl+Alt+H",
   find: isMac ? "Cmd+F" : "Ctrl+Shift+F",
+  complete_path: isMac ? "Alt+Cmd+/" : "Ctrl+Alt+/",
 };
 
 const MODS = ["Ctrl", "Alt", "Shift", "Cmd"] as const;
