@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-26
+
 ### Added
 - Input assist (experimental, off by default; Settings > Terminal > Command marks). After `ssh `, `scp ` or `sftp ` at a marked prompt, a list of hosts from `~/.ssh/config` and saved sessions opens next to the cursor and narrows as you type. Tab inserts the chosen host (a saved session on another port gets `-p`/`-P` too), the arrows move, Escape closes it for that word, and Enter runs the line as typed. Nothing is typed until you choose. It does not show in full-screen apps, while a command runs, or while typing is broadcast to several panes.
 - In an SSH pane, Option+Cmd+/ (Ctrl+Alt+/ on Windows and Linux) completes the remote path at the cursor over the tab's own connection, with no second login. One match is typed in; several share their common start first, then show as a list. Relative paths need the shell's folder, which local shells and the remote command-marks hook report. Listings are cached for 10 seconds and a folder that takes longer than 300 ms says so instead of blocking.
